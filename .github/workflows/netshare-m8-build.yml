@@ -1,0 +1,58 @@
+name: NetShare P2P M8 Android debug APK
+on:
+  push:
+    branches:
+      - netshare-m8-build
+    paths:
+      - '.github/workflows/netshare-m8-build.yml'
+      - 'netshare-p2p/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-debug:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+      - name: Install Android SDK 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.14'
+      - name: Expand reviewed M8 source
+        run: |
+          mkdir -p netshare-p2p/build
+          unzip -q netshare-p2p/M8_build_source.zip -d netshare-p2p/build
+          test -f netshare-p2p/build/settings.gradle.kts
+      - name: Check prohibited app API patterns
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          base = Path("netshare-p2p/build")
+          src = "\n".join(p.read_text(encoding="utf-8") for p in base.rglob("*.kt"))
+          banned = ["createGroup(", "startTethering(", "TetheringManager", "startLocalOnlyHotspot(", "setWifiApEnabled("]
+          found = [p for p in banned if p in src]
+          print("Prohibited direct APIs:", found)
+          if found:
+              raise SystemExit(1)
+          PY
+      - name: Build debug APK
+        working-directory: netshare-p2p/build
+        run: gradle --no-daemon --stacktrace :android-app:assembleDebug
+      - name: APK SHA-256
+        run: sha256sum netshare-p2p/build/android-app/build/outputs/apk/debug/*.apk
+      - uses: actions/upload-artifact@v7
+        with:
+          name: netshare-p2p-m8-conditional-debug-apk
+          path: netshare-p2p/build/android-app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
