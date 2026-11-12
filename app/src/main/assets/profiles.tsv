@@ -1,0 +1,3 @@
+# Exact-device catalog. No verified models are bundled before real device tests.
+# EVIDENCE: discovered | protocol-reviewed | hardware-tested
+VID	PID	VENDOR	MODEL	CATEGORY	PROTOCOL	EVIDENCE	NOTES

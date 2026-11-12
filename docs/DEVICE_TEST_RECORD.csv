@@ -1,0 +1,1 @@
+test_date,handset_model,android_version,transport,device_vendor,model,firmware,vid,pid,usb_class_subclass_protocol,usb_permission,scan_source,scan_pages_expected,scan_pages_actual,pdf_opened,raw_transfer,physical_print,actual_scan,observed_error,evidence_path,verified_by

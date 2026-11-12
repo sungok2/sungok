@@ -1,21 +1,31 @@
-plugins { id 'com.android.application' }
+plugins {
+    id 'com.android.application'
+}
 android {
-    namespace 'kr.openscan.scan'
-    compileSdk 35
+    namespace 'com.galaxyuniversalio'
+    compileSdk 36
+
     defaultConfig {
-        applicationId 'kr.openscan.scan'
+        applicationId 'com.galaxyuniversalio'
         minSdk 26
         targetSdk 35
-        versionCode 2
-        versionName '1.1.0'
+        versionCode 8
+        versionName '0.7.0'
     }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
-    packaging { resources { excludes += ['META-INF/DEPENDENCIES', 'META-INF/LICENSE*'] } }
-}
-dependencies {
-    implementation 'com.google.ar:core:1.56.0'
-    implementation 'androidx.core:core:1.15.0'
+
+    buildTypes {
+        debug {
+            applicationIdSuffix '.debug'
+            versionNameSuffix '-debug'
+        }
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
 }

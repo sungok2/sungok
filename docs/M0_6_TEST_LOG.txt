@@ -1,0 +1,32 @@
+Galaxy Universal I/O M0.6 REPRODUCIBLE VERIFICATION LOG
+UTC date: 2026-11-12T11:21:28Z
+JDK:
+openjdk version "21.0.12.1" 2026-08-18
+OpenJDK Runtime Environment (build 21.0.12.1+1-1-deb13u1-Debian)
+OpenJDK 64-Bit Server VM (build 21.0.12.1+1-1-deb13u1-Debian, mixed mode, sharing)
+Hosts:
+== tests/run-host-tests.sh ==
+PASS: 55 host checks
+== tests/run-printer-transport-tests.sh ==
+PASS: 19 printer transport fake-device checks
+== tests/run-imaging-pdf-tests.sh ==
+PASS: 29 PTP codec + PDF spool checks
+PASS: 18 PTP transport fake-device checks
+== tests/run-escl-tests.sh ==
+PASS: 85 eSCL protocol and USB/LAN mock checks
+== tests/run-ipp-tests.sh ==
+PASS: 26 IPP protocol + fake USB print checks
+== tests/run-reliability-tests.sh ==
+PASS: 37 USB HTTP framing and PDF staging tests
+== Android API signature stub compilation ==
+Java Android-signature stub smoke: PASS
+App Java files: 19 Stub classes: 52
+
+== Python source syntax ==
+PASS: Python syntax (2 files)
+== Gradle / Android SDK availability ==
+NOT FOUND: Gradle CLI
+NOT FOUND: Android SDK manager
+NOT FOUND: ADB
+Real Android APK build: NOT RUN
+Physical USB scanner/printer test: NOT RUN

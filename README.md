@@ -1,131 +1,104 @@
-# OpenScan 3D — Android 3D 스캐너 (소스 코드)
+# Galaxy Universal I/O — M0.7 USB 통신 및 CI 보강 소스판
 
-**버전:** 1.1.0 (2026-11-12)  
-**상태:** GitHub Actions에서 Java 컴파일 및 디버그 APK 생성 확인. 갤럭시 실기기 UI·카메라·ARCore 동작은 아직 검증되지 않았습니다.
+- 작업일: 2026-11-12
+- 개발대상: Galaxy S20 Ultra / Android 13, Windows 11 / JDK 21 / Gradle 9.8.0
+- 산출물: **Android Java 전체 소스 ZIP. APK가 아닙니다.**
+- M0.6에서 이어받아 USB HTTP 요청 사전 검사, 실패 연결 폐기, 스캔 중단 신호 확인 및 GitHub Actions 수동 APK 빌드 워크플로를 추가했습니다.
 
-> **중요:** 디버그 APK를 GitHub Actions에서 생성할 수 있지만 실제 단말의 사용성·정합 오차·실외 정확도는 검증되지 않았습니다. 정밀 측량 목적으로 사용하지 마세요.
+## M0.7 추가사항
 
-## 목표 및 기술적 경계
+1. `UsbHttpRequestPolicy`: USB 요청은 **전송 전에** 메서드/경로/Content-Type/요청·응답 크기를 검증하며 CRLF, 경로 이탈, 잘못된 HTTP 요청을 거부합니다.
+2. USB 통신 오류 후 **연결 폐기**: 부분 전송·응답 파싱 오류가 발생한 연결은 재사용하지 않습니다. `Connection: close`도 반영합니다.
+3. HTTP 메시지 검사: 압축/중복 `Content-Encoding`, 금지된 Chunked Trailer, 비표준 연결 모드를 차단합니다. JPEG뿐 아니라 PNG 수신을 Accept 헤더에 명시합니다.
+4. eSCL 작업 취소: 스캔 스레드의 interruption 상태를 작업 시작과 페이지 사이에서 검사합니다. Android UI 취소 버튼은 아직 없으며, 물리 USB I/O 대기 중 즉시 종료를 보장하지 않습니다.
+5. `.github/workflows/build-android-apk.yml`: **GitHub Actions 수동 실행**으로 JDK 21·Gradle 9.8.0·Android SDK 36 설치와 자동검사, 디버그 APK 빌드·아티팩트 게시를 시도합니다. **실제 GitHub Actions 빌드는 미실행**입니다.
+6. JDK 기반 자동 검사 **316개 통과**, Android API 모의 컴파일 **20개 소스 통과**. 실물 스캐너/프린터 검증 0대, SDK/Gradle 실제 빌드 미실시.
 
-Scaniverse, Polycam, RealityScan의 아이디어를 참고하되 해당 앱의 소스 코드·상표·기술을 복제하지 않은 **독립 Android 앱**입니다.
+호스트 검사는 `verify-host-linux.sh` 또는 `verify-host-windows.bat`으로 한 번에 실행할 수 있습니다.
 
-- **ARCore Depth API:** 16비트 깊이 영상을 스마트폰 카메라 좌표 및 AR 추적 좌표계로 변환.
-- **실시간 점군 및 간이 메시:** 깊이 프레임별 3D 좌표, RGB 색상, 셀별 삼각형 생성. 지오메트리는 ARCore 로컬 세계 좌표계 **미터** 단위.
-- **중복 통합:** 모드별 복셀 해상도(1.5cm, 3.5cm, 7.5cm)로 중복점을 결합. 삼각형도 중복 제거.
-- **메시 품질 필터:** 급격히 떨어진 점을 연결하지 않도록 에지 길이 제한 및 퇴화 삼각형 제거.
-- **오프라인 파일 보관:** PLY(binary little-endian, 정점 RGB+삼각면), OBJ(정점과 면, 정점 RGB 확장 문법), JSON(GPS 참조 위치).
-- **사진 데이터셋 선택 수집:** YUV 카메라 영상을 3초 간격 JPEG로 저장하고 카메라 포즈·내부 파라미터를 `photos/frames.jsonl`에 기록. 최대 150장. **사진을 3D로 재구성하는 SfM/MVS/NeRF 엔진은 앱에 포함되지 않았습니다.**
-- **3D 뷰어:** 스캔한 PLY를 3D 점군으로 표시. 손가락으로 회전, 두 손가락으로 확대/축소. 미리보기에서 면 렌더링은 미지원.
-- **외부 내보내기:** PLY / OBJ / JSON 개별 공유 또는 사진까지 포함하는 프로젝트 ZIP 공유.
-- **인터넷 없음:** 카메라·로컬 파일만 사용. Google Play AR 서비스 설치·갱신은 별도 외부 의존성.
+GitHub 절차 및 제한사항: `docs/M0_7_CI.md`. 상세 보고서: `docs/M0_7_VERIFICATION.md`. 변경내역: `docs/M0_7_CHANGELOG.md`.
 
-### 지원 기기 및 한계
+---
 
-- Android 8.0(API 26)+, ARCore 지원 기기, Google Play Services for AR 설치 필요.
-- **Galaxy S20 Ultra 5G**는 공식 ARCore 목록에서 Depth API 지원으로 명시되어 있습니다.
-- Depth API가 없는 ARCore 호환 기기에서는 **희소 특징점만 수집**하므로 메시 생성은 지원되지 않습니다.
-- ARCore 깊이 이미지는 실측 LiDAR 점군과 다르고, 추정 깊이·SLAM 오차를 포함합니다.
-- 장거리 야외 대상, 하늘·유리·반사면·움직이는 물체, 특징이 적은 장면, 추적 끊김에서 실패하거나 왜곡될 수 있습니다.
-- 포즈를 전역 GPS 좌표로 정합하지 않습니다. GPS는 **스캔 장소의 참고용 점 하나**입니다. 절대 위치·축척의 측량 정확도 보장 없음.
-- 저장 결과는 폐합된 watertight 메시, UV 텍스처 맵, 고정밀 CAD/BIM 모델이 아닙니다.
-- 앱에 볼륨 제한이 있습니다: 최대 350,000 정점, 600,000 삼각면. 제한 도달 시 수집은 자동 중단하지만 화면에 별도 상태로 표시됩니다.
+# 과거 M0.6 기능 요약 (참고용)
 
-## 1. Android Studio로 APK 만들기
+- 작성 및 검증: 2026-11-12
+- 대상 단말: Samsung Galaxy S20 Ultra (Android 13)
+- 개발 환경: Windows 11 / **JDK 21** / **설치형 Gradle 9.8.0** / Android Gradle Plugin 9.5.0 / compileSdk 36 / targetSdk 35
+- **제공 내용은 Android Java 전체 소스이며 APK가 아닙니다.** 이번 환경에는 Android SDK, Gradle 실행 파일, 실제 USB 장치가 없으므로 **APK 빌드·갤럭시 설치·실물 스캔·실물 인쇄는 검증되지 않았습니다.**
 
-1. [Android Studio](https://developer.android.com/studio) 설치 후 `OpenScan3D/` 폴더를 **Open**.
-2. SDK Manager에서 `Android SDK Platform 35`와 `Android SDK Build-Tools 35.0.0` 설치.
-3. Java 17 및 Gradle **8.11.1** 환경에서 프로젝트 동기화. 루트 `settings.gradle` 및 `build.gradle`에서 필요한 Android Gradle Plugin 8.9.2, ARCore 1.56.0, AndroidX Core 1.15.0을 다운로드.
-4. IDE가 Gradle wrapper JAR 누락을 보고하면 설치된 Gradle로 `gradle wrapper --gradle-version 8.11.1`을 한 번 실행하거나 **Gradle 설정에서 Local Gradle 8.11.1을 지정**. 이 소스 패키지에는 Gradle wrapper JAR이 포함되어 있지 않습니다.
-5. **Build > Build Bundle(s) / APK(s) > Build APK(s)** 선택.
-6. 출력 예: `app/build/outputs/apk/debug/app-debug.apk`.
-7. USB로 Galaxy 스마트폰 연결 후 APK 설치. 카메라 권한 필수, 위치 권한은 선택. Play AR 서비스 업데이트 요구가 나타날 수 있습니다.
 
-CLI 환경에서는 Android SDK/Gradle을 설치한 뒤 `./build_android.sh` 실행.
+## M0.6 신규 보강 (M0.5 대비)
 
-## 2. GitHub Actions로 APK 만들기 (PC에 Android Studio가 없을 때)
+1. **USB HTTP/1.x 응답 프레이밍 보강**: `Content-Length`와 `Transfer-Encoding` 중복·충돌을 거부하고, 헤더 제어문자/잘못된 길이/204 응답의 불법 본문을 검사합니다. USB 스트림 동기화 오류의 위험을 낮춥니다.
+2. **ADF HTTP 204 종료 응답 처리**: ADF에서 최소 한 장을 수신한 경우 204(No Content)를 종료로 처리합니다. 빈 ADF는 실패로 판정하고, `DELETE` 정리를 유지합니다.
+3. **PDF 사전 생성·임시 파일 정리**: 스캔 PDF를 앱 전용 캐시에 완성한 후 문서 제공자의 출력 스트림을 엽니다. PDF 렌더링 실패 시 대상 파일 열기를 방지합니다. 저장 제공자에 최종 복사 중 실패하면 대상에 일부 데이터가 남을 수 있으므로 **원자적 저장은 보장하지 않습니다**.
+4. **비암호화 LAN 스캔 확인**: HTTP LAN 전송 전에 문서 내용이 노출될 수 있음을 안내하고 명시적 동의를 받습니다. `https://` 입력은 Android의 정상 인증서 검증을 유지합니다.
+5. **신규 회귀 테스트 43개**: HTTP 응답 프레이밍·PDF 임시 저장 검사 37개, ADF 종료 처리 및 실제 USB 전송 추가 검사 6개. 총 269개 호스트 검사 통과.
 
-1. GitHub **비공개 저장소**에 이 디렉터리의 파일을 그대로 업로드.
-2. GitHub 저장소의 **Actions > Build OpenScan 3D APK > Run workflow** 실행.
-3. 빌드가 성공하면 **Artifacts > OpenScan3D-debug-apk** ZIP을 내려받고 내부 `app-debug.apk`를 추출.
-4. 2026-11-12 GitHub Actions #6에서 APK 빌드가 성공했으며, 실제 갤럭시 설치 및 스캔 품질은 검증되지 않았습니다.
+M0.6 권위 문서: `docs/M0_6_VERIFICATION.md`. **실제 Gradle·Android SDK 빌드 및 물리 스캐너/프린터 시험은 여전히 미완료**입니다.
 
-워크플로: `.github/workflows/build-apk.yml`.
+## 구현한 기능 및 실제 검증 범위
 
-## 3. 사용 방법
+| 기능 | 소스 상태 | 증거 |
+|---|---|---|
+| USB Host 자동 탐색, VID/PID/Interface/Endpoint 진단, 권한 요청, TXT 내보내기 | 구현 | 모의 API 컴파일·호스트 테스트 |
+| USB Printer Class 상태 조회 및 사용자 승인 RAW(.prn/.pcl/.ps) 전송 | 구현 | 가상 USB 전송 테스트 |
+| Android 시스템 PDF 인쇄 | 구현 | Android API 모의 컴파일 |
+| USB IPP PDF 직접 인쇄 (`application/pdf` 확인한 장치만) | 구현 | 가상 USB/IPP 검사 |
+| USB PTP JPEG 이미지 가져오기 | 구현 | 가상 USB 테스트 |
+| LAN eSCL/AirScan 스캔 (수동 사설 IPv4 주소) | JPEG/PNG 구현 | 사설 TCP 모의 스캐너 연동 성공 |
+| **HTTPS eSCL** (`https://사설IPv4[:port]`) | OS 인증서 검증을 사용하는 HTTPS 연결 구현 | URL 제한·URI 정책 검사 (TLS 실증은 미실시) |
+| USB IPP-over-USB eSCL (USB 7/1/4) | JPEG/PNG 구현 | USB HTTP 가상 장치 검사 |
+| 평판 1장, ADF 최대 12장, PDF 저장 | 구현 | ADF 12/13장 경계 모의 검사 및 TCP 모의 연동 |
+| **입력원별 해상도·색상·형식 선택** | 구현 | ADF/평판 상이한 설정 테스트 |
+| **PNG 수신 정합성·CRC 검사** | 구현 | PNG 정상·변조 검사 |
 
-1. 스마트폰에서 OpenScan 3D를 실행해 카메라 권한 허용.
-2. 스캔 영역에 따라 **사물 / 실내 / 야외** 선택.
-3. 필요하면 **설정 > 연속 사진도 저장**을 켜서 JPEG + 카메라 포즈를 함께 기록합니다(기본 끔). GPS 촬영 위치도 설정에서 선택해야 요청됩니다.
-4. **스캔 시작**을 누르고 한 방향으로만 빠르게 걷지 말고 천천히 여러 각도에서 비춥니다. 빛이 충분하고 고정된 대상에 효과적입니다.
-5. **일시정지** 또는 **저장**. 저장한 데이터는 내 스캔 목록에 유지됩니다.
-6. **내 스캔 > 3D 보기**에서 확인한 뒤 **내보내기 / 관리** 메뉴로 PLY, OBJ, 전체 ZIP을 PC에 공유합니다.
-7. PLY는 MeshLab, CloudCompare 등에서 확인하고 OBJ는 Blender 등에서 메시 확인.
+**중요:** '구현'은 특정 프로토콜을 처리하는 소스가 있다는 뜻이며, 모든 기종에서 실증되었다는 의미가 아닙니다. 제조사 독자 프로토콜, TWAIN/WIA 전용 스캐너를 '범용'으로 지원하지 않습니다.
 
-**주의:** Android 11 이상에서는 앱 전용 외부 저장소(`Android/data/kr.openscan.scan/files/scans`)를 파일 관리자로 바로 여는 데 제한이 있을 수 있습니다. 반드시 앱의 공유 메뉴를 사용하세요. 앱 삭제 시 앱 전용 폴더도 삭제될 수 있으므로 중요한 자료는 ZIP으로 백업해야 합니다.
+## 보안 및 지원 제한
 
-## 4. 저장 결과 구조
+- 네트워크 스캐너는 사용자가 명시한 **사설 IPv4·링크로컬**에만 접속합니다. DNS/공인 IP/경로 및 교차 출처 리다이렉트는 차단합니다.
+- 기존 장비 호환용 HTTP 주소를 계속 지원하므로 **신뢰된 LAN에서만** 사용하세요. HTTPS는 기본 TrustManager/HostnameVerifier를 사용하며 자체서명 인증서나 IP 주소 불일치 인증서를 우회하지 않습니다. 실제 TLS 장치 연결 시험은 하지 않았습니다.
+- JPEG/PNG 외의 PDF/TIFF/기타 eSCL 이미지 형식은 스캔 수신 미지원. OCR, 자동 기울기 보정, 자동 자르기, mDNS 발견, 양면 ADF, 제조사 전용 드라이버, HWP 인쇄 변환은 미구현.
+- JPEG/PNG 이미지 최대 8 MiB/페이지, 전체 32 MiB, ADF 12장. 13장이 확인되면 **PDF를 저장하지 않고 실패**합니다. JPEG/PNG의 전체 손상 여부는 Android 디코더의 실단말 시험도 필요합니다.
+- USB 접근 권한은 Android 사용자 승인에 의존하며, 시리얼번호는 보고서에 기본 포함하지 않습니다. 실제 지원 장치 수는 **0개 검증** 상태입니다.
 
+## JDK 기반 재현 테스트
+
+```sh
+bash tests/run-host-tests.sh
+bash tests/run-printer-transport-tests.sh
+bash tests/run-imaging-pdf-tests.sh
+bash tests/run-escl-tests.sh
+bash tests/run-ipp-tests.sh
+bash tests/run-reliability-tests.sh
+python3 tests/run-android-signature-smoke.py
 ```
-Scan_20261112_203000_123/
-  model.ply           # binary PLY color point cloud + faces
-  model.obj           # OBJ geometry + vertex RGB extension
-  metadata.json       # frame/vertex/face count, approximate GPS
-  photos/             # optional photo dataset
-    frame_0001.jpg
-    frame_0002.jpg
-    frames.jsonl      # poses and intrinsics
-  project_export.zip  # when exported
+
+검증 기록: **269/269 Java·가상장치 테스트 통과**, **앱 Java 19개 파일 Android API 모의 컴파일 통과**. 이는 Android SDK 빌드가 아닙니다.
+
+사설 네트워크 모의 eSCL 서버 (PC의 실제 사설 IPv4 주소로 바꾸세요):
+
+```sh
+python3 tests/mock-escl-scanner.py --bind 192.168.1.20 --port 8765 --format jpeg
+bash tests/run-escl-network-integration.sh 192.168.1.20:8765 jpeg
+# 모의 서버를 중지한 후:
+python3 tests/mock-escl-scanner.py --bind 192.168.1.20 --port 8765 --format png
+bash tests/run-escl-network-integration.sh 192.168.1.20:8765 png
 ```
 
-### 카메라 좌표
+모의 서버는 인증이 없으므로 공용 네트워크에 열지 마세요. 이번 세션에서 JPEG/PNG × 평판/ADF **총 4개 네트워크 통합 시나리오가 통과**했습니다.
 
-- ARCore 카메라 좌표: `-Z`가 전방, `+Y`가 상방.
-- 픽셀 `(u, v)`, 깊이 `d`[m]와 카메라 내부 파라미터 `(fx,fy,cx,cy)`:
-  `X=(u-cx)*d/fx`, `Y=-(v-cy)*d/fy`, `Z=-d`.
-- 깊이 이미지와 CPU 카메라 이미지 사이 좌표는 `Frame.transformCoordinates2d(TEXTURE_NORMALIZED, IMAGE_PIXELS)`로 정합.
-- 카메라 Pose를 이용해 로컬 세계 좌표로 변환. GPS는 정합에 **사용하지 않음**.
+## Windows 11 Android APK 빌드 및 설치
 
-## 5. 검증 내용 (팩트 확인)
+JDK 21, Gradle 9.8.0, Android SDK Platform 36 / Build Tools 36.0.0을 **사용자 Windows 환경에 설치**한 뒤 프로젝트 루트에서:
 
-- Google ARCore 공식 지원 기기 목록: https://developers.google.com/ar/devices
-- Google Depth API 개발자 문서: https://developers.google.com/ar/develop/java/depth/developer-guide
-- 공식 Frame API: https://developers.google.com/ar/reference/java/com/google/ar/core/Frame
-- Android Gradle Plugin 8.9 호환: https://developer.android.com/build/releases/agp-8-9-0-release-notes
+```bat
+call build-debug-windows.bat
+call verify-galaxy-windows.bat
+```
 
-### 실제 실행한 시험
+빌드 성공 시 `app\build\outputs\apk\debug\app-debug.apk` 생성 여부를 확인합니다. 빌드가 실제 성공하기 전에는 APK가 생성되었다고 판단하면 안 됩니다. Galaxy S20 Ultra에서의 USB OTG 전원·권한·스캐너/프린터 실제 결과를 `docs/DEVICE_TEST_RECORD.csv`에 기록하세요.
 
-- `ScanModel` 복셀 중복 통합, 2×2 점군의 두 삼각면 생성, 중복 면 차단, 프레임 누적 검증.
-- `ScanFileFormats`의 실제 바이너리 PLY·ASCII OBJ 파일 생성, PLY의 vertex/face 헤더와 little-endian 정점 및 면 데이터 파싱 검증.
-- **실행한 시험:** GitHub Actions #6에서 UI 변경 후 Java 컴파일 및 APK 패키징 완료, ZIP/APK 압축 무결성 통과.
-- **실행하지 못한 시험:** 단말 설치, 화면 스크린샷/터치 검사, ARCore Depth 동작, 이미지/깊이 색상 정합 정밀도, 야외 장거리 품질, 사진 데이터셋의 COLMAP 호환성.
-
-## 6. 다음 단계 — 고품질 재구성 (별도 작업)
-
-진정한 Scaniverse/RealityScan 수준의 고품질 표면 복원에는 여러 장의 원본 사진을 이용한 SfM/MVS/3DGS 파이프라인, 대규모 장면 분할, 중첩 루프 폐합, UV 텍스처 생성, 리메싱이 필요합니다. 본 APK 소스에는 그러한 고밀도 사진 재구성 엔진이 구현되어 있지 않습니다. `photos/` 데이터를 향후 PC의 COLMAP·OpenMVS 워크플로 입력으로 가공할 수 있으나 데이터 품질이나 성공을 보장하지 않습니다.
-
-## 개발 노트
-
-- 소스: Java 17 + Android GL ES 2.0 + ARCore 1.56.0, UI는 Android 기본 위젯 사용.
-- 외부 서버·광고·로그인·분석 SDK 없음.
-- 파일 공유는 사용자가 명시적으로 선택해야 실행됨.
-- 임시 JPEG는 저장 직후 프로젝트 폴더로 이동; 스캔 폐기 시 임시 데이터 삭제.
-- `tests/`의 자바 단위 테스트를 PC에서 `javac` + `java`로 실행 가능.
-
-## 7. v1.1 화면 및 UX 변경 사항
-
-- **촬영:** 카메라 중심 전체 화면, 반투명 상태 바, 중앙 스캔 가이드, 상단 모드 탭(사물/실내/야외).
-- **조작:** 하단 고정 스캔/일시정지/재개, 저장 상태에 따른 버튼 활성화, 포인트·메시 실시간 카운터.
-- **옵션:** 사진 수집과 GPS 수집은 설정에서 명시적으로 활성화하며 기본적으로 비활성화. GPS는 사용자가 선택할 때만 위치 권한 요청.
-- **보관함:** 별도 화면에서 프로젝트별 모드·날짜·포인트/메시 통계, 3D 미리보기, 파일 내보내기 및 삭제(확인).
-- **3D 미리보기:** 화면 전체 점군 뷰어, 드래그 회전/핀치 확대, 확대·축소·원점 복귀 버튼.
-- **안전:** 저장되지 않은 스캔을 폐기하거나 앱을 종료하기 전에 확인; 저장 중 진행 상태 표시.
-
-### v1.1 실기기 점검 (미완료)
-
-1. Galaxy S20 Ultra에서 카메라 권한을 허용했을 때 카메라 영상이 가리지 않고 표시되는지 확인합니다.
-2. 사물/실내/야외 탭 중 하나만 선택되고 촬영 도중 모드 변경이 차단되는지 확인합니다.
-3. `스캔 시작 → 일시정지 → 계속 스캔 → 저장` 버튼 상태, 포인트 수 증가, 파일 생성 확인.
-4. `내 스캔 → 3D 보기`에서 드래그·핀치·확대/축소·원래 보기 동작 확인.
-5. `내보내기`에서 PLY·OBJ·ZIP 파일이 정상 공유되는지 확인.
-6. Android 13/15의 시스템 바 영역에서 터치 컨트롤이 겹치지 않고 글자가 잘리지 않는지 확인.
-7. 스캔 중 앱 전환, 권한 거부, ARCore 추적 손실, 저장 실패와 삭제 취소 처리 확인.
+최신 기술 검증과 후속 하드웨어 시험 체크리스트: `docs/M0_6_VERIFICATION.md`, `docs/M0_5_HARDWARE_TEST.md`.
