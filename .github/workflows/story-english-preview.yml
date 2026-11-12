@@ -35,14 +35,25 @@ jobs:
           echo "STORY_KEYSTORE=$KEYFILE" >> "$GITHUB_ENV"
           echo "STORY_KEYPASS=$PASS" >> "$GITHUB_ENV"
       - name: Build signed non-debuggable preview
-        run: gradle -p story-english-preview :app:verifyPreviewRelease :app:assembleRelease --no-daemon --stacktrace
+        run: gradle -p story-english-preview :app:verifyPreviewRelease :app:lintRelease :app:assembleRelease --no-daemon --stacktrace
       - name: Check signature and publish hash
         run: |
           set -euo pipefail
           APK="story-english-preview/app/build/outputs/apk/release/app-release.apk"
           test -s "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/sign-report.txt
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          "$AAPT" dump badging "$APK" | tee /tmp/badging.txt
+          "$AAPT" dump xmltree "$APK" AndroidManifest.xml | tee /tmp/manifest.txt
+          grep -F "package: name='com.storyenglish.preview'" /tmp/badging.txt
+          grep -F "versionName='3.7.1-preview.1'" /tmp/badging.txt
+          grep -E 'android:usesCleartextTraffic.*0x0' /tmp/manifest.txt
+          grep -E 'android:allowBackup.*0x0' /tmp/manifest.txt
+          ! grep -q "uses-permission:" /tmp/badging.txt
+          ! grep -Eq 'android:debuggable.*(0x1|0xffffffff)' /tmp/manifest.txt
           mkdir -p dist
+          cp /tmp/badging.txt dist/APK_BADGING.txt
+          cp /tmp/manifest.txt dist/MERGED_MANIFEST.txt
           cp "$APK" dist/STORY_ENGLISH_3.7.1_OFFLINE_PREVIEW.apk
           sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
           cp /tmp/sign-report.txt dist/SIGNING_REPORT.txt
