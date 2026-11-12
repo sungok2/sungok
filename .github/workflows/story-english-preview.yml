@@ -1,0 +1,55 @@
+name: STORY ENGLISH 3.7.1 Offline Preview APK
+on:
+  push:
+    branches: [story-english-3.7.1-preview]
+    paths:
+      - 'story-english-preview/**'
+      - '.github/workflows/story-english-preview.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.13'
+          cache-read-only: true
+      - name: Install Android API 36
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-36" "build-tools;36.0.0"
+      - name: Generate temporary evaluation signing certificate
+        run: |
+          set -euo pipefail
+          PASS="$(openssl rand -hex 24)"
+          echo "::add-mask::$PASS"
+          KEYFILE="$RUNNER_TEMP/storyenglish-preview.jks"
+          keytool -genkeypair -noprompt -keystore "$KEYFILE" -storepass "$PASS" -keypass "$PASS" -alias preview -keyalg RSA -keysize 3072 -validity 4 -dname "CN=Story English Preview, O=Evaluation, C=KR"
+          echo "STORY_KEYSTORE=$KEYFILE" >> "$GITHUB_ENV"
+          echo "STORY_KEYPASS=$PASS" >> "$GITHUB_ENV"
+      - name: Build signed non-debuggable preview
+        run: gradle -p story-english-preview :app:verifyPreviewRelease :app:assembleRelease --no-daemon --stacktrace
+      - name: Check signature and publish hash
+        run: |
+          set -euo pipefail
+          APK="story-english-preview/app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/sign-report.txt
+          mkdir -p dist
+          cp "$APK" dist/STORY_ENGLISH_3.7.1_OFFLINE_PREVIEW.apk
+          sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
+          cp /tmp/sign-report.txt dist/SIGNING_REPORT.txt
+          echo "EPHEMERAL PREVIEW SIGNATURE: NOT A PRODUCTION RELEASE" > dist/NOT_RELEASE.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: story-english-371-offline-preview
+          path: dist
+          if-no-files-found: error
+          retention-days: 30

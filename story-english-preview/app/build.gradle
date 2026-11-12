@@ -1,0 +1,40 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'com.storyenglish.preview'
+    compileSdk 36
+    defaultConfig {
+        applicationId 'com.storyenglish.preview'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '3.7.1-preview.1'
+    }
+    signingConfigs {
+        ephemeral {
+            def k = System.getenv('STORY_KEYSTORE')
+            if(k) {
+                storeFile file(k)
+                storePassword System.getenv('STORY_KEYPASS')
+                keyAlias 'preview'
+                keyPassword System.getenv('STORY_KEYPASS')
+            }
+        }
+    }
+    buildTypes {
+        release {
+            debuggable false
+            minifyEnabled false
+            if(System.getenv('STORY_KEYSTORE')) signingConfig signingConfigs.ephemeral
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+tasks.register('verifyPreviewRelease') {
+    doLast {
+        if(!System.getenv('STORY_KEYSTORE')) throw new GradleException('Signing key missing')
+        if(android.buildTypes.release.debuggable) throw new GradleException('Release must not be debuggable')
+    }
+}
