@@ -3,6 +3,8 @@ package kr.openscan.scan;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
+import android.net.Uri;
+import java.io.InputStream;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
@@ -44,6 +46,16 @@ public final class ScanLibraryActivity extends Activity {
         Button newScan=UiKit.button(this,"+ 스캔",UiKit.ACCENT,UiKit.INK,14);
         header.addView(newScan,new LinearLayout.LayoutParams(UiKit.dp(this,83),UiKit.dp(this,44)));
         root.addView(header);
+        Button importPly=UiKit.button(this,"기존 PLY 파일 가져오기",UiKit.SURFACE,UiKit.TEXT,14);
+        LinearLayout.LayoutParams importLayout=new LinearLayout.LayoutParams(-1,UiKit.dp(this,46));
+        importLayout.leftMargin=UiKit.dp(this,16);importLayout.rightMargin=UiKit.dp(this,16);
+        importLayout.bottomMargin=UiKit.dp(this,8);
+        root.addView(importPly,importLayout);
+        importPly.setOnClickListener(v->{
+            Intent open=new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            open.setType("*/*");open.addCategory(Intent.CATEGORY_OPENABLE);
+            startActivityForResult(open,402);
+        });
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);
         cards=new LinearLayout(this);cards.setOrientation(LinearLayout.VERTICAL);
         cards.setPadding(UiKit.dp(this,16),UiKit.dp(this,8),UiKit.dp(this,16),UiKit.dp(this,30));
@@ -53,6 +65,25 @@ public final class ScanLibraryActivity extends Activity {
         back.setOnClickListener(v->finish());newScan.setOnClickListener(v->finish());
     }
     @Override protected void onResume(){super.onResume();refresh();}
+    @Override protected void onActivityResult(int request,int result,Intent data){
+        super.onActivityResult(request,result,data);
+        if(request!=402 || result!=RESULT_OK || data==null || data.getData()==null)return;
+        Uri uri=data.getData();
+        Toast.makeText(this,"PLY 검사 및 가져오기 중…",Toast.LENGTH_SHORT).show();
+        io.execute(()->{
+            try(InputStream in=getContentResolver().openInputStream(uri)){
+                if(in==null)throw new java.io.IOException("선택한 파일을 열 수 없습니다");
+                File folder=ScanRepository.importPly(getApplicationContext(),in);
+                runOnUiThread(()->{
+                    refresh();Toast.makeText(this,"PLY 파일을 가져왔습니다",Toast.LENGTH_SHORT).show();show3D(folder);
+                });
+            }catch(Exception ex){
+                runOnUiThread(()->new AlertDialog.Builder(this).setTitle("PLY 가져오기 실패")
+                    .setMessage("이 앱이 만든 binary little endian PLY 파일을 선택하세요.\n\n"+ex.getMessage())
+                    .setPositiveButton("확인",null).show());
+            }
+        });
+    }
     private void refresh(){
         cards.removeAllViews();File[] scans=ScanRepository.list(this);
         subtitle.setText(String.format(Locale.KOREAN,"저장된 스캔 %d개 · 기기 내 보관",scans.length));
