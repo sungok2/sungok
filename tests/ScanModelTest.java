@@ -1,5 +1,6 @@
 import kr.openscan.scan.ScanModel;
 import kr.openscan.scan.ScanFileFormats;
+import kr.openscan.scan.PlyMeshReader;
 import java.io.File;
 
 public final class ScanModelTest {
@@ -34,6 +35,13 @@ public final class ScanModelTest {
         ScanModel invalid=new ScanModel(ScanModel.Mode.OBJECT);
         invalid.addGrid(2,2,p,c,new boolean[]{true,false,true,true});
         require(invalid.vertices()==3 && invalid.triangles()==1,"invalid depth mask");
+        ScanModel depthModel = new ScanModel(ScanModel.Mode.OBJECT);
+        depthModel.addGrid(2, 2, p, c, v, new float[]{1f, 1f, 3f, 3f});
+        require(depthModel.triangles()==0,"occlusion depth gap must reject stretched triangles");
+        PlyMeshReader.Result decoded=PlyMeshReader.read(ply,100,100);
+        require(decoded.pointCount==4 && decoded.meshVertexCount==6,"PLY mesh should be loaded and rendered");
+        require(Math.abs(decoded.points[0]+decoded.cx)<0.0001,"viewer points centered without corrupting world coordinates");
+        System.out.println("PASS occlusion gap filtering and PLY mesh viewer decoding");
         System.out.println("PASS edge filtering, invalid-mask handling, immutable snapshot");
     }
     static void require(boolean cond,String msg){if(!cond)throw new AssertionError(msg);}
