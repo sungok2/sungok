@@ -14,7 +14,7 @@ public final class MainActivity extends Activity {
   int sp(int n){return pref.getBoolean("big",false)?Math.round(n*1.16f):n;}
   GradientDrawable shape(int c){GradientDrawable d=new GradientDrawable();d.setColor(c);d.setCornerRadius(dp(14));return d;}
   TextView text(String s,int size,int color,boolean heavy){TextView t=new TextView(this);t.setText(s);t.setTextSize(sp(size));t.setTextColor(color);t.setLineSpacing(dp(3),1.09f);if(heavy)t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);return t;}
-  LinearLayout column(){LinearLayout l=new LinearLayout(this);l.setOrientation(1);return l;}
+  LinearLayout column(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);return l;}
   void place(LinearLayout l,View v,int gap){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.topMargin=dp(gap);l.addView(v,p);}
   Button action(String s,Runnable task,boolean strong){Button b=new Button(this);b.setAllCaps(false);b.setText(s);b.setTextSize(sp(15));b.setTextColor(strong?NAVY:WHITE);b.setBackground(shape(strong?GOLD:SURFACE));b.setMinHeight(dp(52));b.setContentDescription(s);b.setOnClickListener(v->task.run());return b;}
   void section(String title,String description){place(body,text(title,29,WHITE,true),12);place(body,text(description,15,MUTED,false),8);}
@@ -36,7 +36,7 @@ public final class MainActivity extends Activity {
     LinearLayout head=column();head.setPadding(dp(18),dp(12),dp(18),dp(10));place(head,text("STORY ENGLISH",15,GOLD,true),0);place(head,text("3.7.1  ·  OFFLINE UX PREVIEW",12,MUTED,false),4);root.addView(head);
     ScrollView scroll=new ScrollView(this);body=column();body.setPadding(dp(18),0,dp(18),dp(28));scroll.addView(body);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
     if(page==0)home();else if(page==1)lesson();else if(page==2)review();else if(page==3)progress();else settings();
-    LinearLayout tabs=new LinearLayout(this);tabs.setOrientation(0);tabs.setPadding(dp(5),dp(4),dp(5),dp(4));tabs.setBackgroundColor(SURFACE);
+    LinearLayout tabs=new LinearLayout(this);tabs.setOrientation(LinearLayout.HORIZONTAL);tabs.setPadding(dp(5),dp(4),dp(5),dp(4));tabs.setBackgroundColor(SURFACE);
     String[] names={"오늘","학습","복습","기록","설정"};
     for(int i=0;i<5;i++){final int j=i;TextView t=text(names[i],13,i==page?GOLD:MUTED,true);t.setGravity(Gravity.CENTER);t.setMinHeight(dp(52));t.setContentDescription(names[i]+" 탭");t.setOnClickListener(v->navigate(j));tabs.addView(t,new LinearLayout.LayoutParams(0,dp(52),1));}
     root.addView(tabs);
