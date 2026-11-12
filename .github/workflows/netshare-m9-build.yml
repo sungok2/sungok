@@ -1,0 +1,66 @@
+name: NetShare P2P M9 Android 13 diagnostics APK
+on:
+  push:
+    branches:
+      - netshare-m9-diagnostics
+    paths:
+      - '.github/workflows/netshare-m9-build.yml'
+      - 'netshare-p2p/m9_patch.py'
+      - 'netshare-p2p/M8_build_source.zip'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-debug:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+      - name: Install Android SDK 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.14'
+      - name: Expand reviewed M8 source
+        run: |
+          mkdir -p netshare-p2p/build
+          unzip -q netshare-p2p/M8_build_source.zip -d netshare-p2p/build
+          test -f netshare-p2p/build/settings.gradle.kts
+      - name: Apply M9 Android 13 diagnostics fixes
+        working-directory: netshare-p2p/build
+        run: python3 ../m9_patch.py
+      - name: Verify permissions and forbidden API patterns
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          root = Path("netshare-p2p/build")
+          manifest = ET.parse(root / "android-app/src/main/AndroidManifest.xml")
+          names = [el.attrib.get("{http://schemas.android.com/apk/res/android}name") for el in manifest.getroot().findall("uses-permission")]
+          for name in ("android.permission.NEARBY_WIFI_DEVICES", "android.permission.CHANGE_WIFI_STATE", "android.permission.CHANGE_NETWORK_STATE"):
+              assert name in names, name
+          src = "\n".join(p.read_text(encoding="utf-8") for p in root.rglob("*.kt"))
+          prohibited = ("createGroup(", "startTethering(", "TetheringManager", "startLocalOnlyHotspot(", "setWifiApEnabled(")
+          found = [p for p in prohibited if p in src]
+          assert not found, found
+          print("PASS: Manifest, no prohibited direct API patterns")
+          PY
+      - name: Build M9 debug APK
+        working-directory: netshare-p2p/build
+        run: gradle --no-daemon --stacktrace :android-app:assembleDebug
+      - name: SHA-256
+        run: sha256sum netshare-p2p/build/android-app/build/outputs/apk/debug/*.apk
+      - uses: actions/upload-artifact@v7
+        with:
+          name: netshare-p2p-m9-diagnostics-debug-apk
+          path: netshare-p2p/build/android-app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
