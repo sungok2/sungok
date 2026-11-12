@@ -19,6 +19,7 @@ import java.util.Locale;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import java.io.FileInputStream;
+import java.io.InputStream;
 import org.json.JSONObject;
 
 /** Local-only storage; files never leave the device unless explicitly shared. */
@@ -62,6 +63,37 @@ public final class ScanRepository {
             return folder;
         } catch(Exception e) { // Avoid exposing partially written scan as completed.
             File[] files=folder.listFiles();if(files!=null)for(File f:files)f.delete();folder.delete();throw e;
+        }
+    }
+    /** Imports an existing OpenScan PLY safely, without deleting original project files. */
+    public static File importPly(Context ctx,InputStream source) throws Exception {
+        String name="Imported_"+new SimpleDateFormat("yyyyMMdd_HHmmss_SSS",Locale.US).format(new Date());
+        File folder=new File(root(ctx),name);
+        if(!folder.mkdirs())throw new IOException("Cannot create imported scan folder");
+        try {
+            File ply=new File(folder,"model.ply");
+            long total=0;
+            try(java.io.BufferedInputStream in=new java.io.BufferedInputStream(source);
+                FileOutputStream out=new FileOutputStream(ply)){
+                byte[] buf=new byte[32768];int n;
+                while((n=in.read(buf))>=0){
+                    total+=n;
+                    if(total>60L*1024*1024)throw new IOException("PLY 파일이 너무 큽니다 (60MB 상한)");
+                    out.write(buf,0,n);
+                }
+            }
+            PlyMeshReader.Result result=PlyMeshReader.read(ply,1000,0);
+            JSONObject meta=new JSONObject();
+            meta.put("name",name);meta.put("created_at_epoch_ms",System.currentTimeMillis());
+            meta.put("mode","OUTDOOR");meta.put("points",result.sourceVertexCount);
+            meta.put("triangles",result.sourceFaceCount);meta.put("frames",0);
+            meta.put("imported_ply",true);meta.put("notes","Imported PLY; OBJ not included");
+            try(FileOutputStream out=new FileOutputStream(new File(folder,"metadata.json"))){
+                out.write(meta.toString(2).getBytes(StandardCharsets.UTF_8));
+            }
+            return folder;
+        } catch(Exception ex){
+            File[] all=folder.listFiles();if(all!=null)for(File child:all)child.delete();folder.delete();throw ex;
         }
     }
     /** Creates a self-contained portable archive including photos and camera poses. */
