@@ -68,9 +68,9 @@ public final class EsclProtocol {
             try { factory.setXIncludeAware(false); }
             catch (UnsupportedOperationException ignored) { }
             factory.setExpandEntityReferences(false);
-            try { factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, ""); }
+            try { factory.setAttribute("http://javax.xml.XMLConstants/property/accessExternalDTD", ""); }
             catch (IllegalArgumentException ignored) { }
-            try { factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, ""); }
+            try { factory.setAttribute("http://javax.xml.XMLConstants/property/accessExternalSchema", ""); }
             catch (IllegalArgumentException ignored) { }
             Document doc = factory.newDocumentBuilder().parse(new ByteArrayInputStream(xml));
             if (doc.getDocumentElement() == null ||
