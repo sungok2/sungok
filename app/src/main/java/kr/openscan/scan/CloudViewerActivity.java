@@ -76,7 +76,7 @@ public final class CloudViewerActivity extends Activity {
             head.addView(back,new LinearLayout.LayoutParams(UiKit.dp(this,48),UiKit.dp(this,48)));
             LinearLayout titles=new LinearLayout(this);titles.setOrientation(LinearLayout.VERTICAL);
             TextView title=UiKit.text(this,"3D 미리보기",19,UiKit.TEXT,true);
-            TextView subtitle=UiKit.text(this,String.format(Locale.KOREAN,"포인트 %,d개",points.size),12,UiKit.MUTED,false);
+            TextView subtitle=UiKit.text(this,String.format(Locale.KOREAN,"포인트 %,d개 · 삼각면 %,d개",points.size,points.meshVertexCount/3),12,UiKit.MUTED,false);
             titles.addView(title);titles.addView(subtitle);
             LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(0,-2,1);tp.leftMargin=UiKit.dp(this,12);
             head.addView(titles,tp);
@@ -121,55 +121,22 @@ public final class CloudViewerActivity extends Activity {
     @Override protected void onResume(){super.onResume();if(surface!=null)surface.onResume();}
     @Override protected void onPause(){if(surface!=null)surface.onPause();super.onPause();}
     static final class PointSet {
-        final FloatBuffer positions,colors;
-        final int size;
+        final FloatBuffer positions,colors,meshPositions,meshColors;
+        final int size,meshVertexCount;
         final float cx,cy,cz,radius;
-        PointSet(FloatBuffer p,FloatBuffer c,int size,float cx,float cy,float cz,float radius){
-            positions=p;colors=c;this.size=size;this.cx=cx;this.cy=cy;this.cz=cz;this.radius=radius;
+        PointSet(PlyMeshReader.Result r){
+            positions=buffer(r.points);colors=buffer(r.pointColors);
+            meshPositions=buffer(r.mesh);meshColors=buffer(r.meshColors);
+            size=r.pointCount;meshVertexCount=r.meshVertexCount;
+            cx=r.cx;cy=r.cy;cz=r.cz;radius=r.radius;
+        }
+        private static FloatBuffer buffer(float[] values){
+            FloatBuffer b=ByteBuffer.allocateDirect(values.length*4).order(ByteOrder.nativeOrder()).asFloatBuffer();
+            b.put(values).position(0);return b;
         }
     }
     static PointSet load(File path) throws IOException {
-        try(DataInputStream in=new DataInputStream(new BufferedInputStream(new FileInputStream(path),131072))){
-            String first=readAsciiLine(in);if(!"ply".equals(first))throw new IOException("PLY 헤더가 아님");
-            String format=readAsciiLine(in);
-            if(!"format binary_little_endian 1.0".equals(format))throw new IOException("이 앱은 binary little endian PLY를 지원합니다");
-            int vertexCount=-1;String line;
-            while((line=readAsciiLine(in))!=null){
-                if(line.startsWith("element vertex "))vertexCount=Integer.parseInt(line.substring(15));
-                if("end_header".equals(line))break;
-            }
-            if(vertexCount<0||vertexCount>ScanModel.MAX_VERTICES)throw new IOException("잘못된 점 수");
-            int stride=Math.max(1,(vertexCount+89_999)/90_000),n=(vertexCount+stride-1)/stride;
-            float[] p=new float[n*3],c=new float[n*3];int used=0;
-            float minx=Float.POSITIVE_INFINITY,miny=minx,minz=minx;
-            float maxx=Float.NEGATIVE_INFINITY,maxy=maxx,maxz=maxx;
-            for(int i=0;i<vertexCount;i++){
-                float x=Float.intBitsToFloat(Integer.reverseBytes(in.readInt()));
-                float y=Float.intBitsToFloat(Integer.reverseBytes(in.readInt()));
-                float z=Float.intBitsToFloat(Integer.reverseBytes(in.readInt()));
-                int r=in.readUnsignedByte(),g=in.readUnsignedByte(),b=in.readUnsignedByte();
-                if(i%stride!=0)continue;
-                p[used*3]=x;p[used*3+1]=y;p[used*3+2]=z;
-                c[used*3]=r/255f;c[used*3+1]=g/255f;c[used*3+2]=b/255f;
-                minx=Math.min(x,minx);miny=Math.min(y,miny);minz=Math.min(z,minz);
-                maxx=Math.max(x,maxx);maxy=Math.max(y,maxy);maxz=Math.max(z,maxz);used++;
-            }
-            float cx=(minx+maxx)*0.5f,cy=(miny+maxy)*0.5f,cz=(minz+maxz)*0.5f;
-            float range=Math.max(maxx-minx,Math.max(maxy-miny,maxz-minz));float radius=Math.max(0.2f,range*0.5f);
-            FloatBuffer pos=ByteBuffer.allocateDirect(used*12).order(ByteOrder.nativeOrder()).asFloatBuffer();
-            FloatBuffer col=ByteBuffer.allocateDirect(used*12).order(ByteOrder.nativeOrder()).asFloatBuffer();
-            for(int j=0;j<used;j++){
-                pos.put(p[j*3]-cx).put(p[j*3+1]-cy).put(p[j*3+2]-cz);
-                col.put(c[j*3]).put(c[j*3+1]).put(c[j*3+2]);
-            }
-            pos.position(0);col.position(0);
-            return new PointSet(pos,col,used,cx,cy,cz,radius);
-        }
-    }
-    static String readAsciiLine(DataInputStream in) throws IOException {
-        StringBuilder s=new StringBuilder();int b;
-        while((b=in.read())!=-1){if(b=='\n')return s.toString();if(b!='\r')s.append((char)b);if(s.length()>512)throw new IOException("PLY 헤더가 비정상적으로 깁니다");}
-        return s.length()==0?null:s.toString();
+        return new PointSet(PlyMeshReader.read(path,90_000,75_000));
     }
     static final class ViewerRenderer implements GLSurfaceView.Renderer {
         private final PointSet pts;
@@ -200,9 +167,16 @@ public final class CloudViewerActivity extends Activity {
             Matrix.setIdentityM(model,0);Matrix.rotateM(model,0,pitch,1,0,0);Matrix.rotateM(model,0,yaw,0,1,0);
             Matrix.multiplyMM(tmp,0,view,0,model,0);Matrix.multiplyMM(result,0,projection,0,tmp,0);
             GLES20.glUseProgram(program);GLES20.glUniformMatrix4fv(mvp,1,false,result,0);
+            GLES20.glEnableVertexAttribArray(position);GLES20.glEnableVertexAttribArray(color);
+            if(pts.meshVertexCount>0){
+                pts.meshPositions.position(0);pts.meshColors.position(0);
+                GLES20.glVertexAttribPointer(position,3,GLES20.GL_FLOAT,false,0,pts.meshPositions);
+                GLES20.glVertexAttribPointer(color,3,GLES20.GL_FLOAT,false,0,pts.meshColors);
+                GLES20.glDrawArrays(GLES20.GL_TRIANGLES,0,pts.meshVertexCount);
+            }
             pts.positions.position(0);pts.colors.position(0);
-            GLES20.glEnableVertexAttribArray(position);GLES20.glVertexAttribPointer(position,3,GLES20.GL_FLOAT,false,0,pts.positions);
-            GLES20.glEnableVertexAttribArray(color);GLES20.glVertexAttribPointer(color,3,GLES20.GL_FLOAT,false,0,pts.colors);
+            GLES20.glVertexAttribPointer(position,3,GLES20.GL_FLOAT,false,0,pts.positions);
+            GLES20.glVertexAttribPointer(color,3,GLES20.GL_FLOAT,false,0,pts.colors);
             GLES20.glDrawArrays(GLES20.GL_POINTS,0,pts.size);
             GLES20.glDisableVertexAttribArray(position);GLES20.glDisableVertexAttribArray(color);
         }
