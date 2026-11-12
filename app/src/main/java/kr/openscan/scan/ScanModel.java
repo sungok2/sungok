@@ -10,9 +10,9 @@ import java.util.Set;
 /** Independent of Android: deterministic 3D point/triangle accumulation. */
 public final class ScanModel {
     public enum Mode {
-        OBJECT("사물", 0.015f, 6.0f, 4, 0.18f),
-        ROOM("실내", 0.035f, 12.0f, 6, 0.35f),
-        OUTDOOR("야외", 0.075f, 28.0f, 8, 0.75f);
+        OBJECT("사물", 0.010f, 5.0f, 2, 0.14f),
+        ROOM("실내", 0.025f, 9.0f, 3, 0.32f),
+        OUTDOOR("야외", 0.045f, 15.0f, 4, 0.60f);
         public final String label;
         public final float voxelSize, maxDepth, maxEdge;
         public final int pixelStep;
@@ -83,6 +83,11 @@ public final class ScanModel {
     }
     /** Inputs are row-major, invalid samples use valid=false; 3D in world meters. */
     public synchronized void addGrid(int width,int height,float[] xyz,int[] colors,boolean[] valid) {
+        addGrid(width,height,xyz,colors,valid,null);
+    }
+    /** depths[k] is camera-axis depth (meters). Suppresses triangles across occlusion edges. */
+    public synchronized void addGrid(int width,int height,float[] xyz,int[] colors,boolean[] valid,float[] depths) {
+        if(depths!=null && depths.length!=width*height)throw new IllegalArgumentException("Depth array length mismatch");
         if(width<2 || height<2 || xyz.length!=width*height*3 || colors.length!=width*height || valid.length!=width*height)
             throw new IllegalArgumentException("Invalid depth grid dimensions");
         int[] ids=new int[width*height];
@@ -93,17 +98,29 @@ public final class ScanModel {
             int a=ids[y*width+x],b=ids[y*width+x+1];
             int c=ids[(y+1)*width+x],d=ids[(y+1)*width+x+1];
             if(a>=0 && b>=0 && c>=0 && d>=0) {
-                addTriangle(a,b,c);addTriangle(b,d,c);
-            }else if(a<0){addTriangle(b,d,c);
-            }else if(b<0){addTriangle(a,d,c);
-            }else if(c<0){addTriangle(a,b,d);
-            }else {addTriangle(a,b,c);}
+                addDepthTriangle(a,b,c,depths,y*width+x,y*width+x+1,(y+1)*width+x);
+                addDepthTriangle(b,d,c,depths,y*width+x+1,(y+1)*width+x+1,(y+1)*width+x);
+            }else if(a<0){addDepthTriangle(b,d,c,depths,y*width+x+1,(y+1)*width+x+1,(y+1)*width+x);
+            }else if(b<0){addDepthTriangle(a,d,c,depths,y*width+x,(y+1)*width+x+1,(y+1)*width+x);
+            }else if(c<0){addDepthTriangle(a,b,d,depths,y*width+x,y*width+x+1,(y+1)*width+x+1);
+            }else {addDepthTriangle(a,b,c,depths,y*width+x,y*width+x+1,(y+1)*width+x);}
         }
         frames++;
     }
     /** Fallback for devices with ARCore but without Depth API: sparse points, no triangles. */
     public synchronized void addPoint(float x,float y,float z,int rgb) { put(x,y,z,rgb); }
     public synchronized void markFrame() { frames++; }
+    private void addDepthTriangle(int a,int b,int c,float[] depth,int ia,int ib,int ic) {
+        if(depth!=null && a>=0 && b>=0 && c>=0){
+            float da=depth[ia],db=depth[ib],dc=depth[ic];
+            if(!(da>0 && db>0 && dc>0) || !Float.isFinite(da+db+dc))return;
+            float low=Math.min(da,Math.min(db,dc)),high=Math.max(da,Math.max(db,dc));
+            float gap=(mode==Mode.OBJECT ? 0.09f : 0.14f)*low;
+            float tolerance=Math.min(mode==Mode.OBJECT ? 0.18f : 0.35f,Math.max(0.07f,gap));
+            if(high-low>tolerance)return;
+        }
+        addTriangle(a,b,c);
+    }
     private void addTriangle(int a,int b,int c) {
         if(a<0||b<0||c<0||a==b||b==c||a==c||faces.size()>=MAX_FACES) return;
         Vertex p=vertices.get(a),q=vertices.get(b),r=vertices.get(c);
