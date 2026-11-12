@@ -62,7 +62,7 @@ public final class PhotoDataset {
             }catch(Exception ignored){/* Missing individual photo does not invalidate mesh capture. */}
         });
     }
-    private static JSONArray array(float[] values){JSONArray arr=new JSONArray();for(float v:values)arr.put((double)v);return arr;}
+    private static JSONArray array(float[] values) throws org.json.JSONException {JSONArray arr=new JSONArray();for(float v:values)arr.put((double)v);return arr;}
     private static byte[] convertNV21(Image img){
         int w=img.getWidth(),h=img.getHeight();
         byte[] out=new byte[w*h*3/2];Image.Plane[] plane=img.getPlanes();
