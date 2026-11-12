@@ -7,7 +7,7 @@ SRC = ROOT / 'app/src/main/java/kr/openscan/scan'
 with tempfile.TemporaryDirectory() as td:
     target = Path(td)
     subprocess.run(['javac', '-encoding', 'UTF-8', '-d', str(target),
-                    str(SRC/'ScanModel.java'),str(SRC/'ScanFileFormats.java'),
+                    str(SRC/'ScanModel.java'),str(SRC/'ScanFileFormats.java'),str(SRC/'PlyMeshReader.java'),
                     str(ROOT/'tests/ScanModelTest.java')], check=True)
     result = subprocess.run(['java','-cp',str(target),'ScanModelTest'],check=True,capture_output=True,text=True)
     print(result.stdout.strip())
