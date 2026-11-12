@@ -32,13 +32,18 @@ public final class ArCameraRenderer implements GLSurfaceView.Renderer {
     private int texId=0,program=0,positionSlot,uvSlot,textureSlot;
     private int width=1,height=1;
     private long lastCaptureMillis,lastReportMillis;
+    private long lastPoseMillis;
+    private float[] lastPosePosition,lastPoseRotation;
     private final float[] corners={-1,-1,1,-1,-1,1,1,1};
     private final float[] textureUV=new float[8];
     private final FloatBuffer cornerBuffer=ByteBuffer.allocateDirect(32).order(ByteOrder.nativeOrder()).asFloatBuffer();
     private final FloatBuffer uvBuffer=ByteBuffer.allocateDirect(32).order(ByteOrder.nativeOrder()).asFloatBuffer();
     public ArCameraRenderer(Reporter reporter){this.reporter=reporter;cornerBuffer.put(corners).position(0);}
     public void configure(Session s,boolean depth){this.session=s;this.depthSupported=depth;}
-    public void scan(ScanModel next,ScanModel.Mode target,boolean enabled){this.model=next;this.mode=target;this.recording=enabled;}
+    public void scan(ScanModel next,ScanModel.Mode target,boolean enabled){
+        if(this.model!=next){lastCaptureMillis=0;lastPoseMillis=0;lastPosePosition=null;lastPoseRotation=null;}
+        this.model=next;this.mode=target;this.recording=enabled;
+    }
     public void stop(){recording=false;}
     public void setPhotos(PhotoDataset photos){this.photos=photos;}
     @Override public void onSurfaceCreated(GL10 gl,EGLConfig config){
@@ -57,6 +62,17 @@ public final class ArCameraRenderer implements GLSurfaceView.Renderer {
         positionSlot=GLES20.glGetAttribLocation(program,"aPosition");
         uvSlot=GLES20.glGetAttribLocation(program,"aUv");
         textureSlot=GLES20.glGetUniformLocation(program,"cameraTexture");
+    }
+    /** Avoid accumulating near-identical frames while allowing periodic depth refinement. */
+    private boolean movedEnough(Frame f,long now){
+        if(lastPosePosition==null || now-lastPoseMillis>1700)return true;
+        com.google.ar.core.Pose pose=f.getCamera().getPose();
+        float[] p=pose.getTranslation(),q=pose.getRotationQuaternion();
+        float dx=p[0]-lastPosePosition[0],dy=p[1]-lastPosePosition[1],dz=p[2]-lastPosePosition[2];
+        if(dx*dx+dy*dy+dz*dz>0.0016f)return true; // >= 4cm translation
+        float dot=Math.abs(q[0]*lastPoseRotation[0]+q[1]*lastPoseRotation[1]
+            +q[2]*lastPoseRotation[2]+q[3]*lastPoseRotation[3]);
+        return dot<0.9986f; // ~6 degrees rotation
     }
     private static int compile(int kind,String shader){
         int s=GLES20.glCreateShader(kind);GLES20.glShaderSource(s,shader);GLES20.glCompileShader(s);return s;
@@ -86,14 +102,17 @@ public final class ArCameraRenderer implements GLSurfaceView.Renderer {
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP,0,4);
             GLES20.glDisableVertexAttribArray(positionSlot);GLES20.glDisableVertexAttribArray(uvSlot);
             long now=SystemClock.elapsedRealtime();
-            if(recording && f.getCamera().getTrackingState()==TrackingState.TRACKING && model!=null && now-lastCaptureMillis>650) {
+            if(recording && f.getCamera().getTrackingState()==TrackingState.TRACKING && model!=null && now-lastCaptureMillis>360 && movedEnough(f,now)) {
                 lastCaptureMillis=now;
                 if(depthSupported){
                     Image depth=null, rgb=null;
                     try {
                         depth=f.acquireDepthImage16Bits();
                         try {rgb=f.acquireCameraImage();}catch(NotYetAvailableException ignored){}
-                        DepthSampler.capture(f,depth,rgb,model,mode);
+                        if(DepthSampler.capture(f,depth,rgb,model,mode)){
+                            com.google.ar.core.Pose pose=f.getCamera().getPose();
+                            lastPosePosition=pose.getTranslation();lastPoseRotation=pose.getRotationQuaternion();lastPoseMillis=now;
+                        }
                         PhotoDataset photo=photos;
                         if(photo!=null && rgb!=null && now-lastPhotoTime>3000){
                             lastPhotoTime=now; photo.enqueue(f,rgb);
