@@ -35,9 +35,9 @@ public final class DepthSampler {
         CameraIntrinsics ti=frame.getCamera().getTextureIntrinsics();
         int[] td=ti.getImageDimensions();float[] focal=ti.getFocalLength(),center=ti.getPrincipalPoint();
         if(td[0]<=0 || td[1]<=0 || focal[0]<=0 || focal[1]<=0)return false;
-        final float[] k=DepthGeometry.scaleIntrinsics(focal[0],focal[1],center[0],center[1],
+        final float[] calibration=DepthGeometry.scaleIntrinsics(focal[0],focal[1],center[0],center[1],
                 td[0],td[1],dw,dh);
-        if(!Float.isFinite(k[0]+k[1]+k[2]+k[3]))return false;
+        if(!Float.isFinite(calibration[0]+calibration[1]+calibration[2]+calibration[3]))return false;
 
         // Candidate depth estimate from the central region. In OBJECT mode reject
         // background geometry when a smaller foreground subject is in the center.
@@ -77,7 +77,7 @@ public final class DepthSampler {
             if(z<0.3f||z>mode.maxDepth)continue;
             if(mode==ScanModel.Mode.OBJECT && Float.isFinite(subjectDepth)
                     && (z<subjectDepth-0.32f || z>subjectDepth+0.48f))continue;
-            DepthGeometry.unproject(px+0.5f,py+0.5f,z,k,point);
+            DepthGeometry.unproject(px+0.5f,py+0.5f,z,calibration,point);
             pose.transformPoint(point,0,world,0);
             if(!Float.isFinite(world[0]+world[1]+world[2]))continue;
             xyz[k*3]=world[0];xyz[k*3+1]=world[1];xyz[k*3+2]=world[2];
