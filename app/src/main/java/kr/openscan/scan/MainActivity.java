@@ -282,6 +282,17 @@ public final class MainActivity extends Activity {
     private void saveCurrent(){
         if(exporting)return;
         if(model==null||model.vertices()==0){Toast.makeText(this,"저장할 포인트가 없습니다",Toast.LENGTH_SHORT).show();return;}
+        if(model.frames()<5 || (model.triangles()<100 && model.vertices()<300)){
+            new AlertDialog.Builder(this).setTitle("3D 형상 데이터가 부족합니다")
+                .setMessage("현재 "+model.frames()+"프레임, "+model.vertices()+"포인트, "+model.triangles()+"면입니다.\n\n이대로 저장하면 3D 형상이 희미하거나 비어 보일 수 있습니다. 여러 방향에서 조금 더 천천히 촬영하는 것이 좋습니다.")
+                .setPositiveButton("계속 촬영",(d,w)->{if(!isRecording)toggleScan();})
+                .setNegativeButton("그대로 저장",(d,w)->saveCurrentUnchecked())
+                .show();
+            return;
+        }
+        saveCurrentUnchecked();
+    }
+    private void saveCurrentUnchecked(){
         isRecording=false;renderer.stop();exporting=true;refreshState();
         final ScanModel.Snapshot snap=model.snapshot(); // stable capture on UI thread
         final Location location=getLocation();final PhotoDataset photos=photoSet;renderer.setPhotos(null);
@@ -344,7 +355,7 @@ public final class MainActivity extends Activity {
     }
     private void showHelp(){
         new AlertDialog.Builder(this).setTitle("잘 스캔하는 방법")
-            .setMessage("1. 사물 / 실내 / 야외 중 환경을 선택하세요.\n\n2. 스캔 시작 후 대상의 여러 면을 천천히 비추세요.\n\n3. 추적 대기가 표시되면 주변의 특징 있는 표면을 비춰주세요.\n\n4. 일시정지 후 저장하면 3D 점군을 확인할 수 있습니다.\n\n유리, 움직이는 물체, 멀리 있는 대형 구조물은 품질이 낮을 수 있습니다.")
+            .setMessage("1. 작은 물체는 반드시 사물 모드를 선택하세요.\n\n2. 처음 5초는 천천히 좌우로 움직이며 추적을 안정화하세요.\n\n3. 대상에서 약 0.5~3m 거리를 유지하고, 주변을 천천히 돌며 겹치게 촬영하세요.\n\n4. 포인트와 메시 숫자가 늘어나는지 확인하세요. 품질이 부족하면 저장 전에 다시 이동하며 촬영하세요.\n\n5. 유리·광택·움직이는 물체·먼 건물은 정확도가 낮아질 수 있습니다.\n\n사진 저장 옵션은 외부 복원용 사진을 보관할 뿐, 자동 포토그래메트리를 수행하지 않습니다.")
             .setPositiveButton("확인",null).show();
     }
     private void openLibrary(){
