@@ -5,8 +5,7 @@ on:
   push:
     branches: [story-english-build]
     paths:
-      - 'story-english/**'
-      - '.github/workflows/story-english-android-debug.yml'
+      - 'story-english/source/**'
 
 permissions:
   contents: read
