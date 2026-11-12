@@ -20,15 +20,15 @@ public final class DepthSampler {
         float[] tex=new float[count*2],cpu=new float[count*2];
         for(int y=0;y<rows;y++) for(int x=0;x<cols;x++) {
             int k=y*cols+x;
-            tex[2*k]=(x*step+0.5f)/depth.getWidth();
-            tex[2*k+1]=(y*step+0.5f)/depth.getHeight();
+            tex[2*k]=(Math.min(depth.getWidth()-1,x*step)+0.5f)/depth.getWidth();
+            tex[2*k+1]=(Math.min(depth.getHeight()-1,y*step)+0.5f)/depth.getHeight();
         }
         frame.transformCoordinates2d(Coordinates2d.TEXTURE_NORMALIZED,tex,Coordinates2d.IMAGE_PIXELS,cpu);
         CameraIntrinsics intr=frame.getCamera().getImageIntrinsics();
         float[] focal=intr.getFocalLength(),center=intr.getPrincipalPoint();
         int[] imgSize=intr.getImageDimensions();
         Pose pose=frame.getCamera().getPose();
-        float[] xyz=new float[count*3]; int[] colors=new int[count]; boolean[] valid=new boolean[count];
+        float[] xyz=new float[count*3],depthMeters=new float[count]; int[] colors=new int[count]; boolean[] valid=new boolean[count];
         Image.Plane dp=depth.getPlanes()[0];
         ByteBuffer db=dp.getBuffer().duplicate().order(ByteOrder.LITTLE_ENDIAN);
         int countValid=0;
@@ -50,12 +50,12 @@ public final class DepthSampler {
             cameraPoint[2]=-z;
             pose.transformPoint(cameraPoint,0,worldPoint,0);
             xyz[3*k]=worldPoint[0]; xyz[3*k+1]=worldPoint[1]; xyz[3*k+2]=worldPoint[2];
-            valid[k]=true; countValid++;
+            valid[k]=true; depthMeters[k]=z; countValid++;
             int ix=Math.round(u),iy=Math.round(v);
             colors[k]= color != null && ix>=0 && iy>=0 && ix<maxColorWidth && iy<maxColorHeight
                 ? yuvRgb(color,ix,iy) : 0xAAAAAA;
         }
-        if(countValid>8) model.addGrid(cols,rows,xyz,colors,valid);
+        if(countValid>8) model.addGrid(cols,rows,xyz,colors,valid,depthMeters);
         return countValid>8;
     }
     private static int yuvRgb(Image image,int x,int y) {
