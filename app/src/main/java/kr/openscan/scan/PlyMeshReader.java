@@ -12,10 +12,11 @@ public final class PlyMeshReader {
     private PlyMeshReader() {}
     public static final class Result {
         public final float[] points, pointColors, mesh, meshColors;
-        public final int pointCount, meshVertexCount;
+        public final int pointCount, meshVertexCount, sourceVertexCount, sourceFaceCount;
         public final float cx, cy, cz, radius;
-        Result(float[] p,float[] c,float[] m,float[] mc,int pn,int mn,float x,float y,float z,float r){
+        Result(float[] p,float[] c,float[] m,float[] mc,int pn,int mn,int totalVertices,int totalFaces,float x,float y,float z,float r){
             points=p;pointColors=c;mesh=m;meshColors=mc;pointCount=pn;meshVertexCount=mn;
+            sourceVertexCount=totalVertices;sourceFaceCount=totalFaces;
             cx=x;cy=y;cz=z;radius=r;
         }
     }
@@ -94,7 +95,7 @@ public final class PlyMeshReader {
                 mesh[dest]=vertices[index*3]-cx;mesh[dest+1]=vertices[index*3+1]-cy;mesh[dest+2]=vertices[index*3+2]-cz;
                 floatColor(rgb[index],meshColors,dest);
             }
-            return new Result(points,colors,mesh,meshColors,pn,kept*3,cx,cy,cz,radius);
+            return new Result(points,colors,mesh,meshColors,pn,kept*3,vertexCount,faceCount,cx,cy,cz,radius);
         }
     }
     private static void floatColor(int rgb,float[] into,int idx){
