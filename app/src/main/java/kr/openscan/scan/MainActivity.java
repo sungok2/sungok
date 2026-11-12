@@ -43,7 +43,7 @@ public final class MainActivity extends Activity {
     private ArCameraRenderer renderer;
     private ScanModel model;
     private PhotoDataset photoSet;
-    private ScanModel.Mode selectedMode=ScanModel.Mode.OUTDOOR;
+    private ScanModel.Mode selectedMode=ScanModel.Mode.OBJECT;
     private boolean isRecording=false, installRequested=false, sessionResumed=false, exporting=false;
     private boolean includePhotos=false, includeGps=false;
     private String lastReport="카메라 준비 중";
@@ -92,7 +92,7 @@ public final class MainActivity extends Activity {
         LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout titleBox=new LinearLayout(this);titleBox.setOrientation(LinearLayout.VERTICAL);
         TextView title=UiKit.text(this,"OpenScan 3D",22,UiKit.TEXT,true);
-        TextView subtitle=UiKit.text(this,"공간을 기록하다",11,UiKit.MUTED,false);
+        TextView subtitle=UiKit.text(this,"정밀 깊이로 표면을 기록",11,UiKit.MUTED,false);
         titleBox.addView(title);titleBox.addView(subtitle);
         header.addView(titleBox,new LinearLayout.LayoutParams(0,-2,1));
         settings=UiKit.button(this,"설정",UiKit.PANEL,UiKit.TEXT,14);
@@ -134,7 +134,7 @@ public final class MainActivity extends Activity {
         dock.setBackground(UiKit.fill(this,UiKit.PANEL,24));
         scanState=UiKit.text(this,"스캔 준비",18,UiKit.TEXT,true);
         dock.addView(scanState);
-        helper=UiKit.text(this,"대상을 중앙에 두고 천천히 이동하세요",12,UiKit.MUTED,false);
+        helper=UiKit.text(this,"사물을 화면 중앙에 두고 0.5~2m에서 천천히 이동하세요",12,UiKit.MUTED,false);
         LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(-1,-2);hp.topMargin=UiKit.dp(this,5);dock.addView(helper,hp);
 
         LinearLayout counters=new LinearLayout(this);counters.setGravity(Gravity.CENTER_VERTICAL);
@@ -186,7 +186,7 @@ public final class MainActivity extends Activity {
         }else if(model!=null){
             scanState.setText("일시정지됨");helper.setText("이어 촬영하거나 현재 데이터를 저장하세요");
         }else{
-            scanState.setText("스캔 준비");helper.setText("대상을 중앙에 두고 천천히 이동하세요");
+            scanState.setText("스캔 준비");helper.setText("사물을 화면 중앙에 두고 0.5~2m에서 천천히 이동하세요");
         }
         capture.setText(model==null?"스캔 시작":isRecording?"일시정지":"스캔 계속");
         capture.setEnabled(!exporting && (sessionResumed||model!=null));
@@ -282,7 +282,7 @@ public final class MainActivity extends Activity {
     private void saveCurrent(){
         if(exporting)return;
         if(model==null||model.vertices()==0){Toast.makeText(this,"저장할 포인트가 없습니다",Toast.LENGTH_SHORT).show();return;}
-        if(model.frames()<5 || (model.triangles()<100 && model.vertices()<300)){
+        if(model.frames()<12 || model.triangles()<300 || model.vertices()<1500){
             new AlertDialog.Builder(this).setTitle("3D 형상 데이터가 부족합니다")
                 .setMessage("현재 "+model.frames()+"프레임, "+model.vertices()+"포인트, "+model.triangles()+"면입니다.\n\n이대로 저장하면 3D 형상이 희미하거나 비어 보일 수 있습니다. 여러 방향에서 조금 더 천천히 촬영하는 것이 좋습니다.")
                 .setPositiveButton("계속 촬영",(d,w)->{if(!isRecording)toggleScan();})

@@ -33,6 +33,8 @@ public final class ArCameraRenderer implements GLSurfaceView.Renderer {
     private int width=1,height=1;
     private long lastCaptureMillis,lastReportMillis;
     private long lastPoseMillis;
+    private long lastRawDepthTimestamp=-1;
+    private int rejectedFrames;
     private float[] lastPosePosition,lastPoseRotation;
     private final float[] corners={-1,-1,1,-1,-1,1,1,1};
     private final float[] textureUV=new float[8];
@@ -41,7 +43,7 @@ public final class ArCameraRenderer implements GLSurfaceView.Renderer {
     public ArCameraRenderer(Reporter reporter){this.reporter=reporter;cornerBuffer.put(corners).position(0);}
     public void configure(Session s,boolean depth){this.session=s;this.depthSupported=depth;}
     public void scan(ScanModel next,ScanModel.Mode target,boolean enabled){
-        if(this.model!=next){lastCaptureMillis=0;lastPoseMillis=0;lastPosePosition=null;lastPoseRotation=null;}
+        if(this.model!=next){lastCaptureMillis=0;lastPoseMillis=0;lastPosePosition=null;lastPoseRotation=null;lastRawDepthTimestamp=-1;rejectedFrames=0;}
         this.model=next;this.mode=target;this.recording=enabled;
     }
     public void stop(){recording=false;}
@@ -105,20 +107,27 @@ public final class ArCameraRenderer implements GLSurfaceView.Renderer {
             if(recording && f.getCamera().getTrackingState()==TrackingState.TRACKING && model!=null && now-lastCaptureMillis>360 && movedEnough(f,now)) {
                 lastCaptureMillis=now;
                 if(depthSupported){
-                    Image depth=null, rgb=null;
+                    Image depth=null, confidence=null, rgb=null;
                     try {
-                        depth=f.acquireDepthImage16Bits();
-                        try {rgb=f.acquireCameraImage();}catch(NotYetAvailableException ignored){}
-                        if(DepthSampler.capture(f,depth,rgb,model,mode)){
-                            com.google.ar.core.Pose pose=f.getCamera().getPose();
-                            lastPosePosition=pose.getTranslation();lastPoseRotation=pose.getRotationQuaternion();lastPoseMillis=now;
+                        depth=f.acquireRawDepthImage16Bits();
+                        confidence=f.acquireRawDepthConfidenceImage();
+                        // RAW depth may be a reprojection of a previous exposure. Only
+                        // integrate novel data to avoid repeatedly copying the same noise.
+                        long ts=depth.getTimestamp();
+                        if(ts!=lastRawDepthTimestamp && ts==f.getTimestamp()){
+                            lastRawDepthTimestamp=ts;
+                            try {rgb=f.acquireCameraImage();}catch(NotYetAvailableException ignored){}
+                            if(DepthSampler.capture(f,depth,confidence,rgb,model,mode)){
+                                com.google.ar.core.Pose pose=f.getCamera().getPose();
+                                lastPosePosition=pose.getTranslation();lastPoseRotation=pose.getRotationQuaternion();lastPoseMillis=now;
+                            }else rejectedFrames++;
                         }
                         PhotoDataset photo=photos;
                         if(photo!=null && rgb!=null && now-lastPhotoTime>3000){
                             lastPhotoTime=now; photo.enqueue(f,rgb);
                         }
                     }catch(NotYetAvailableException ignored){}
-                    finally {if(rgb!=null)rgb.close();if(depth!=null)depth.close();}
+                    finally {if(rgb!=null)rgb.close();if(confidence!=null)confidence.close();if(depth!=null)depth.close();}
                 }else{
                     // Accurate sparse feature points are already in ARCore world coordinates.
                     try(PointCloud cloud=f.acquirePointCloud()) {
@@ -144,8 +153,8 @@ public final class ArCameraRenderer implements GLSurfaceView.Renderer {
                 ScanModel m=model;
                 String tracking=f.getCamera().getTrackingState()==TrackingState.TRACKING?"추적 중":"추적 대기";
                 String counts=m==null?"":String.format(java.util.Locale.KOREAN," · 점 %,d · 면 %,d · 프레임 %d",m.vertices(),m.triangles(),m.frames());
-                String type=depthSupported?"Depth 3D":"희소 포인트";
-                String msg=tracking+" · "+type+counts+(m!=null && m.limitReached()?" · 용량 제한 도달":"");
+                String type=depthSupported?"정밀 Raw Depth":"희소 포인트";
+                String msg=tracking+" · "+type+counts+(depthSupported && rejectedFrames>0?" · 제외 "+rejectedFrames+"프레임":"")+(m!=null && m.limitReached()?" · 용량 제한 도달":"");
                 reporter.report(msg);
             }
         }catch(Exception ex){

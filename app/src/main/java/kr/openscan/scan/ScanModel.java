@@ -10,9 +10,9 @@ import java.util.Set;
 /** Independent of Android: deterministic 3D point/triangle accumulation. */
 public final class ScanModel {
     public enum Mode {
-        OBJECT("사물", 0.010f, 5.0f, 2, 0.14f),
-        ROOM("실내", 0.025f, 9.0f, 3, 0.32f),
-        OUTDOOR("야외", 0.045f, 15.0f, 4, 0.60f);
+        OBJECT("사물", 0.008f, 2.8f, 1, 0.095f),
+        ROOM("실내", 0.022f, 6.5f, 2, 0.25f),
+        OUTDOOR("야외", 0.045f, 12.0f, 3, 0.50f);
         public final String label;
         public final float voxelSize, maxDepth, maxEdge;
         public final int pixelStep;

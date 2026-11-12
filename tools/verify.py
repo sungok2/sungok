@@ -31,3 +31,9 @@ assert 'android.permission.INTERNET' not in manifest
 assert 'com.google.ar.core' in manifest
 assert 'android.permission.CAMERA' in manifest
 print('PASS camera/ARCore declarations and no INTERNET permission')
+
+with tempfile.TemporaryDirectory() as td:
+    dest=Path(td)
+    subprocess.run(['javac','-encoding','UTF-8','-d',str(dest),str(SRC/'DepthGeometry.java'),str(ROOT/'tests/DepthGeometryTest.java')],check=True)
+    depthResult=subprocess.run(['java','-cp',str(dest),'DepthGeometryTest'],capture_output=True,text=True,check=True)
+    print(depthResult.stdout.strip())

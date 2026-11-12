@@ -87,7 +87,16 @@ public final class CloudViewerActivity extends Activity {
             LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);
             panel.setPadding(UiKit.dp(this,16),UiKit.dp(this,14),UiKit.dp(this,16),UiKit.dp(this,15));
             panel.setBackground(UiKit.fill(this,UiKit.PANEL,22));
-            TextView instructions=UiKit.text(this,"한 손가락으로 회전  ·  두 손가락으로 확대",13,UiKit.TEXT,false);
+            Button viewMode=UiKit.button(this,points.meshVertexCount>=600?"점군 보기 (표면 표시 중)":"점군 보기 (생성된 표면 부족)",UiKit.SURFACE,UiKit.TEXT,13);
+            panel.addView(viewMode,new LinearLayout.LayoutParams(-1,UiKit.dp(this,44)));
+            viewMode.setOnClickListener(v->{
+                if(points.meshVertexCount<600){
+                    android.widget.Toast.makeText(this,"연결된 삼각면이 적어 점군만 표시합니다",android.widget.Toast.LENGTH_SHORT).show();return;
+                }
+                boolean onlyPoints=renderer.togglePointsOnly();
+                viewMode.setText(onlyPoints?"표면 보기 (점군 표시 중)":"점군 보기 (표면 표시 중)");
+            });
+            TextView instructions=UiKit.text(this,"한 손가락: 회전  ·  두 손가락: 확대",13,UiKit.TEXT,false);
             instructions.setGravity(Gravity.CENTER);panel.addView(instructions);
             LinearLayout tools=new LinearLayout(this);tools.setGravity(Gravity.CENTER);
             Button zoomOut=UiKit.button(this,"−",UiKit.SURFACE,UiKit.TEXT,13);
@@ -141,10 +150,12 @@ public final class CloudViewerActivity extends Activity {
     static final class ViewerRenderer implements GLSurfaceView.Renderer {
         private final PointSet pts;
         private volatile float yaw=20,pitch=15,distanceScale=2.8f;
+        private volatile boolean pointsOnly;
         private int program,position,color,mvp;
         private int viewportWidth=1,viewportHeight=1;
         ViewerRenderer(PointSet pts){this.pts=pts;}
         void resetView(){yaw=20;pitch=15;distanceScale=2.8f;}
+        boolean togglePointsOnly(){pointsOnly=!pointsOnly;return pointsOnly;}
         void rotate(float x,float y){yaw+=x*0.32f;pitch=Math.max(-89,Math.min(89,pitch+y*0.32f));}
         void zoom(float ratio){if(ratio>0.5f&&ratio<2f)distanceScale=Math.max(1.25f,Math.min(18f,distanceScale/ratio));}
         @Override public void onSurfaceCreated(GL10 gl,EGLConfig cfg){
@@ -168,16 +179,20 @@ public final class CloudViewerActivity extends Activity {
             Matrix.multiplyMM(tmp,0,view,0,model,0);Matrix.multiplyMM(result,0,projection,0,tmp,0);
             GLES20.glUseProgram(program);GLES20.glUniformMatrix4fv(mvp,1,false,result,0);
             GLES20.glEnableVertexAttribArray(position);GLES20.glEnableVertexAttribArray(color);
-            if(pts.meshVertexCount>0){
+            if(pts.meshVertexCount>=600 && !pointsOnly){
                 pts.meshPositions.position(0);pts.meshColors.position(0);
                 GLES20.glVertexAttribPointer(position,3,GLES20.GL_FLOAT,false,0,pts.meshPositions);
                 GLES20.glVertexAttribPointer(color,3,GLES20.GL_FLOAT,false,0,pts.meshColors);
                 GLES20.glDrawArrays(GLES20.GL_TRIANGLES,0,pts.meshVertexCount);
             }
-            pts.positions.position(0);pts.colors.position(0);
-            GLES20.glVertexAttribPointer(position,3,GLES20.GL_FLOAT,false,0,pts.positions);
-            GLES20.glVertexAttribPointer(color,3,GLES20.GL_FLOAT,false,0,pts.colors);
-            GLES20.glDrawArrays(GLES20.GL_POINTS,0,pts.size);
+            // Drawing all points on top of a solid mesh makes the surface look like
+            // speckled noise. Show ONE representation at a time by default.
+            if(pointsOnly || pts.meshVertexCount<600){
+                pts.positions.position(0);pts.colors.position(0);
+                GLES20.glVertexAttribPointer(position,3,GLES20.GL_FLOAT,false,0,pts.positions);
+                GLES20.glVertexAttribPointer(color,3,GLES20.GL_FLOAT,false,0,pts.colors);
+                GLES20.glDrawArrays(GLES20.GL_POINTS,0,pts.size);
+            }
             GLES20.glDisableVertexAttribArray(position);GLES20.glDisableVertexAttribArray(color);
         }
     }
