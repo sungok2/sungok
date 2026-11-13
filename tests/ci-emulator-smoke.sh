@@ -7,16 +7,41 @@ adb wait-for-device
 adb install -r "$APK"
 adb logcat -c
 adb shell am start -W -n "$PKG/com.galaxyuniversalio.MainActivity" | tee ci-evidence/launch.txt
-sleep 5
-# The process must survive onCreate/onResume without a physical USB device.
+sleep 4
 adb shell pidof "$PKG" | tee ci-evidence/pid.txt
-# Capture evidence for a manual UI/UX review.
-adb shell uiautomator dump /sdcard/window.xml || true
-adb pull /sdcard/window.xml ci-evidence/window.xml || true
-adb exec-out screencap -p > ci-evidence/initial-screen.png
-if grep -q 'FATAL EXCEPTION' <(adb logcat -d -t 4000 | grep -A20 'FATAL EXCEPTION' || true); then
-  echo 'Fatal Android exception detected after launch' >&2
+
+capture() {
+  local file="$1"
+  adb shell uiautomator dump /sdcard/window.xml >/dev/null
+  adb pull /sdcard/window.xml "ci-evidence/${file}-window.xml" >/dev/null
+  adb exec-out screencap -p > "ci-evidence/${file}-screen.png"
+  test -s "ci-evidence/${file}-screen.png"
+}
+
+tap_text() {
+  local text="$1" xml="ci-evidence/${2}-window.xml" point
+  point="$(python3 tests/ui_nav_assert.py tap "$xml" "$text")"
+  adb shell input tap $point
+  sleep 2
+}
+
+capture "scan"
+python3 tests/ui_nav_assert.py assert ci-evidence/scan-window.xml "문서 스캔"
+python3 tests/ui_nav_assert.py assert ci-evidence/scan-window.xml "네트워크 스캔 → PDF 저장"
+tap_text "인쇄" "scan"
+capture "print"
+python3 tests/ui_nav_assert.py assert ci-evidence/print-window.xml "PDF 인쇄"
+python3 tests/ui_nav_assert.py assert ci-evidence/print-window.xml "PDF 파일 선택 후 인쇄"
+tap_text "장치 · 진단" "print"
+capture "devices"
+python3 tests/ui_nav_assert.py assert ci-evidence/devices-window.xml "USB 장치"
+adb shell input swipe 170 550 170 200 420
+sleep 1
+capture "devices-details"
+python3 tests/ui_nav_assert.py assert ci-evidence/devices-details-window.xml "장치 기술 진단"
+
+if adb logcat -d -t 5000 | grep -A15 'FATAL EXCEPTION' | grep -q "$PKG"; then
+  echo 'Fatal exception detected in app process' >&2
   exit 1
 fi
-# Verify that at least the main activity title is present in the accessible hierarchy.
-grep -q 'Galaxy Universal I/O' ci-evidence/window.xml
+echo 'PASS: Android 13 app launch + scan/print/devices tab navigation and screenshots'

@@ -3,6 +3,11 @@ package com.galaxyuniversalio;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.PendingIntent;
+import android.content.res.ColorStateList;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.view.Gravity;
+import android.widget.ProgressBar;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -48,7 +53,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/** M0.8: USB inventory, eSCL scan lifecycle controls, printer/PTP diagnostics. */
+/** M0.9: USB inventory, eSCL scan controls, accessible task-first UI, printer/PTP diagnostics. */
 public final class MainActivity extends Activity {
     private static final int REQUEST_CREATE_REPORT = 1001;
     private static final int REQUEST_OPEN_RAW_JOB = 1002;
@@ -73,12 +78,27 @@ public final class MainActivity extends Activity {
     private static final String STATE_PRINT_PID = "pending_print_pid";
     private static final String STATE_EXPORT_SNAPSHOT = "pending_export_snapshot";
     private static final String STATE_SERIAL = "include_serial";
+    private static final String STATE_PAGE = "active_page";
+    private static final String STATE_LAN_ADDRESS = "lan_address";
+    private static final String STATE_FEEDER_SELECTED = "feed_selected";
+    private static final String STATE_SHOW_REPORT = "show_report";
+
 
     private final ExecutorService writer = Executors.newSingleThreadExecutor();
     private final AtomicBoolean scanInProgress = new AtomicBoolean(false);
     private volatile Thread scanWorker;
+    private volatile EsclScanClient.Transport activeScanTransport;
     private volatile boolean scanCancellationRequested;
     private Button cancelScanButton;
+    private ProgressBar scanProgress;
+    private LinearLayout scanProgressCard;
+    private ScrollView wholePage;
+    private LinearLayout scanPanel, printPanel, devicePanel;
+    private Button scanTabButton, printTabButton, devicesTabButton;
+    private TextView usbHintView;
+    private int activePage = 0;
+    private boolean reportExpanded = false;
+
     private final List<UsbDevice> displayedDevices = new ArrayList<>();
     private UsbManager usbManager;
     private UsbProfileCatalog catalog = UsbProfileCatalog.empty();
@@ -141,6 +161,8 @@ public final class MainActivity extends Activity {
         usbManager = (UsbManager) getSystemService(Context.USB_SERVICE);
         if (state != null) {
             pendingExportReport = state.getString(STATE_EXPORT_SNAPSHOT);
+            activePage = state.getInt(STATE_PAGE);
+            reportExpanded = state.getBoolean(STATE_SHOW_REPORT, false);
             pendingPrintDeviceName = state.getString(STATE_PRINT_DEVICE_NAME);
             pendingPrintVid = state.getInt(STATE_PRINT_VID);
             pendingPrintPid = state.getInt(STATE_PRINT_PID);
@@ -164,143 +186,316 @@ public final class MainActivity extends Activity {
             catalogWarning = "프로파일 목록을 읽지 못했습니다: " + e.getMessage();
         }
         buildUi();
-        if (state != null) serialCheckbox.setChecked(state.getBoolean(STATE_SERIAL, false));
+        if (state != null) {
+            serialCheckbox.setChecked(state.getBoolean(STATE_SERIAL, false));
+            lanHostInput.setText(state.getString(STATE_LAN_ADDRESS));
+            feederCheck.setChecked(state.getBoolean(STATE_FEEDER_SELECTED, false));
+        }
+        showPage(activePage);
+    }
+
+    private static final int INK = 0xFF152641;
+    private static final int MUTED = 0xFF57677D;
+    private static final int PRIMARY = 0xFF2058D4;
+    private static final int BORDER = 0xFFDFE7F2;
+    private static final int PALE = 0xFFF3F6FB;
+    private static final int WHITE = 0xFFFFFFFF;
+
+    private GradientDrawable rounded(int color, int stroke, int radius) {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(color);
+        bg.setCornerRadius(dp(radius));
+        if (stroke != 0) bg.setStroke(dp(1), stroke);
+        return bg;
+    }
+
+    private LinearLayout vertical() {
+        LinearLayout v = new LinearLayout(this);
+        v.setOrientation(LinearLayout.VERTICAL);
+        return v;
+    }
+
+    private LinearLayout card() {
+        LinearLayout box = vertical();
+        box.setPadding(dp(16), dp(16), dp(16), dp(16));
+        box.setBackground(rounded(WHITE, BORDER, 18));
+        return box;
+    }
+
+    private void addCard(LinearLayout parent, LinearLayout child) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.bottomMargin = dp(12);
+        parent.addView(child, lp);
+    }
+
+    private TextView text(String content, int size, int color, boolean bold) {
+        TextView t = new TextView(this);
+        t.setText(content);
+        t.setTextSize(size);
+        t.setTextColor(color);
+        if (bold) t.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        return t;
+    }
+
+    private void addText(LinearLayout parent, String content, int size, int color, boolean bold, int bottom) {
+        TextView t = text(content, size, color, bold);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.bottomMargin = dp(bottom);
+        parent.addView(t, lp);
+    }
+
+    private void styleButton(Button button, boolean important) {
+        button.setAllCaps(false);
+        button.setTextSize(14);
+        button.setMinHeight(dp(50));
+        button.setTextColor(important ? WHITE : INK);
+        button.setBackgroundTintList(ColorStateList.valueOf(important ? PRIMARY : 0xFFE7EFFB));
+    }
+
+    private void addButton(LinearLayout parent, Button button) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.topMargin = dp(6);
+        parent.addView(button, lp);
     }
 
     private void buildUi() {
-        int pad = dp(16);
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(pad, pad, pad, pad);
+        LinearLayout root = vertical();
+        root.setPadding(dp(16), dp(14), dp(16), dp(24));
+        root.setBackgroundColor(PALE);
 
-        TextView title = new TextView(this);
-        title.setText("Galaxy Universal I/O · M0.8");
-        title.setTextSize(22);
-        title.setTextColor(0xFF172554);
-        root.addView(title);
+        LinearLayout hero = vertical();
+        hero.setPadding(dp(18), dp(18), dp(18), dp(18));
+        hero.setBackground(rounded(0xFF102955, 0, 18));
+        addText(hero, "GALAXY  ·  UNIVERSAL I/O", 12, 0xFFBBD4FF, true, 8);
+        addText(hero, "스캔부터 PDF까지", 24, WHITE, true, 5);
+        addText(hero, "USB · 네트워크 스캔 · 인쇄 · 진단", 13, 0xFFD4E3FF, false, 0);
+        addCard(root, hero);
 
-        TextView subtitle = new TextView(this);
-        subtitle.setText("USB 진단 · LAN/HTTPS/USB eSCL 스캔 → PDF · USB IPP/RAW/시스템 인쇄 · PTP");
-        subtitle.setTextSize(13);
-        subtitle.setTextColor(0xFF475569);
-        subtitle.setPadding(0, dp(4), 0, dp(8));
-        root.addView(subtitle);
+        LinearLayout statusCard = card();
+        addText(statusCard, "작업 상태", 12, MUTED, true, 4);
+        statusView = text("시작할 준비가 되었습니다.", 14, INK, true);
+        statusView.setMinHeight(dp(32));
+        statusView.setContentDescription("현재 작업 상태");
+        statusCard.addView(statusView);
+        addCard(root, statusCard);
 
-        statusView = new TextView(this);
-        statusView.setTextSize(14);
-        statusView.setPadding(0, dp(8), 0, dp(8));
-        root.addView(statusView);
+        LinearLayout nav = new LinearLayout(this);
+        nav.setOrientation(LinearLayout.HORIZONTAL);
+        nav.setPadding(dp(4), dp(4), dp(4), dp(4));
+        nav.setBackground(rounded(0xFFE7ECF5, 0, 15));
+        scanTabButton = new Button(this);
+        scanTabButton.setText("스캔");
+        printTabButton = new Button(this);
+        printTabButton.setText("인쇄");
+        devicesTabButton = new Button(this);
+        devicesTabButton.setText("장치 · 진단");
+        Button[] tabs = {scanTabButton, printTabButton, devicesTabButton};
+        for (int i = 0; i < tabs.length; i++) {
+            final int selected = i;
+            Button tab = tabs[i];
+            tab.setAllCaps(false);
+            tab.setMinHeight(dp(48));
+            tab.setTextSize(13);
+            tab.setOnClickListener(v -> showPage(selected));
+            nav.addView(tab, new LinearLayout.LayoutParams(0, -2, 1));
+        }
+        addCard(root, nav);
 
-        LinearLayout actions = new LinearLayout(this);
-        actions.setOrientation(LinearLayout.HORIZONTAL);
-        Button refresh = new Button(this);
-        refresh.setText("새로고침");
-        refresh.setOnClickListener(v -> {
-            notice = "";
-            refreshInventory();
-        });
-        actions.addView(refresh, new LinearLayout.LayoutParams(0, -2, 1));
-        Button export = new Button(this);
-        export.setText("TXT 보고서 저장");
-        export.setOnClickListener(v -> createReportDocument());
-        actions.addView(export, new LinearLayout.LayoutParams(0, -2, 1));
-        root.addView(actions);
-
-        LinearLayout permissions = new LinearLayout(this);
-        permissions.setOrientation(LinearLayout.HORIZONTAL);
-        deviceSpinner = new Spinner(this);
-        deviceSpinner.setContentDescription("권한을 요청할 USB 장치 선택");
-        permissions.addView(deviceSpinner, new LinearLayout.LayoutParams(0, -2, 1));
-        permissionButton = new Button(this);
-        permissionButton.setText("USB 권한 요청");
-        permissionButton.setOnClickListener(v -> requestSelectedDevicePermission());
-        permissions.addView(permissionButton);
-        root.addView(permissions);
-
-        LinearLayout printerActions = new LinearLayout(this);
-        printerActions.setOrientation(LinearLayout.VERTICAL);
-        printerProbeButton = new Button(this);
-        printerProbeButton.setText("프린터 상태 조회");
-        printerProbeButton.setOnClickListener(v -> probeSelectedPrinter());
-        printerActions.addView(printerProbeButton, new LinearLayout.LayoutParams(-1, -2));
-        rawPrintButton = new Button(this);
-        rawPrintButton.setText("RAW 파일 전송");
-        rawPrintButton.setOnClickListener(v -> selectRawPrintDocument());
-        printerActions.addView(rawPrintButton, new LinearLayout.LayoutParams(-1, -2));
-        root.addView(printerActions);
-        ippPdfButton = new Button(this);
-        ippPdfButton.setText("USB IPP PDF 직접 인쇄 (PDF 지원 장치 전용)");
-        ippPdfButton.setOnClickListener(v -> chooseUsbIppPdf());
-        root.addView(ippPdfButton);
-        LinearLayout extensions = new LinearLayout(this);
-        extensions.setOrientation(LinearLayout.VERTICAL);
-        ptpImportButton = new Button(this);
-        ptpImportButton.setText("PTP JPEG 가져오기");
-        ptpImportButton.setOnClickListener(v -> choosePtpJpegDestination());
-        extensions.addView(ptpImportButton, new LinearLayout.LayoutParams(-1, -2));
-        Button pdfPrint = new Button(this);
-        pdfPrint.setText("PDF 시스템 인쇄");
-        pdfPrint.setOnClickListener(v -> choosePdfForSystemPrint());
-        extensions.addView(pdfPrint, new LinearLayout.LayoutParams(-1, -2));
-        root.addView(extensions);
-
-        TextView scanTitle = new TextView(this);
-        scanTitle.setText("문서 스캐너 (eSCL JPEG/PNG · ADF 최대 12페이지)");
-        scanTitle.setTextSize(14);
-        root.addView(scanTitle);
+        scanPanel = vertical();
+        LinearLayout scanCard = card();
+        addText(scanCard, "문서 스캔", 21, INK, true, 5);
+        addText(scanCard, "스캐너에서 문서를 가져와 PDF로 저장합니다.", 13, MUTED, false, 18);
+        addText(scanCard, "스캐너 네트워크 주소", 14, INK, true, 4);
         lanHostInput = new EditText(this);
         lanHostInput.setSingleLine(true);
+        lanHostInput.setTextSize(15);
         lanHostInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT);
-        lanHostInput.setHint("LAN: 192.168.1.100:8080 또는 https://192.168.1.100");
-        root.addView(lanHostInput);
+        lanHostInput.setHint("예: 192.168.1.100:8080");
+        lanHostInput.setContentDescription("네트워크 eSCL 스캐너의 사설 IPv4 주소");
+        lanHostInput.setMinHeight(dp(54));
+        scanCard.addView(lanHostInput, new LinearLayout.LayoutParams(-1, -2));
         feederCheck = new CheckBox(this);
-        feederCheck.setText("ADF(자동 급지) 사용 · 해제 시 평판 1장");
-        root.addView(feederCheck);
-        LinearLayout scanActions = new LinearLayout(this);
-        scanActions.setOrientation(LinearLayout.VERTICAL);
+        feederCheck.setText("자동 급지(ADF)로 여러 장 스캔");
+        feederCheck.setTextSize(14);
+        feederCheck.setTextColor(INK);
+        feederCheck.setMinHeight(dp(48));
+        scanCard.addView(feederCheck);
         Button lanScan = new Button(this);
-        lanScan.setText("LAN/HTTPS eSCL → PDF");
+        lanScan.setText("네트워크 스캔 → PDF 저장");
+        styleButton(lanScan, true);
         lanScan.setOnClickListener(v -> chooseEsclPdfDestination(false));
-        scanActions.addView(lanScan, new LinearLayout.LayoutParams(-1, -2));
+        addButton(scanCard, lanScan);
+        addText(scanCard, "스캐너와 같은 네트워크 연결 필요 · 평판 1장 또는 ADF 최대 12장 · JPEG/PNG 입력",
+                12, MUTED, false, 0);
+        addCard(scanPanel, scanCard);
+
+        LinearLayout usbScanCard = card();
+        addText(usbScanCard, "USB 케이블로 스캔", 17, INK, true, 6);
+        addText(usbScanCard, "IPP-over-USB eSCL을 지원하는 기기에서만 이용할 수 있습니다. 장치·진단에서 USB 권한을 먼저 허용하세요.",
+                13, MUTED, false, 8);
         usbEsclButton = new Button(this);
-        usbEsclButton.setText("USB eSCL → PDF");
+        usbEsclButton.setText("USB 스캔 → PDF 저장");
+        styleButton(usbEsclButton, false);
         usbEsclButton.setOnClickListener(v -> chooseEsclPdfDestination(true));
-        scanActions.addView(usbEsclButton, new LinearLayout.LayoutParams(-1, -2));
+        addButton(usbScanCard, usbEsclButton);
+        addCard(scanPanel, usbScanCard);
+
+        LinearLayout progressCard = card();
+        addText(progressCard, "스캔 진행 상태", 15, INK, true, 6);
+        scanProgress = new ProgressBar(this);
+        scanProgress.setIndeterminate(true);
+        scanProgress.setVisibility(View.GONE);
+        progressCard.addView(scanProgress);
         cancelScanButton = new Button(this);
-        cancelScanButton.setText("진행 중인 스캔 취소");
+        cancelScanButton.setText("스캔 취소");
+        styleButton(cancelScanButton, false);
+        cancelScanButton.setVisibility(View.GONE);
         cancelScanButton.setEnabled(false);
         cancelScanButton.setOnClickListener(v -> cancelActiveScan());
-        scanActions.addView(cancelScanButton, new LinearLayout.LayoutParams(-1, -2));
-        root.addView(scanActions);
+        addButton(progressCard, cancelScanButton);
+        addText(progressCard, "스캔 중 진행 상황과 오류는 위의 작업 상태에 표시됩니다.", 12, MUTED, false, 0);
+        progressCard.setVisibility(View.GONE);
+        scanProgressCard = progressCard;
+        addCard(scanPanel, progressCard);
+        addText(scanPanel, "일부 제조사 전용 스캐너는 이 앱에서 지원하지 않습니다. 민감한 문서는 신뢰할 수 있는 네트워크에서만 스캔하세요.",
+                12, MUTED, false, 12);
+        root.addView(scanPanel);
 
+        printPanel = vertical();
+        LinearLayout systemPrintCard = card();
+        addText(systemPrintCard, "PDF 인쇄", 21, INK, true, 5);
+        addText(systemPrintCard, "휴대전화에 설치된 인쇄 서비스를 사용합니다. 프린터와 인쇄 서비스를 먼저 설정하세요.",
+                13, MUTED, false, 12);
+        Button pdfPrint = new Button(this);
+        pdfPrint.setText("PDF 파일 선택 후 인쇄");
+        styleButton(pdfPrint, true);
+        pdfPrint.setOnClickListener(v -> choosePdfForSystemPrint());
+        addButton(systemPrintCard, pdfPrint);
+        addCard(printPanel, systemPrintCard);
+        LinearLayout directPrintCard = card();
+        addText(directPrintCard, "고급 USB 직접 인쇄", 17, INK, true, 5);
+        addText(directPrintCard, "USB 장치를 선택하고 권한을 허용한 뒤 이용하세요. 전송 성공과 실제 용지 출력은 다릅니다.",
+                13, MUTED, false, 8);
+        printerProbeButton = new Button(this);
+        printerProbeButton.setText("프린터 상태 조회");
+        styleButton(printerProbeButton, false);
+        printerProbeButton.setOnClickListener(v -> probeSelectedPrinter());
+        addButton(directPrintCard, printerProbeButton);
+        rawPrintButton = new Button(this);
+        rawPrintButton.setText("PRN / PCL / PS 파일 직접 전송");
+        styleButton(rawPrintButton, false);
+        rawPrintButton.setOnClickListener(v -> selectRawPrintDocument());
+        addButton(directPrintCard, rawPrintButton);
+        ippPdfButton = new Button(this);
+        ippPdfButton.setText("USB IPP · PDF 직접 전송");
+        styleButton(ippPdfButton, false);
+        ippPdfButton.setOnClickListener(v -> chooseUsbIppPdf());
+        addButton(directPrintCard, ippPdfButton);
+        addCard(printPanel, directPrintCard);
+        printPanel.setVisibility(View.GONE);
+        root.addView(printPanel);
+
+        devicePanel = vertical();
+        LinearLayout deviceCard = card();
+        addText(deviceCard, "USB 장치", 21, INK, true, 5);
+        addText(deviceCard, "연결된 장치를 선택하고 접근 권한을 허용합니다.", 13, MUTED, false, 8);
+        usbHintView = text("USB 연결을 확인하는 중입니다.", 13, MUTED, false);
+        deviceCard.addView(usbHintView);
+        deviceSpinner = new Spinner(this);
+        deviceSpinner.setContentDescription("USB 장치 선택");
+        deviceSpinner.setMinimumHeight(dp(52));
+        deviceCard.addView(deviceSpinner);
+        permissionButton = new Button(this);
+        permissionButton.setText("선택한 USB 장치 접근 허용");
+        styleButton(permissionButton, true);
+        permissionButton.setOnClickListener(v -> requestSelectedDevicePermission());
+        addButton(deviceCard, permissionButton);
+        Button refresh = new Button(this);
+        refresh.setText("장치 목록 새로고침");
+        styleButton(refresh, false);
+        refresh.setOnClickListener(v -> { notice = ""; refreshInventory(); });
+        addButton(deviceCard, refresh);
+        addCard(devicePanel, deviceCard);
+
+        LinearLayout imageCard = card();
+        addText(imageCard, "USB 카메라·이미지", 17, INK, true, 6);
+        addText(imageCard, "PTP 호환 장치에서 첫 번째 JPEG 사진을 가져옵니다. 일반 문서 스캐너 기능과는 다릅니다.",
+                13, MUTED, false, 6);
+        ptpImportButton = new Button(this);
+        ptpImportButton.setText("PTP JPEG 가져오기");
+        styleButton(ptpImportButton, false);
+        ptpImportButton.setOnClickListener(v -> choosePtpJpegDestination());
+        addButton(imageCard, ptpImportButton);
+        addCard(devicePanel, imageCard);
+
+        LinearLayout reportCard = card();
+        addText(reportCard, "장치 기술 진단", 17, INK, true, 5);
+        addText(reportCard, "VID/PID, 인터페이스와 엔드포인트를 확인합니다. 개인 식별정보 공유에 주의하세요.",
+                13, MUTED, false, 6);
         serialCheckbox = new CheckBox(this);
-        serialCheckbox.setText("보고서에 USB 시리얼번호 포함 (기본 미포함)");
-        serialCheckbox.setChecked(false);
-        serialCheckbox.setTextSize(12);
-        serialCheckbox.setOnCheckedChangeListener((button, checked) -> refreshInventory());
-        root.addView(serialCheckbox);
+        serialCheckbox.setText("보고서에 시리얼번호 포함 (기본 꺼짐)");
+        serialCheckbox.setTextSize(13);
+        serialCheckbox.setMinHeight(dp(48));
+        serialCheckbox.setOnCheckedChangeListener((v, checked) -> refreshInventory());
+        reportCard.addView(serialCheckbox);
+        Button toggleReport = new Button(this);
+        toggleReport.setText("진단 상세 펼치기 / 접기");
+        styleButton(toggleReport, false);
+        toggleReport.setOnClickListener(v -> {
+            reportExpanded = !reportExpanded;
+            reportView.setVisibility(reportExpanded ? View.VISIBLE : View.GONE);
+        });
+        addButton(reportCard, toggleReport);
+        Button export = new Button(this);
+        export.setText("TXT 진단 보고서 저장");
+        styleButton(export, false);
+        export.setOnClickListener(v -> createReportDocument());
+        addButton(reportCard, export);
+        reportView = text("", 12, INK, false);
+        reportView.setTextIsSelectable(true);
+        reportView.setPadding(dp(8), dp(12), dp(8), dp(8));
+        reportView.setVisibility(reportExpanded ? View.VISIBLE : View.GONE);
+        reportCard.addView(reportView);
+        addCard(devicePanel, reportCard);
+        devicePanel.setVisibility(View.GONE);
+        root.addView(devicePanel);
 
         deviceSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 updatePermissionButton();
             }
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {
-                updatePermissionButton();
-            }
+            @Override public void onNothingSelected(AdapterView<?> parent) { updatePermissionButton(); }
         });
-
-        reportView = new TextView(this);
-        reportView.setTextSize(13);
-        reportView.setTextColor(0xFF111827);
-        reportView.setTextIsSelectable(true);
-        reportView.setPadding(0, dp(12), 0, dp(12));
-        root.addView(reportView);
-        ScrollView wholePage = new ScrollView(this);
+        wholePage = new ScrollView(this);
         wholePage.setFillViewport(true);
         wholePage.addView(root);
         setContentView(wholePage);
+    }
+
+    private void showPage(int page) {
+        activePage = Math.max(0, Math.min(2, page));
+        if (scanPanel == null) return;
+        scanPanel.setVisibility(activePage == 0 ? View.VISIBLE : View.GONE);
+        printPanel.setVisibility(activePage == 1 ? View.VISIBLE : View.GONE);
+        devicePanel.setVisibility(activePage == 2 ? View.VISIBLE : View.GONE);
+        Button[] tabs = {scanTabButton, printTabButton, devicesTabButton};
+        for (int i = 0; i < tabs.length; i++) {
+            boolean selected = i == activePage;
+            tabs[i].setBackgroundTintList(ColorStateList.valueOf(selected ? WHITE : 0xFFE7ECF5));
+            tabs[i].setTextColor(selected ? PRIMARY : MUTED);
+            tabs[i].setTypeface(Typeface.DEFAULT, selected ? Typeface.BOLD : Typeface.NORMAL);
+            tabs[i].setContentDescription(tabs[i].getText() + (selected ? ", 선택됨" : ", 선택 가능"));
+        }
+        if (wholePage != null) wholePage.scrollTo(0, 0);
+    }
+
+    private void setScanUiBusy(boolean busy) {
+        if (scanProgressCard != null) scanProgressCard.setVisibility(busy ? View.VISIBLE : View.GONE);
+        if (scanProgress != null) scanProgress.setVisibility(busy ? View.VISIBLE : View.GONE);
+        if (cancelScanButton != null) {
+            cancelScanButton.setEnabled(busy);
+            cancelScanButton.setVisibility(busy ? View.VISIBLE : View.GONE);
+        }
     }
 
     @Override
@@ -361,7 +556,12 @@ public final class MainActivity extends Activity {
         updateDeviceSpinner();
         updateReport(devices);
 
-        String status = devices.size() + "개 USB 장치 감지 · 프로파일 " + catalog.size() + "개";
+        String status = devices.isEmpty()
+                ? "USB 연결 없음 · 네트워크 문서 스캔 및 시스템 인쇄는 사용 가능"
+                : "USB " + devices.size() + "개 연결 · 장치 정보를 확인했습니다.";
+        if (usbHintView != null) usbHintView.setText(devices.isEmpty()
+                ? "연결된 USB 장치가 없습니다. OTG 케이블 및 전원을 확인하세요."
+                : "연결된 USB 장치 " + devices.size() + "개 · 장치를 선택하세요.");
         if (!notice.isEmpty()) status += "\n" + notice;
         if (!catalogWarning.isEmpty()) status += "\n" + catalogWarning;
         statusView.setText(status);
@@ -446,7 +646,7 @@ public final class MainActivity extends Activity {
 
     private void updateReport(List<UsbDevice> devices) {
         StringBuilder report = new StringBuilder(4096);
-        report.append("Galaxy Universal I/O M0.8 진단 보고서\n");
+        report.append("Galaxy Universal I/O M0.9 진단 보고서\n");
         report.append("생성 시각: ").append(timestamp()).append('\n');
         report.append("단말: ").append(Build.MANUFACTURER).append(' ').append(Build.MODEL).append('\n');
         report.append("Android API: ").append(Build.VERSION.SDK_INT).append('\n');
@@ -559,7 +759,7 @@ public final class MainActivity extends Activity {
         Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("text/plain");
-        intent.putExtra(Intent.EXTRA_TITLE, "GalaxyUniversalIO-M0.8-report.txt");
+        intent.putExtra(Intent.EXTRA_TITLE, "GalaxyUniversalIO-M0.9-report.txt");
         try { startActivityForResult(intent, REQUEST_CREATE_REPORT); }
         catch (RuntimeException e) {
             pendingExportReport = null;
@@ -838,7 +1038,11 @@ public final class MainActivity extends Activity {
         Thread active = scanWorker;
         if (active != null) active.interrupt();
         cancelScanButton.setEnabled(false);
-        statusView.setText("스캔 취소 요청됨. USB/네트워크 작업 중에는 응답 대기 후 중단될 수 있습니다.");
+        EsclScanClient.Transport transport = activeScanTransport;
+        if (transport != null) {
+            try { transport.close(); } catch (Exception ignored) { }
+        }
+        statusView.setText("취소 요청됨 · 연결 종료 및 작업 정리 중");
     }
 
     private void saveEsclPdf(Uri destination, boolean usb, boolean feeder, String host,
@@ -848,8 +1052,8 @@ public final class MainActivity extends Activity {
             return;
         }
         scanCancellationRequested = false;
-        cancelScanButton.setEnabled(true);
-        statusView.setText("eSCL 문서 스캔 중… (최대 12장, 32MiB)");
+        setScanUiBusy(true);
+        statusView.setText("스캔 중 · 최대 12장 / 총 32MiB");
         try {
             writer.execute(() -> {
                 scanWorker = Thread.currentThread();
@@ -857,6 +1061,8 @@ public final class MainActivity extends Activity {
                 try {
                     if (scanCancellationRequested) throw new IOException("스캔 취소됨");
                     try (EsclScanClient.Transport transport = openScannerTransport(usb, host, path, vid, pid)) {
+                        activeScanTransport = transport;
+                        if (scanCancellationRequested) throw new IOException("스캔 취소됨");
                         List<byte[]> pages = EsclScanClient.scan(transport, feeder, count ->
                             runOnUiThread(() -> { if (!isDestroyed() && !scanCancellationRequested)
                                 statusView.setText("eSCL 문서 스캔: " + count + "페이지 수신"); }));
@@ -874,20 +1080,21 @@ public final class MainActivity extends Activity {
                             : "eSCL 스캔 실패: " + e.getMessage()
                                 + " (저장 대상에 불완전한 파일이 남아 있을 수 있습니다)";
                 } finally {
+                    activeScanTransport = null;
                     scanWorker = null;
                     scanInProgress.set(false);
                 }
                 String result = outcome;
                 runOnUiThread(() -> {
                     if (!isDestroyed()) {
-                        cancelScanButton.setEnabled(false);
+                        setScanUiBusy(false);
                         statusView.setText(result);
                     }
                 });
             });
         } catch (RuntimeException rejected) {
             scanInProgress.set(false);
-            cancelScanButton.setEnabled(false);
+            setScanUiBusy(false);
             statusView.setText("스캔 작업을 시작할 수 없습니다.");
         }
     }
@@ -993,6 +1200,10 @@ public final class MainActivity extends Activity {
     protected void onSaveInstanceState(Bundle outState) {
         outState.putString(STATE_EXPORT_SNAPSHOT, pendingExportReport);
         outState.putBoolean(STATE_SERIAL, serialCheckbox.isChecked());
+        outState.putInt(STATE_PAGE, activePage);
+        outState.putBoolean(STATE_SHOW_REPORT, reportExpanded);
+        outState.putString(STATE_LAN_ADDRESS, lanHostInput.getText().toString());
+        outState.putBoolean(STATE_FEEDER_SELECTED, feederCheck.isChecked());
         outState.putString(STATE_PRINT_DEVICE_NAME, pendingPrintDeviceName);
         outState.putInt(STATE_PRINT_VID, pendingPrintVid);
         outState.putInt(STATE_PRINT_PID, pendingPrintPid);
@@ -1016,6 +1227,8 @@ public final class MainActivity extends Activity {
         scanCancellationRequested = true;
         Thread active = scanWorker;
         if (active != null) active.interrupt();
+        EsclScanClient.Transport transport = activeScanTransport;
+        if (transport != null) try { transport.close(); } catch (Exception ignored) { }
         writer.shutdownNow();
         super.onDestroy();
     }

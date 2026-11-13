@@ -337,8 +337,25 @@ public final class EsclHostTests {
         }
     }
 
+    static void cancellationPolicy() throws Exception {
+        try (LanEsclTransport t = new LanEsclTransport("192.168.1.100")) {
+            t.close();
+            fails(() -> t.exchange("GET", "/eSCL/ScannerCapabilities", null, null, 1024),
+                    "Cancelled LAN session rejects new HTTP calls without network access");
+        }
+        UsbManager manager = new UsbManager();
+        UsbDevice printer = printer();
+        manager.connection = new UsbDeviceConnection();
+        try (UsbEsclHttpTransport t = UsbEsclHttpTransport.open(manager, printer)) {
+            t.close();
+            check(manager.connection.closed, "USB cancel closes underlying connection");
+            fails(() -> t.exchange("GET", "/eSCL/ScannerCapabilities", null, null, 1024),
+                    "Cancelled USB session rejects new commands");
+        }
+    }
+
     public static void main(String[] args) throws Exception {
-        protocol(); scan(); network(); usb();
+        protocol(); scan(); network(); usb(); cancellationPolicy();
         System.out.println("PASS: " + checks + " eSCL protocol and USB/LAN mock checks");
     }
 }

@@ -10,6 +10,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Direct eSCL HTTP/1.1 over USB Printer Class=7/SubClass=1/Protocol=4.
  *  Bounded wire parser supports fixed-length and chunked responses.
@@ -24,7 +25,7 @@ public final class UsbEsclHttpTransport implements EsclScanClient.Transport {
     private final byte[] input = new byte[8192];
     private int begin = 0;
     private int end = 0;
-    private boolean closed;
+    private final AtomicBoolean closed = new AtomicBoolean(false);
 
     private UsbEsclHttpTransport(UsbDeviceConnection conn, UsbInterface intf,
             UsbEndpoint in, UsbEndpoint out) {
@@ -86,7 +87,7 @@ public final class UsbEsclHttpTransport implements EsclScanClient.Transport {
 
     @Override public synchronized EsclScanClient.Reply exchange(String method, String path,
             String mediaType, byte[] body, int limit) throws IOException {
-        if (closed) throw new IOException("USB scanner is closed");
+        if (closed.get()) throw new IOException("USB scanner is closed");
         UsbHttpRequestPolicy.validate(method, path, mediaType, body, limit);
         StringBuilder req = new StringBuilder();
         req.append(method).append(' ').append(path).append(" HTTP/1.1\r\n")
@@ -202,9 +203,10 @@ public final class UsbEsclHttpTransport implements EsclScanClient.Transport {
         throw new IOException("Too many USB HTTP chunks");
     }
 
-    @Override public synchronized void close() {
-        if (closed) return;
-        closed = true;
+    @Override public void close() {
+        // Do not acquire exchange()'s monitor: UI cancellation must be able
+        // to close the USB connection while a bulkTransfer is blocked.
+        if (!closed.compareAndSet(false, true)) return;
         try { connection.releaseInterface(usbInterface); } catch (RuntimeException ignored) { }
         connection.close();
     }

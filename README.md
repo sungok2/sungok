@@ -1,7 +1,9 @@
-# Galaxy Universal I/O — M0.8 Android runtime QA build
+> **M0.9 (2026-11-13)** Current update: task-first scan/print/device UI, cancellation recovery, Android 13 multi-tab smoke workflow. See [M0.9 changelog](docs/M0_9_CHANGELOG.md). Physical scanner/printer compatibility is unverified.
+
+# Galaxy Universal I/O — M0.9 Android runtime QA build
 
 - Target: Galaxy S20 Ultra / Android 13; developer: Windows 11 / JDK 21 / Gradle 9.8.0.
-- M0.8 adds a visible scan cancellation request, guards against concurrent scan requests, makes scan and printer controls full-width on portrait screens, corrects stale report versions, and adds an Android 13 emulator launch/screenshot CI smoke test.
+- M0.9 adds a visible scan cancellation request, guards against concurrent scan requests, makes scan and printer controls full-width on portrait screens, corrects stale report versions, and adds an Android 13 emulator launch/screenshot CI smoke test.
 - Cancellation is **not guaranteed immediate** during an Android USB `bulkTransfer()` or HTTP read timeout. The app requests interruption and prevents partial PDF export when interrupted before the final copy. Android's document picker may create a blank destination even when a scan fails or is cancelled.
 - APK build success and emulator activity launch are separate from real hardware interoperability.
 - **Not supported universally:** vendor-specific USB scanner protocols, TWAIN/WIA-only scanners, all printer drivers, OCR, duplex ADF, mDNS, and every printer document language.
@@ -114,3 +116,12 @@ call verify-galaxy-windows.bat
 빌드 성공 시 `app\build\outputs\apk\debug\app-debug.apk` 생성 여부를 확인합니다. 빌드가 실제 성공하기 전에는 APK가 생성되었다고 판단하면 안 됩니다. Galaxy S20 Ultra에서의 USB OTG 전원·권한·스캐너/프린터 실제 결과를 `docs/DEVICE_TEST_RECORD.csv`에 기록하세요.
 
 최신 기술 검증과 후속 하드웨어 시험 체크리스트: `docs/M0_6_VERIFICATION.md`, `docs/M0_5_HARDWARE_TEST.md`.
+
+## M0.9 Task-first UX and scan cancellation
+
+- Default landing: **Scan**. Top navigation separates Scan / Print / Devices, rather than showing disabled USB functions in the initial view.
+- Network address, ADF preference, diagnostics tab and report expansion survive Activity recreation.
+- Controls use >=48dp touch targets; device/report details are collapsed on the scan entry point.
+- Cancel a LAN scan by disconnecting the active HTTP connection; cancel USB scan by closing the USB connection without waiting for the exchange monitor. Device firmware may still delay cancellation.
+- Important: HTTP scanner use on private LAN only with consent; HTTPS certificates remain verified, not bypassed.
+- No hardware-specific compatibility claim is made by the emulator-only smoke check.

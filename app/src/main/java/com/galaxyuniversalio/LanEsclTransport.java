@@ -12,6 +12,8 @@ import java.util.Locale;
 /** Explicit user-selected, IPv4 private-LAN eSCL HTTP or verified HTTPS; no redirects. */
 public final class LanEsclTransport implements EsclScanClient.Transport {
     private final String origin;
+    private volatile HttpURLConnection activeConnection;
+    private volatile boolean closed;
 
     public LanEsclTransport(String address) throws IOException {
         if (address == null) throw new IOException("Scanner address missing");
@@ -52,14 +54,25 @@ public final class LanEsclTransport implements EsclScanClient.Transport {
     }
 
     @Override public String origin() { return origin; }
-    @Override public void close() { }
+    @Override public void close() {
+        closed = true;
+        HttpURLConnection connection = activeConnection;
+        if (connection != null) connection.disconnect();
+    }
 
     @Override public EsclScanClient.Reply exchange(String method, String path,
             String contentType, byte[] body, int maxBytes) throws IOException {
         if (!path.startsWith("/eSCL/") || path.contains("..") || path.contains("?")
                 || path.contains("#") || path.contains("\\"))
             throw new IOException("Unsafe eSCL endpoint");
+        if (closed) throw new IOException("Scanner connection was cancelled");
         HttpURLConnection conn = (HttpURLConnection) new URL(origin + path).openConnection();
+        activeConnection = conn;
+        if (closed) {
+            activeConnection = null;
+            conn.disconnect();
+            throw new IOException("Scanner connection was cancelled");
+        }
         conn.setInstanceFollowRedirects(false);
         conn.setConnectTimeout(5000);
         conn.setReadTimeout(90000);
@@ -80,7 +93,10 @@ public final class LanEsclTransport implements EsclScanClient.Transport {
             byte[] bytes = new byte[0];
             if (input != null) try (InputStream in = input) { bytes = bounded(in, maxBytes); }
             return new EsclScanClient.Reply(status, location, type, bytes);
-        } finally { conn.disconnect(); }
+        } finally {
+            activeConnection = null;
+            conn.disconnect();
+        }
     }
 
     static byte[] bounded(InputStream input, int limit) throws IOException {
