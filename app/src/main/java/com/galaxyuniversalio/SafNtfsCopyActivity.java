@@ -300,7 +300,7 @@ public final class SafNtfsCopyActivity extends Activity {
                             int fraction = (int) Math.min(1000.0, bytes * 1000.0 / declaredSize);
                             progress.setProgress(fraction);
                         }
-                        showStatus("복사: " + name + "\\n전송 " + bytes + "바이트" +
+                        showStatus("복사: " + name + "\n전송 " + bytes + "바이트" +
                                 (declaredSize >= 0 ? " / " + declaredSize + "바이트" : ""));
                     });
                 });
@@ -312,7 +312,7 @@ public final class SafNtfsCopyActivity extends Activity {
             runOnUiThread(() -> {
                 progress.setIndeterminate(true);
                 showStatus("SHA-256 재검증 중: " + name +
-                        "\\nUSB 파일을 다시 읽어 기록 내용을 비교합니다.");
+                        "\nUSB 파일을 다시 읽어 기록 내용을 비교합니다.");
             });
             VerifiedStreamCopy.Result readBack;
             try (InputStream in = getContentResolver().openInputStream(temporary)) {
