@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 APK="app/build/outputs/apk/debug/app-debug.apk"
-PKG="com.galaxyuniversalio.debug"
+PKG="com.galaxyuniversalio.master"
 mkdir -p ci-evidence
 adb wait-for-device
 adb install -r "$APK"
