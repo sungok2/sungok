@@ -21,6 +21,15 @@ import android.widget.ImageView;
 import android.widget.VideoView;
 import android.widget.MediaController;
 import android.net.Uri;
+import android.content.Intent;
+import android.database.Cursor;
+import android.provider.OpenableColumns;
+import android.os.Build;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.nio.charset.CodingErrorAction;
 import android.media.AudioManager;
 import android.media.AudioFocusRequest;
 import android.media.AudioAttributes;
@@ -65,6 +74,10 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
     private boolean cinemaOpen=false;
     private VideoView cinematicVideo;
     private boolean canShowAdult=false;
+    private final NovelReaderPanel.Session novelSession=new NovelReaderPanel.Session();
+    private String novelSentence=null;
+    private static final int REQUEST_NOVEL_TXT=617;
+    private int cinemaStage=0;
     private AudioManager audioManager;
     private AudioFocusRequest focusRequest;
     private boolean audioFocused=false;
@@ -74,10 +87,11 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
         repeatIndex=Math.max(0,Math.min(REP.length-1,prefs.getInt("repeats",2)));
         gapIndex=Math.max(0,Math.min(GAP.length-1,prefs.getInt("gap",2)));
         canShowAdult=prefs.getBoolean("confirmed19",false);
+        cinemaStage=prefs.getInt("cinema_stage",0);
         if(saved!=null){
             scene=Math.max(0,Math.min(TITLES.length-1,saved.getInt("scene",scene)));
             line=Math.max(0,Math.min(EN[scene].length-1,saved.getInt("line",line)));
-            tab=Math.max(0,Math.min(4,saved.getInt("tab",tab)));
+            tab=Math.max(0,Math.min(5,saved.getInt("tab",tab)));
         }
         audioManager=(AudioManager)getSystemService(AUDIO_SERVICE);
         if(audioManager!=null){
@@ -117,9 +131,9 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
     private LinearLayout card(String title,String detail){LinearLayout c=column();c.setPadding(dp(17),dp(16),dp(17),dp(16));c.setBackground(surface(SURFACE));add(c,label(title,19,WHITE,true),0);if(detail!=null&&!detail.isEmpty())add(c,label(detail,14,MUTED,false),8);return c;}
     private void heading(String title,String subtitle){add(body,label(title,27,WHITE,true),12);add(body,label(subtitle,15,MUTED,false),7);}
     private void go(int screen){stopCinema();releaseAudioFocus();cinemaOpen=false;tab=screen;onStage=false;if(lab!=null)lab.stop();ttsRequested=false;refImage=null;lastResult=null;render();}
-    private void changeScene(int index){scene=index;line=2;go(1);}
-    private void selectLine(int index){line=index;refImage=null;lastResult=null;tab=2;render();prepareReference();}
-    private void prepareReference(){pauseCinema();if(lab!=null){ttsRequested=true;lab.setPhrase(EN[scene][line],line);}}
+    private void changeScene(int index){scene=index;line=Math.min(2,EN[scene].length-1);novelSentence=null;go(1);}
+    private void selectLine(int index){line=index;novelSentence=null;refImage=null;lastResult=null;tab=2;render();prepareReference();}
+    private void prepareReference(){pauseCinema();if(lab!=null){ttsRequested=true;lab.setPhrase(novelSentence==null?EN[scene][line]:novelSentence,line);}}
     private boolean requestAudioFocus(){
         if(audioManager==null||focusRequest==null)return false;
         if(audioFocused)return true;
@@ -139,10 +153,11 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
         LinearLayout title=column();title.setPadding(dp(18),dp(12),dp(18),dp(10));add(title,label("STORY ENGLISH",15,GOLD,true),0);add(title,label("CINEMATIC AUDIO LAB · 3.7.4 · OFFLINE PREVIEW",11,MUTED,false),5);root.addView(title);
         ScrollView scroll=new ScrollView(this);body=column();body.setPadding(dp(18),0,dp(18),dp(32));scroll.addView(body);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         if(!canShowAdult){ageGate();return;}
-        if(tab==0)home();else if(tab==1)learning();else if(tab==2)shadowing();else if(tab==3)progress();else settings();
+        if(tab==0)home();else if(tab==1)learning();else if(tab==2)shadowing();else if(tab==3)progress();else if(tab==4)settings();else novelStudy();
         LinearLayout tabs=row();tabs.setPadding(dp(5),dp(5),dp(5),dp(5));tabs.setBackgroundColor(SURFACE);
-        String[] names={"오늘","장면","쉐도잉","기록","설정"};
-        for(int i=0;i<5;i++){final int idx=i;TextView t=label(names[i],13,i==tab?GOLD:MUTED,true);t.setGravity(Gravity.CENTER);t.setMinHeight(dp(50));t.setContentDescription(names[i]+" 탭");t.setOnClickListener(v->go(idx));tabs.addView(t,new LinearLayout.LayoutParams(0,dp(50),1));}
+        String[] names={"오늘","장면","소설","쉐도잉","설정"};
+        int[] targets={0,1,5,2,4};
+        for(int i=0;i<5;i++){final int idx=targets[i];TextView t=label(names[i],13,idx==tab?GOLD:MUTED,true);t.setGravity(Gravity.CENTER);t.setMinHeight(dp(50));t.setContentDescription(names[i]+" 탭");t.setOnClickListener(v->go(idx));tabs.addView(t,new LinearLayout.LayoutParams(0,dp(50),1));}
         root.addView(tabs,new LinearLayout.LayoutParams(-1,-2));
     }
     private void ageGate(){heading("성인 영어 학습","19세 이상 성인 대상 · MATURE 교육용 콘텐츠");
@@ -188,7 +203,7 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
         controller.setAnchorView(video);
         video.setMediaController(controller);
         video.setOnPreparedListener(mp->{mp.setLooping(false);});
-        video.setOnCompletionListener(mp->releaseAudioFocus());
+        video.setOnCompletionListener(mp->{releaseAudioFocus();setCinemaStage(2);});
         video.setOnErrorListener((mp,what,extra)->{
             new AlertDialog.Builder(this).setMessage("영상을 재생할 수 없습니다. 저장 공간 또는 미디어 코덱을 확인해 주세요.")
                 .setPositiveButton("확인",null).show();
@@ -203,7 +218,103 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
         },false),9);
         add(body,button("영상 닫기",()->{stopCinema();releaseAudioFocus();cinemaOpen=false;render();},false),8);
         add(body,label("학습 표현: I want to be closer to you. / Is this okay? / Let's take our time. / We can stop whenever you want.",14,MUTED,false),12);
+        if(cinemaStage==1)add(body,label("영상 종료 후 의미 이해 단계가 활성화됩니다.",13,BLUE,true),9);
         add(body,label("이 영상은 정지 이미지에 화면 이동과 장면 전환을 더한 교육용 편집물입니다. 실제 성우·배우 촬영 영상이 아닙니다.",12,MUTED,false),8);
+    }
+
+    /** Read-only selection of licensed or learner-authored English TXT via the Android system picker. */
+    private void importNovelTxt(){
+        Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("text/plain");
+        startActivityForResult(intent,REQUEST_NOVEL_TXT);
+    }
+    @Override protected void onActivityResult(int requestCode,int resultCode,Intent data){
+        super.onActivityResult(requestCode,resultCode,data);
+        if(requestCode!=REQUEST_NOVEL_TXT || resultCode!=RESULT_OK || data==null || data.getData()==null)return;
+        Uri uri=data.getData();
+        try(InputStream in=getContentResolver().openInputStream(uri);
+            ByteArrayOutputStream bytes=new ByteArrayOutputStream()){
+            if(in==null)throw new IllegalArgumentException("선택한 파일을 열 수 없습니다.");
+            byte[] buf=new byte[4096];int n;
+            while((n=in.read(buf))!=-1){
+                if(bytes.size()+n>98304)throw new IllegalArgumentException("96KiB를 초과하는 파일입니다. 일부를 나누어 불러오세요.");
+                bytes.write(buf,0,n);
+            }
+            String raw=StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(bytes.toByteArray())).toString();
+            if(!raw.isEmpty() && raw.charAt(0)=='\uFEFF')raw=raw.substring(1);
+            String title="선택한 영문 원문";
+            try(Cursor cursor=getContentResolver().query(uri,new String[]{OpenableColumns.DISPLAY_NAME},null,null,null)){
+                if(cursor!=null&&cursor.moveToFirst()){
+                    int idx=cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                    if(idx>=0){
+                        String name=cursor.getString(idx);
+                        if(name!=null&&!name.isEmpty())title=name.length()>90?name.substring(0,90):name;
+                    }
+                }
+            }catch(Exception ignored){}
+            novelSession.load(raw,title,false);
+            novelSentence=null;go(5);
+        }catch(Exception ex){
+            new AlertDialog.Builder(this).setTitle("원문 가져오기 실패")
+                .setMessage(ex instanceof IllegalArgumentException?ex.getMessage():"UTF-8 영어 TXT 파일을 확인해 주세요.")
+                .setPositiveButton("확인",null).show();
+        }
+    }
+    private void novelStudy(){
+        NovelReaderPanel.Host host=new NovelReaderPanel.Host(){
+            @Override public void importText(){importNovelTxt();}
+            @Override public void listen(String phrase){
+                if(requestAudioFocus())lab.playOrPrepare(phrase,0,REP[repeatIndex],GAP[gapIndex]);
+            }
+            @Override public void shadow(String phrase){
+                novelSentence=phrase;go(2);prepareReference();
+            }
+            @Override public void refresh(){render();}
+        };
+        NovelReaderPanel panel=new NovelReaderPanel(this,novelSession,host,prefs.getBoolean("large",false));
+        panel.render(body);
+        add(body,button("영화 장면으로 돌아가기 →",()->{novelSentence=null;go(1);},false),20);
+    }
+    private void setCinemaStage(int next){
+        if(next<=cinemaStage)return;
+        cinemaStage=next;
+        prefs.edit().putInt("cinema_stage",cinemaStage).apply();
+    }
+    private void cinemaAnswer(boolean correct,String explanation,int stage){
+        if(correct){
+            setCinemaStage(stage);
+            if(prefs.getBoolean("sounds",true))SoundFx.play(81);
+        }
+        new AlertDialog.Builder(this)
+            .setTitle(correct?"원문에 맞습니다":"다시 생각해 보세요")
+            .setMessage(explanation)
+            .setPositiveButton("확인",(d,w)->{if(correct)render();}).show();
+    }
+    private void immersionCoach(){
+        if(scene!=3)return;
+        add(body,label("STORY INTERACTION · 이야기를 따라가는 3단계",19,WHITE,true),19);
+        add(body,label("완료 "+Math.min(3,cinemaStage)+" / 3 · 대사 예측 → 장면 감상 → 의미 이해",13,BLUE,true),7);
+        if(cinemaStage<1){
+            add(body,card("01 · 대사 예측","상대방이 더 가까워지고 싶다고 말했을 때, 자연스럽게 동의를 확인하는 대사는?"),11);
+            add(body,button("Is this okay?",()->cinemaAnswer(true,"상대방에게 괜찮은지 확인하는 질문입니다.",1),true),9);
+            add(body,button("You don't have a choice.",()->cinemaAnswer(false,"상대방의 선택을 무시하므로 동의 표현이 아닙니다.",1),false),8);
+            add(body,button("We must hurry.",()->cinemaAnswer(false,"상대방의 의사를 확인하는 표현은 아닙니다.",1),false),8);
+        }else if(cinemaStage<2){
+            add(body,card("02 · 장면 감상","짧은 영상을 보고 어떤 대사에서 상대방의 속도를 존중하는지 찾아보세요."),11);
+            add(body,button("영상 플레이어 열기",()->{cinemaOpen=true;render();},true),9);
+            add(body,label("영상이 끝날 때까지 자동 재생되지 않습니다. 언제든 일시정지할 수 있습니다.",13,MUTED,false),7);
+        }else if(cinemaStage<3){
+            add(body,card("03 · 표현 해석","“Let us take our time.”의 정확한 뉘앙스는?"),11);
+            add(body,button("서두르지 말고 천천히 하자는 뜻",()->cinemaAnswer(true,"상대방의 속도를 존중하면서 진행하자는 표현입니다.",3),true),9);
+            add(body,button("지금 즉시 결정하자는 뜻",()->cinemaAnswer(false,"take our time은 서두르지 않는다는 뜻입니다.",3),false),8);
+        }else{
+            add(body,card("✓ 장면 학습 완료","이야기의 의미를 이해했습니다. 직접 발화해 보면 표현을 더 오래 기억하는 데 도움이 됩니다."),12);
+            add(body,button("동의 확인 표현 쉐도잉 연습 →",()->{novelSentence=null;line=1;go(2);prepareReference();},true),10);
+        }
     }
     private View sceneArtwork(){
         if(scene==0 || scene==3){
@@ -220,10 +331,13 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
     }
     private void home(){heading("영어, 더 가까운 대화로.","성인이 실제로 마주하는 친밀한 상황을 듣고 말해 보세요.");
         add(body,sceneArtwork(),18);
+        immersionCoach();
         cinematicLesson();
         add(body,label("MATURE · 비노골적 성인 상황 · 교육용",13,ROSE,true),12);
         add(body,card("오늘의 장면 · "+TITLES[scene],DESCRIPTIONS[scene]),10);
         add(body,button("장면 듣고 학습하기  →",()->go(1),true),14);
+        add(body,card("성인소설로 이어지는 영어 학습","이야기를 읽고 실제 원문 표현을 분석한 뒤 듣기·쉐도잉으로 연결합니다."),18);
+        add(body,button("📖 소설 원문으로 학습하기 →",()->go(5),true),12);
         add(body,label("성인 영어 주제 "+TITLES.length+"개",20,WHITE,true),22);
         for(int i=0;i<TITLES.length;i++){final int idx=i;
             add(body,button((i+1)+"  "+TITLES[i]+"  ·  "+FUNCTIONS[i],()->changeScene(idx),false),10);
@@ -232,6 +346,7 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
     }
     private void learning(){heading(TITLES[scene],"상황을 보고, 실제 대화를 듣고, 필요한 문장을 선택하세요.");
         add(body,sceneArtwork(),12);
+        immersionCoach();
         cinematicLesson();
         add(body,label("MATURE  ·  "+FUNCTIONS[scene],13,ROSE,true),10);
         add(body,button("대화 전체 듣기  ▶",()->{if(requestAudioFocus()){pauseCinema();lab.playDialogue(EN[scene]);}},true),12);
@@ -252,11 +367,11 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
     }
     private void shadowing(){heading("쉐도잉 스튜디오","반복 듣기 · 자동 녹음 · 실제 스펙트로그램 비교");
         add(body,label("THE SCENE  ·  "+TITLES[scene],13,ROSE,true),8);
-        add(body,card("따라 말할 문장",EN[scene][line]+"\n"+(prefs.getBoolean("translation",true)?KO[scene][line]:"")),10);
-        add(body,button("다른 문장 선택하기",()->go(1),false),10);
+        add(body,card(novelSentence==null?"따라 말할 문장":"성인소설 원문 따라 말하기",(novelSentence==null?EN[scene][line]:novelSentence)+(novelSentence==null && prefs.getBoolean("translation",true)?"\n"+KO[scene][line]:"")),10);
+        add(body,button(novelSentence==null?"다른 장면 문장 선택":"소설 읽기로 돌아가기",()->go(novelSentence==null?1:5),false),10);
         controlRow("반복 횟수",REP[repeatIndex]+"회",true);
         controlRow("반복 간격",GAP[gapIndex]+"초",false);
-        add(body,button("기준 음성 반복 듣기  ▶",()->{if(requestAudioFocus()){pauseCinema();lab.playOrPrepare(EN[scene][line],line,REP[repeatIndex],GAP[gapIndex]);}},true),14);
+        add(body,button("기준 음성 반복 듣기  ▶",()->{if(requestAudioFocus()){pauseCinema();lab.playOrPrepare(novelSentence==null?EN[scene][line]:novelSentence,line,REP[repeatIndex],GAP[gapIndex]);}},true),14);
         add(body,button("재생 중지",()->{lab.stop();releaseAudioFocus();ttsRequested=false;refImage=null;lastResult=null;render();},false),9);
         add(body,label("기준 음성은 현재 기기의 TTS 합성음입니다. 사람이 연기한 원음이 아닙니다.",13,MUTED,false),8);
         add(body,label("내 목소리로 따라 말하기",20,WHITE,true),20);
@@ -307,7 +422,7 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
         add(body,card("쉐도잉 횟수",attempts+"회"),14);
         add(body,card("최고 음향 유사도",best<0?"아직 기록 없음":best+" / 100"),12);
         add(body,label("다른 목소리·속도·장치·배경 소음에 따라 비교값이 변합니다. 학습 숙련도나 CEFR 등급을 판정하지 않습니다.",13,MUTED,false),14);
-        add(body,button("쉐도잉 시작하기 →",()->{go(2);prepareReference();},true),18);
+        add(body,button("쉐도잉 시작하기 →",()->{novelSentence=null;go(2);prepareReference();},true),18);
     }
     private void setting(String key,String labelText,boolean defaultValue){boolean value=prefs.getBoolean(key,defaultValue);
         add(body,button(labelText+"  ·  "+(value?"켜짐":"꺼짐"),()->{prefs.edit().putBoolean(key,!value).apply();render();},false),12);
@@ -317,6 +432,8 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
         setting("sounds","유사도별 효과음",true);
         setting("large","글자 확대",false);
         setting("reduce_motion","시각적 움직임 최소화",false);
+        add(body,button("학습 기록 보기",()->go(3),false),12);
+        add(body,button("성인소설 원문 읽기 →",()->go(5),false),10);
         add(body,card("개인정보","마이크로 녹음한 실제 PCM은 메모리에서 분석한 뒤 폐기하며 파일로 저장하거나 업로드하지 않습니다. 기기에는 반복 설정, 완료 횟수, 최고 음향 유사도만 보관합니다."),18);
         add(body,button("모든 학습 기록 삭제",()->new AlertDialog.Builder(this).setTitle("기록을 삭제할까요?").setMessage("앱의 학습 기록, 성인 자기확인, 설정이 지워집니다.")
             .setNegativeButton("취소",null).setPositiveButton("삭제",(d,w)->{lab.stop();prefs.edit().clear().apply();canShowAdult=false;refImage=null;lastResult=null;render();}).show(),false),18);
