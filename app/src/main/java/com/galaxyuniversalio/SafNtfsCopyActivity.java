@@ -463,7 +463,7 @@ public final class SafNtfsCopyActivity extends Activity {
                         "\n실제 NTFS 형식과 안전 제거 이후 데이터 영속성은 확인되지 않았습니다.";
             } catch (Exception e) {
                 report = "쓰기 진단 실패: " + e.getMessage() +
-                        "\n삼성 기본 NTFS 경로가 읽기 전용이면 다른 NTFS 쓰기 제공자를 연결해야 합니다." +
+                        "\n" + NtfsFailureAdvice.nextStep(e.toString()) +
                         "\n임시 파일 복구 메뉴가 표시되면 확인 후 정리하세요.";
             } finally {
                 copying = false;
@@ -554,8 +554,9 @@ public final class SafNtfsCopyActivity extends Activity {
                 final String details = e.getClass().getSimpleName() + ": " + e.getMessage();
                 failureSummary = details;
                 runOnUiThread(() -> showStatus("중단: " + successful + "/" + selection.size() +
-                        "개 완료. " + details + "\n이미 저장된 파일은 자동 삭제하지 않습니다. " +
-                        "대상 파일과 복구 메뉴를 확인하세요."));
+                        "개 완료. " + details + "\n" +
+                        NtfsFailureAdvice.nextStep(details) +
+                        "\n이미 저장된 파일은 자동 삭제하지 않습니다. 대상 파일과 복구 메뉴를 확인하세요."));
             } finally {
                 lastAudit = audit.finish(selection.size(), completed == selection.size(),
                         failureSummary);
