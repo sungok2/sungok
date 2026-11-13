@@ -25,6 +25,7 @@ final class SafVerifiedTransaction {
         void beforeReadback();
         String rename(String documentId, String finalName) throws IOException;
         String displayName(String documentId) throws IOException;
+        InputStream openPublishedForRead(String documentId) throws IOException;
         boolean deleteTemporary(String documentId) throws IOException;
         boolean clearJournal();
         void cleanupError(Exception e);
@@ -82,6 +83,13 @@ final class SafVerifiedTransaction {
                 throw new IOException("Destination changed filename to '" + actualName +
                         "'. File was copied, but original name was not preserved.");
             }
+            // A provider may replace the document ID during rename. Verify the final URI
+            // too, rather than assuming the staging handle and published content match.
+            VerifiedStreamCopy.Result finalReadback;
+            try (InputStream in = backend.openPublishedForRead(published)) {
+                finalReadback = VerifiedStreamCopy.hash(in, cancel);
+            }
+            VerifiedStreamCopy.verify(written, finalReadback);
             return new Receipt(written.bytes, written.sha256);
         } catch (IOException e) {
             primary = e;
