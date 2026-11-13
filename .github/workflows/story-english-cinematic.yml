@@ -57,7 +57,24 @@ jobs:
           grep -E 'android:allowBackup.*0x0' /tmp/manifest.txt
           ! grep -Eq 'android:debuggable.*(0x1|0xffffffff)' /tmp/manifest.txt
           unzip -Z1 "$APK" | tee /tmp/entries.txt
-          grep -Fx 'res/raw/scene_quiet_evening.mp4' /tmp/entries.txt
+          # AAPT2 shortens packaged resource filenames; compare unpacked bytes with source.
+          MP4_ENTRY="$(grep -E '^res/[^[:space:]]+\.mp4
+          mkdir -p dist
+          cp "$APK" dist/STORY_ENGLISH_3.7.3_CINEMATIC_LAB.apk
+          cp /tmp/{signing.txt,badging.txt,manifest.txt,entries.txt,embedded_video_sha256.txt} dist/
+          sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
+          printf 'OFFLINE MATURE EDUCATIONAL EVALUATION ONLY. Synthetic actors/voices, self-attested age, not production identity. Temporary signing key; not an update to the original STORY ENGLISH app.\n' > dist/NOT_PRODUCTION_RELEASE.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: STORY-ENGLISH-373-CINEMATIC-LAB
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+ /tmp/entries.txt | head -n 1)"
+          test -n "$MP4_ENTRY"
+          unzip -p "$APK" "$MP4_ENTRY" > /tmp/embedded_scene.mp4
+          cmp /tmp/embedded_scene.mp4 story-english-preview/app/src/main/res/raw/scene_quiet_evening.mp4
+          sha256sum /tmp/embedded_scene.mp4 | tee /tmp/embedded_video_sha256.txt
           mkdir -p dist
           cp "$APK" dist/STORY_ENGLISH_3.7.3_CINEMATIC_LAB.apk
           cp /tmp/{signing.txt,badging.txt,manifest.txt,entries.txt} dist/
