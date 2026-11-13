@@ -1,3 +1,13 @@
+# Galaxy Universal I/O M0.10 — NTFS SAF MASTER Hardening (2026-11-13)
+
+- 이전 M0.9과 나란히 설치하기 위한 분리 패키지 com.galaxyuniversalio.master를 사용함.
+- 루팅 없이 NTFS USB 쓰기 지원: **외부 NTFS 읽기/쓰기 DocumentsProvider가 노출한 폴더에서만 가능**. OS의 NTFS 읽기 전용을 직접 해제하지 않음.
+- Windows 파일명 검증, SHA-256 전량 재읽기 검증, 기존 이름 덮어쓰기 차단과 외부 변경 경합 차단 시도.
+- 파일별 SHA-256 검증 보고서 TXT 저장. 실패 시 사용자 확인식 잔여 임시 파일 복구; 작업 재개와 자체 USB NTFS 드라이버는 미구현.
+- 상세: docs/M0_10_HARDENING.md
+
+---
+
 # Galaxy Universal I/O — M0.9 NTFS USB 파일 전송 (SAF 호환)
 
 **작동 범위:** 본 앱에서 파일 선택 → 외부 DocumentsProvider의 대상 폴더 선택 → USB에 임시 파일 생성 → SHA-256 읽기 재검증 → 원래 이름으로 변경. 루팅은 필요하지 않습니다.

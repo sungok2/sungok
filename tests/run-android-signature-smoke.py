@@ -148,7 +148,7 @@ public class ProgressBar extends android.view.View {
  public void setMax(int v){}public void setProgress(int v){}
 }""",
 'android/util/Log.java': """package android.util; public class Log {
- public static int w(String tag,String msg,Throwable ex){return 0;}
+ public static int w(String tag,String msg,Throwable ex){return 0;} public static int w(String tag,String msg){return 0;} public static int i(String tag,String msg){return 0;}
 }""",
 'android/provider/DocumentsContract.java': """package android.provider;
 import android.content.ContentResolver;import android.net.Uri;import java.io.FileNotFoundException;
@@ -161,11 +161,48 @@ public class DocumentsContract {
  public static Uri renameDocument(ContentResolver r,Uri p,String name)throws FileNotFoundException{return null;}
  public static boolean deleteDocument(ContentResolver r,Uri p)throws FileNotFoundException{return false;}
  public static final class Document {
-  public static final String COLUMN_MIME_TYPE="",COLUMN_FLAGS="",COLUMN_DISPLAY_NAME="",MIME_TYPE_DIR="";
-  public static final int FLAG_DIR_SUPPORTS_CREATE=8;
+  public static final String COLUMN_MIME_TYPE="",COLUMN_FLAGS="",COLUMN_DISPLAY_NAME="",COLUMN_DOCUMENT_ID="",MIME_TYPE_DIR="";
+  public static final int FLAG_DIR_SUPPORTS_CREATE=8,FLAG_SUPPORTS_WRITE=2,FLAG_SUPPORTS_RENAME=64;
  }
 }"""
 })
+
+
+# M0.10: durable recovery journal uses SharedPreferences.
+stubs.update({
+'android/content/SharedPreferences.java': """package android.content;
+public interface SharedPreferences {
+ String getString(String k,String fallback);
+ Editor edit();
+ interface Editor {
+  Editor putString(String k,String v);
+  Editor clear();
+  boolean commit();
+ }
+}"""
+})
+stubs['android/content/Context.java'] = stubs['android/content/Context.java'].replace(
+ 'public class Context {', 'public class Context { public static final int MODE_PRIVATE=0;'
+).replace(
+ 'public String getPackageName()',
+ 'public SharedPreferences getSharedPreferences(String name,int mode){return null;}public String getPackageName()'
+)
+
+
+# Built-in Android UI surfaces used by the M0.10 master transfer screen.
+stubs.update({
+'android/graphics/drawable/GradientDrawable.java': """package android.graphics.drawable;
+public class GradientDrawable {
+ public GradientDrawable(){}
+ public void setColor(int c){}
+ public void setCornerRadius(float r){}
+ public void setStroke(int width,int color){}
+}"""
+})
+stubs['android/view/View.java'] = stubs['android/view/View.java'].replace(
+ 'public void setPadding(int a,int b,int c,int d){}',
+ 'public void setBackgroundColor(int color){} public void setBackground(Object d){} public void setPadding(int a,int b,int c,int d){}'
+)
 
 with tempfile.TemporaryDirectory() as tmp:
  t=Path(tmp)

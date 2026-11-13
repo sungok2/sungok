@@ -1,7 +1,7 @@
 name: Galaxy Universal I-O Android debug APK
 on:
   push:
-    branches: [galaxy-universal-io-m0-7, galaxy-universal-io-m0-8, galaxy-universal-io-ntfs-saf-m0-9]
+    branches: [galaxy-universal-io-m0-7, galaxy-universal-io-m0-8, galaxy-universal-io-ntfs-saf-m0-9, galaxy-universal-io-ntfs-m1-0-hardening]
   workflow_dispatch:
 permissions:
   contents: read
@@ -36,6 +36,9 @@ jobs:
           bash tests/run-reliability-tests.sh
           bash tests/run-usb-http-policy-tests.sh
           bash tests/run-ntfs-saf-tests.sh
+          bash tests/run-ntfs-name-tests.sh
+          bash tests/run-ntfs-transaction-tests.sh
+          bash tests/run-ntfs-audit-tests.sh
           python3 tests/run-android-signature-smoke.py
       - name: Assemble Android debug APK
         run: gradle --no-daemon :app:assembleDebug --stacktrace
@@ -47,11 +50,11 @@ jobs:
         run: |
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose app/build/outputs/apk/debug/app-debug.apk
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | tee apk-badging.txt
-          grep -F "package: name='com.galaxyuniversalio.debug'" apk-badging.txt
+          grep -F "package: name='com.galaxyuniversalio.master'" apk-badging.txt
       - name: Upload debug APK
         uses: actions/upload-artifact@v7
         with:
-          name: GalaxyUniversalIO-M0.9-debug-apk
+          name: GalaxyUniversalIO-M0.10-MASTER-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
@@ -73,7 +76,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: GalaxyUniversalIO-M0.9-emulator-evidence
+          name: GalaxyUniversalIO-M0.10-MASTER-emulator-evidence
           path: ci-evidence/
           if-no-files-found: warn
           retention-days: 7
