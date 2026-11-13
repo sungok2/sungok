@@ -1,0 +1,89 @@
+name: Publish GalaxyUSB M0.11 direct APK
+on:
+  push:
+    branches: [galaxy-universal-io-m0-11-master-ntfs-preflight]
+    paths: [.github/workflows/publish-ntfs-m011-download.yml]
+permissions:
+  contents: read
+jobs:
+  verify-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '9.8.0'
+      - uses: android-actions/setup-android@v4
+      - name: Install Android SDK
+        run: |
+          sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+          yes | sdkmanager --licenses > /dev/null || true
+      - name: Verify all existing and new host regressions
+        run: |
+          for script in run-host-tests run-printer-transport-tests run-imaging-pdf-tests run-escl-tests run-ipp-tests run-reliability-tests run-usb-http-policy-tests run-ntfs-saf-tests run-ntfs-name-tests run-ntfs-transaction-tests run-ntfs-audit-tests run-ntfs-write-probe-tests run-ntfs-destination-advisor-tests run-ntfs-failure-advice-tests; do
+            bash "tests/$script.sh"
+          done
+          python3 tests/run-android-signature-smoke.py
+      - name: Assemble signed APK
+        run: gradle --no-daemon :app:assembleDebug
+      - name: Inspect APK and checksum
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee badging.txt
+          grep -F "package: name='com.galaxyuniversalio.m011'" badging.txt
+          grep -F "versionName='0.11.0-master-debug'" badging.txt
+          mkdir -p direct-download
+          cp "$APK" direct-download/GalaxyUSB_M011_MASTER.apk
+          ( cd direct-download && sha256sum GalaxyUSB_M011_MASTER.apk > SHA256SUMS.txt )
+      - uses: actions/upload-artifact@v7
+        with:
+          name: verified-galaxyusb-m011
+          path: direct-download/
+          if-no-files-found: error
+          retention-days: 7
+  publish:
+    needs: verify-build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: verified-galaxyusb-m011
+          path: direct-download
+      - name: Create public pre-release with login-free direct APK asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          TAG=galaxyusb-m011-master-20261113
+          cat > notes.txt <<'EOF'
+          Galaxy Universal I/O M0.11 MASTER — experimental debug APK.
+          
+          APK package: com.galaxyuniversalio.m011. Install alongside earlier versions.
+          
+          This app does NOT contain an independent NTFS filesystem driver.
+          Writing to an NTFS USB requires a separate writable DocumentsProvider
+          (for example OTG Master) and explicit Android USB authorization.
+          Galaxy S20 Ultra physical USB writes and power-loss durability remain UNVERIFIED.
+          Back up files and use a test USB drive before regular use.
+          EOF
+          gh release create "$TAG" \
+            direct-download/GalaxyUSB_M011_MASTER.apk \
+            direct-download/SHA256SUMS.txt \
+            --title "Galaxy Universal I/O M0.11 MASTER (experimental)" \
+            --target "$GITHUB_SHA" \
+            --notes-file notes.txt \
+            --prerelease \
+            --latest=false
+          gh release view "$TAG" --json assets,url
+          echo "Direct download: https://github.com/$GH_REPO/releases/download/$TAG/GalaxyUSB_M011_MASTER.apk" >> "$GITHUB_STEP_SUMMARY"
