@@ -21,6 +21,7 @@ import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -41,6 +42,7 @@ public final class SafNtfsCopyActivity extends Activity {
     private static final int REQ_SOURCES = 3101;
     private static final int REQ_TARGET = 3102;
     private static final int REQ_RECOVER = 3103;
+    private static final int REQ_EXPORT_REPORT = 3104;
     private static final String RECOVERY_PREFS = "ntfs_transfer_journal_v1";
     private static final AtomicBoolean PROCESS_TRANSFER_ACTIVE = new AtomicBoolean(false);
     private static final int MAX_FILES = 128;
@@ -49,7 +51,8 @@ public final class SafNtfsCopyActivity extends Activity {
     private final ArrayList<Uri> sources = new ArrayList<>();
     private TextView status;
     private ProgressBar progress;
-    private Button selectButton, cancelButton, recoveryButton;
+    private Button selectButton, cancelButton, recoveryButton, auditButton;
+    private volatile String lastAudit;
     private volatile boolean copying;
 
     @Override
@@ -106,6 +109,13 @@ public final class SafNtfsCopyActivity extends Activity {
         recoveryButton.setText("중단된 임시 전송 파일 정리");
         recoveryButton.setOnClickListener(v -> confirmRecovery());
         column.addView(recoveryButton);
+
+        auditButton = new Button(this);
+        auditButton.setAllCaps(false);
+        auditButton.setText("검증 보고서(TXT) 저장");
+        auditButton.setEnabled(false);
+        auditButton.setOnClickListener(v -> exportAudit());
+        column.addView(auditButton);
 
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setIndeterminate(true);
@@ -166,6 +176,10 @@ public final class SafNtfsCopyActivity extends Activity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode != RESULT_OK || data == null || copying) return;
+        if (requestCode == REQ_EXPORT_REPORT) {
+            writeAuditDocument(data.getData());
+            return;
+        }
         if (requestCode == REQ_RECOVER) {
             handleRecoverySelection(data);
             return;
@@ -234,6 +248,8 @@ public final class SafNtfsCopyActivity extends Activity {
         }
         copying = true;
         cancel.set(false);
+        lastAudit = null;
+        auditButton.setEnabled(false);
         selectButton.setEnabled(false);
         recoveryButton.setEnabled(false);
         cancelButton.setEnabled(true);
@@ -242,6 +258,8 @@ public final class SafNtfsCopyActivity extends Activity {
         ArrayList<Uri> selection = new ArrayList<>(sources);
         worker.execute(() -> {
             int completed = 0;
+            String failureSummary = null;
+            NtfsTransferAudit audit = new NtfsTransferAudit();
             try {
                 Uri parent = DocumentsContract.buildDocumentUriUsingTree(tree,
                         DocumentsContract.getTreeDocumentId(tree));
@@ -267,7 +285,9 @@ public final class SafNtfsCopyActivity extends Activity {
                         progress.setMax(1000);
                         progress.setProgress(0);
                     });
-                    copyOne(tree, parent, source, fileName, mimeType, sourceSize);
+                    SafVerifiedTransaction.Receipt receipt =
+                            copyOne(tree, parent, source, fileName, mimeType, sourceSize);
+                    audit.success(fileName, receipt);
                     completed++;
                 }
                 final int successful = completed;
@@ -276,16 +296,20 @@ public final class SafNtfsCopyActivity extends Activity {
             } catch (Exception e) {
                 final int successful = completed;
                 final String details = e.getClass().getSimpleName() + ": " + e.getMessage();
+                failureSummary = details;
                 runOnUiThread(() -> showStatus("중단: " + successful + "/" + selection.size() +
                         "개 완료. " + details + "\n이미 저장된 파일은 자동 삭제하지 않습니다. " +
                         "대상 파일과 복구 메뉴를 확인하세요."));
             } finally {
+                lastAudit = audit.finish(selection.size(), completed == selection.size(),
+                        failureSummary);
                 copying = false;
                 PROCESS_TRANSFER_ACTIVE.set(false);
                 runOnUiThread(() -> {
                     progress.setVisibility(View.GONE);
                     selectButton.setEnabled(true);
                     cancelButton.setEnabled(false);
+                    auditButton.setEnabled(lastAudit != null);
                     refreshRecoveryUi();
                 });
             }
@@ -323,7 +347,7 @@ public final class SafNtfsCopyActivity extends Activity {
         return false;
     }
 
-    private void copyOne(Uri tree, Uri parent, Uri source, String name,
+    private SafVerifiedTransaction.Receipt copyOne(Uri tree, Uri parent, Uri source, String name,
                          String mimeType, long declaredSize) throws IOException {
         final long[] lastShown = {0L};
         SafVerifiedTransaction.Receipt receipt = SafVerifiedTransaction.execute(
@@ -404,6 +428,7 @@ public final class SafNtfsCopyActivity extends Activity {
                 });
         android.util.Log.i("NtfsSafCopy", "Verified bytes=" + receipt.bytes +
                 " sha256=" + receipt.sha256 + " (actual durable media flush not guaranteed)");
+        return receipt;
     }
 
     private static final class Pending {
@@ -561,6 +586,41 @@ public final class SafNtfsCopyActivity extends Activity {
                 progress.setVisibility(View.GONE);
                 selectButton.setEnabled(true);
                 refreshRecoveryUi();
+            });
+        });
+    }
+
+    private void exportAudit() {
+        if (copying || lastAudit == null) return;
+        Intent choose = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        choose.addCategory(Intent.CATEGORY_OPENABLE);
+        choose.setType("text/plain");
+        choose.putExtra(Intent.EXTRA_TITLE, "GalaxyUniversalIO-M0.10-NTFS-SHA256.txt");
+        choose.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+        startActivityForResult(choose, REQ_EXPORT_REPORT);
+    }
+
+    private void writeAuditDocument(Uri destination) {
+        if (destination == null || copying) return;
+        final String content = lastAudit;
+        if (content == null) return;
+        auditButton.setEnabled(false);
+        showStatus("검증 보고서를 저장하는 중입니다.");
+        worker.execute(() -> {
+            String finalStatus;
+            try (OutputStream out = getContentResolver().openOutputStream(destination, "wt")) {
+                if (out == null) throw new IOException("문서 제공자가 출력 스트림을 열지 않았습니다.");
+                out.write(content.getBytes(StandardCharsets.UTF_8));
+                out.flush();
+                finalStatus = "검증 보고서를 TXT로 저장했습니다. USB 자료의 실제 영구 기록은 별도 확인이 필요합니다.";
+            } catch (Exception e) {
+                finalStatus = "검증 보고서 저장 실패: " + e.getMessage() +
+                        "\n선택한 대상 파일에 일부 내용이 남아 있을 수 있습니다.";
+            }
+            String result = finalStatus;
+            runOnUiThread(() -> {
+                showStatus(result);
+                auditButton.setEnabled(lastAudit != null);
             });
         });
     }
