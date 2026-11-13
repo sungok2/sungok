@@ -24,7 +24,7 @@ public final class NtfsTransactionHostTests {
         final Set<String> published = new HashSet<>();
         String tempId, journal, finalName;
         int nameChecks, cleanupErrors, creates, deletes;
-        boolean corruptRead, failWrite, failDelete, renameToAlternate;
+        boolean corruptRead, corruptPublished, failWrite, failDelete, renameToAlternate;
         boolean failCreateBeforeReturn, failJournal, conflictOnSecondCheck, failClearJournal;
 
         @Override public void ensureFinalAbsent(String name) throws IOException {
@@ -78,6 +78,13 @@ public final class NtfsTransactionHostTests {
             return assigned;
         }
         @Override public String displayName(String id) { return id; }
+        @Override public InputStream openPublishedForRead(String id) {
+            byte[] b=documents.get(id);
+            if (corruptPublished && b.length>0) {
+                b=Arrays.copyOf(b,b.length);b[b.length-1]^=0x21;
+            }
+            return new ByteArrayInputStream(b);
+        }
         @Override public boolean deleteTemporary(String id) throws IOException {
             deletes++;
             if (failDelete) return false;
@@ -128,6 +135,11 @@ public final class NtfsTransactionHostTests {
         fails(() -> send(changedName),"provider changes requested name");
         check(changedName.documents.containsKey("myfile.txt (1)"),"alternate name not destroyed");
         check(changedName.journal==null,"journal cleared after published alternate");
+
+        Fake postRenameCorrupt=new Fake();postRenameCorrupt.corruptPublished=true;
+        fails(() -> send(postRenameCorrupt),"published content corrupted after rename");
+        check(postRenameCorrupt.documents.containsKey("myfile.txt"),"do not silently delete published data");
+        check(postRenameCorrupt.journal==null,"journal cleared after publishing even on final verification error");
 
         Fake lostResponse=new Fake();lostResponse.failCreateBeforeReturn=true;
         fails(() -> send(lostResponse),"ambiguous create response");
