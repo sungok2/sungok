@@ -241,6 +241,29 @@ public final class SpeechLab {
         }catch(Exception e){postStatus("기준 음성 재생에 실패했습니다.");}
         finally{playing=null;if(a!=null){try{a.stop();}catch(Exception ignored){}a.release();}}
     }
+    /** Native TTS sequence for longer prose. Not used as a spectrogram reference. */
+    public void playTextRepeats(String sentence,int repetitions,int gapSeconds){
+        if(!ready||tts==null){
+            postStatus("영어 TTS 초기화가 완료되면 다시 눌러주세요.");
+            main.post(()->listener.playbackFinished());
+            return;
+        }
+        if(sentence==null||sentence.trim().isEmpty())return;
+        stopPlaybackAndRecording();
+        tts.stop();
+        int count=Math.max(1,Math.min(10,repetitions));
+        int gap=Math.max(0,Math.min(10,gapSeconds));
+        int generation=epoch;
+        tts.setSpeechRate(0.92f);
+        lastDialogueId="novel-reading:"+(count-1)+":"+generation;
+        for(int i=0;i<count;i++){
+            final String id="novel-reading:"+i+":"+generation;
+            if(i>0&&gap>0)tts.playSilentUtterance(gap*1000L,TextToSpeech.QUEUE_ADD,
+                 "novel-gap:"+i+":"+generation);
+            tts.speak(sentence,i==0?TextToSpeech.QUEUE_FLUSH:TextToSpeech.QUEUE_ADD,new Bundle(),id);
+        }
+        postStatus("긴 원문을 TTS로 "+count+"회 재생합니다. 간격 "+gap+"초.");
+    }
     public void playDialogue(String[] lines){
         if(!ready||tts==null){postStatus("영어 TTS 음성을 준비할 수 없습니다.");return;}
         stopPlaybackAndRecording();
