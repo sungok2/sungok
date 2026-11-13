@@ -46,6 +46,14 @@ jobs:
           m10=zlib.decompress(Path('../M10_ProbeActivity.kt.zlib').read_bytes())
           assert hashlib.sha256(m10).hexdigest() == 'c91b86bb09c666ebc6c986bb6d6d44bbdfcaa29273fea8a676adcaa4e13d9435'
           base.write_bytes(m10)
+          gradle=Path('android-app/build.gradle.kts')
+          gradle_text=gradle.read_text()
+          gradle_text=gradle_text.replace('versionCode = 9', 'versionCode = 10').replace('versionName = "0.9.0-diagnostic"', 'versionName = "0.10.0-link-diagnostics"')
+          assert 'versionCode = 10' in gradle_text and '0.10.0-link-diagnostics' in gradle_text
+          gradle.write_text(gradle_text)
+          manifest=Path('android-app/src/main/AndroidManifest.xml')
+          manifest_text=manifest.read_text().replace('Diagnostic M9', 'Link Diagnostic M10')
+          manifest.write_text(manifest_text)
           patch=zlib.decompress(Path('../M11_from_M10.patch.zlib').read_bytes())
           assert hashlib.sha256(patch).hexdigest() == '140687dfcc5ca0d8aeeaf86cb68670a69b47174e5e98fc4023001b292463f98c'
           Path('../M11_from_M10.patch').write_bytes(patch)
