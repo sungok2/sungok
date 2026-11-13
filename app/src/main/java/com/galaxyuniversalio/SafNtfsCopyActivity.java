@@ -313,87 +313,84 @@ public final class SafNtfsCopyActivity extends Activity {
         return false;
     }
 
-    private void copyOne(Uri tree, Uri parent, Uri source, String name, String mimeType, long declaredSize) throws IOException {
-        if (childNameExists(parent, name)) {
-            throw new IOException("덮어쓰기 방지: 같은 이름의 대상 파일이 존재합니다: " + name);
-        }
-        // A fixed-size random staging filename supports maximum-length final names.
-        String partialName = NtfsNamePolicy.temporaryName();
-        Uri temporary = null;
-        boolean renamed = false;
-        // Durable record must precede the provider's potentially mutating createDocument.
-        recordPending(tree, partialName, name);
-        try {
-            temporary = DocumentsContract.createDocument(getContentResolver(),
-                    parent, mimeType, partialName);
-            if (temporary == null) throw new IOException("임시 대상 파일 생성이 거부되었습니다.");
-            requireRenameAndWriteSupport(temporary);
-            VerifiedStreamCopy.Result written;
-            try (InputStream in = getContentResolver().openInputStream(source);
-                 OutputStream out = getContentResolver().openOutputStream(temporary, "wt")) {
-                if (in == null || out == null) throw new IOException("입출력 스트림을 열지 못했습니다.");
-                final long[] lastShownAt = {0L};
-                written = VerifiedStreamCopy.copy(in, out, cancel, bytes -> {
+    private void copyOne(Uri tree, Uri parent, Uri source, String name,
+                         String mimeType, long declaredSize) throws IOException {
+        final long[] lastShown = {0L};
+        SafVerifiedTransaction.Receipt receipt = SafVerifiedTransaction.execute(
+                new SafVerifiedTransaction.Backend() {
+                    @Override public void ensureFinalAbsent(String requested) throws IOException {
+                        if (childNameExists(parent, requested)) {
+                            throw new IOException("덮어쓰기 방지: 대상에 같은 이름이 있습니다: " + requested);
+                        }
+                    }
+                    @Override public void journal(String temporaryName, String requested) throws IOException {
+                        recordPending(tree, temporaryName, requested);
+                    }
+                    @Override public String createTemporary(String temporaryName) throws IOException {
+                        Uri created = DocumentsContract.createDocument(getContentResolver(), parent,
+                                mimeType, temporaryName);
+                        if (created == null) return null;
+                        String actualName = getDisplayName(created);
+                        if (!actualName.equals(temporaryName) &&
+                                !actualName.startsWith(temporaryName + ".")) {
+                            // The URI is valid, so return it; next capability check will run.
+                            // Any remainder is covered by deleteTemporary in execute's finally.
+                            android.util.Log.w("NtfsSafCopy", "Provider modified staging filename");
+                        }
+                        return created.toString();
+                    }
+                    @Override public void requireWritableAndRenameable(String id) throws IOException {
+                        requireRenameAndWriteSupport(Uri.parse(id));
+                    }
+                    @Override public InputStream openSource() throws IOException {
+                        return getContentResolver().openInputStream(source);
+                    }
+                    @Override public OutputStream openTemporaryForWrite(String id) throws IOException {
+                        // "w" is not guaranteed to truncate; "wt" requests truncation.
+                        return getContentResolver().openOutputStream(Uri.parse(id), "wt");
+                    }
+                    @Override public InputStream openTemporaryForRead(String id) throws IOException {
+                        return getContentResolver().openInputStream(Uri.parse(id));
+                    }
+                    @Override public void beforeReadback() {
+                        runOnUiThread(() -> {
+                            progress.setIndeterminate(true);
+                            showStatus("SHA-256 재검증 중: " + name +
+                                    "\nUSB 파일을 처음부터 다시 읽어 기록 내용을 비교합니다.");
+                        });
+                    }
+                    @Override public String rename(String id, String requested) throws IOException {
+                        Uri result = DocumentsContract.renameDocument(getContentResolver(),
+                                Uri.parse(id), requested);
+                        return result == null ? null : result.toString();
+                    }
+                    @Override public String displayName(String id) {
+                        return getDisplayName(Uri.parse(id));
+                    }
+                    @Override public boolean deleteTemporary(String id) throws IOException {
+                        return DocumentsContract.deleteDocument(getContentResolver(), Uri.parse(id));
+                    }
+                    @Override public boolean clearJournal() {
+                        return clearPending();
+                    }
+                    @Override public void cleanupError(Exception e) {
+                        android.util.Log.w("NtfsSafCopy", "Partial cleanup incomplete; journal retained", e);
+                    }
+                }, name, declaredSize, cancel, bytes -> {
                     long now = System.nanoTime();
-                    if (now - lastShownAt[0] < 250_000_000L) return;
-                    lastShownAt[0] = now;
+                    if (now - lastShown[0] < 250_000_000L) return;
+                    lastShown[0] = now;
                     runOnUiThread(() -> {
                         if (declaredSize > 0) {
-                            int fraction = (int) Math.min(1000.0, bytes * 1000.0 / declaredSize);
-                            progress.setProgress(fraction);
+                            progress.setProgress((int) Math.min(1000.0,
+                                    bytes * 1000.0 / declaredSize));
                         }
                         showStatus("복사: " + name + "\n전송 " + bytes + "바이트" +
-                                (declaredSize >= 0 ? " / " + declaredSize + "바이트" : ""));
+                                (declaredSize >= 0 ? " / " + declaredSize : ""));
                     });
                 });
-                if (declaredSize >= 0 && written.bytes != declaredSize) {
-                    throw new IOException("원본 크기와 복사된 크기가 다릅니다: " +
-                            written.bytes + " / " + declaredSize);
-                }
-            }
-            runOnUiThread(() -> {
-                progress.setIndeterminate(true);
-                showStatus("SHA-256 재검증 중: " + name +
-                        "\nUSB 파일을 다시 읽어 기록 내용을 비교합니다.");
-            });
-            VerifiedStreamCopy.Result readBack;
-            try (InputStream in = getContentResolver().openInputStream(temporary)) {
-                if (in == null) throw new IOException("USB에 기록한 파일을 다시 읽지 못했습니다.");
-                readBack = VerifiedStreamCopy.hash(in, cancel);
-            }
-            VerifiedStreamCopy.verify(written, readBack);
-            if (cancel.get()) throw new InterruptedIOException("사용자 취소");
-            if (childNameExists(parent, name)) {
-                throw new IOException("검증 중 같은 이름의 파일이 생겼습니다. 덮어쓰지 않습니다.");
-            }
-            Uri finished = DocumentsContract.renameDocument(getContentResolver(), temporary, name);
-            if (finished == null) throw new IOException("검증된 파일의 최종 이름 변경 실패");
-            renamed = true;
-            String actual = getDisplayName(finished);
-            if (!name.equals(actual)) {
-                throw new IOException("복사 및 검증은 완료했으나 다른 이름으로 저장됨: " +
-                        actual + " (요청: " + name + "). 자동 삭제하지 않습니다.");
-            }
-        } catch (SecurityException e) {
-            throw new IOException("문서 제공자의 쓰기 또는 읽기 권한이 없습니다.", e);
-        } catch (RuntimeException e) {
-            throw new IOException("USB 문서 제공자 동작 실패: " + e.getMessage(), e);
-        } finally {
-            boolean cleaned = renamed;
-            if (!renamed && temporary != null) {
-                try {
-                    cleaned = DocumentsContract.deleteDocument(getContentResolver(), temporary);
-                } catch (Exception cleanupFailure) {
-                    android.util.Log.w("NtfsSafCopy", "Temporary cleanup failed; recovery journal kept",
-                            cleanupFailure);
-                }
-            }
-            if (cleaned) {
-                clearPending();
-            } else {
-                runOnUiThread(this::refreshRecoveryUi);
-            }
-        }
+        android.util.Log.i("NtfsSafCopy", "Verified bytes=" + receipt.bytes +
+                " sha256=" + receipt.sha256 + " (actual durable media flush not guaranteed)");
     }
 
     private static final class Pending {
