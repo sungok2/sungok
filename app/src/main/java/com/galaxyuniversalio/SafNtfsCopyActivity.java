@@ -133,6 +133,11 @@ public final class SafNtfsCopyActivity extends Activity {
         help.setPadding(dp(4), dp(10), dp(4), dp(9));
         column.addView(help);
 
+        TextView showGuide = text("삼성 NTFS 읽기 전용 안내 자세히 보기", 13, 0xFF2459A6);
+        showGuide.setPadding(dp(5), dp(5), dp(5), dp(10));
+        showGuide.setOnClickListener(v -> explainSamsungReadOnly());
+        column.addView(showGuide);
+
         probeButton = new Button(this);
         probeButton.setAllCaps(false);
         probeButton.setText("먼저: USB 쓰기 가능 여부 진단 (8KB)");
@@ -235,6 +240,20 @@ public final class SafNtfsCopyActivity extends Activity {
 
     private void showStatus(String text) {
         if (status != null) status.setText(text);
+    }
+
+    private void explainSamsungReadOnly() {
+        new AlertDialog.Builder(this)
+                .setTitle("삼성 내 파일에서 NTFS 복사가 안 될 때")
+                .setMessage("갤럭시 기본 파일 관리자가 NTFS USB를 읽기 전용으로 처리하면 " +
+                        "파일을 보거나 휴대전화로 복사하는 기능과 달리 USB에 새 파일을 쓸 수 없습니다.\n\n" +
+                        "해결 절차:\n1. NTFS USB의 중요한 파일을 PC에 백업\n" +
+                        "2. NTFS 읽기·쓰기를 제공하는 별도 앱에서 USB를 연결\n" +
+                        "3. 이 앱의 'USB 쓰기 가능 여부 진단'에서 그 앱의 USB 폴더 선택\n" +
+                        "4. 8KB 검사 통과 후 실제 파일 복사\n\n" +
+                        "진단 통과는 선택한 폴더의 쓰기 성공만 의미하며, NTFS 드라이버 자체를 이 앱이 가진 것은 아닙니다.")
+                .setPositiveButton("확인", (dialog, which) -> {})
+                .show();
     }
 
     private void pickSources() {
@@ -403,7 +422,7 @@ public final class SafNtfsCopyActivity extends Activity {
                 NtfsProviderAdvisor.Assessment check =
                         NtfsProviderAdvisor.assess(authority, treeId, directory, flags);
                 if (check.definitelyInternal) {
-                    throw new IOException(check.title+"\\n"+check.details);
+                    throw new IOException(check.title+"\n"+check.details);
                 }
                 if (!check.providerAllowsCreate) {
                     throw new IOException(check.title+"\\n"+check.details);
@@ -494,6 +513,13 @@ public final class SafNtfsCopyActivity extends Activity {
                 Uri parent = DocumentsContract.buildDocumentUriUsingTree(tree,
                         DocumentsContract.getTreeDocumentId(tree));
                 ensureWritableDirectory(parent);
+                // A phone destination could pass write tests while not being the USB.
+                NtfsProviderAdvisor.Assessment destination = NtfsProviderAdvisor.assess(
+                        tree.getAuthority(), DocumentsContract.getTreeDocumentId(tree),
+                        true, DocumentsContract.Document.FLAG_DIR_SUPPORTS_CREATE);
+                if (destination.definitelyInternal) {
+                    throw new IOException("USB 폴더가 아니라 휴대전화 내부 저장공간을 선택했습니다.");
+                }
                 // Validate the entire batch before touching any destination files.
                 List<String> plannedNames = new ArrayList<>();
                 for (Uri source : selection) {
