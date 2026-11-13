@@ -1,88 +1,201 @@
 package com.storyenglish.preview;
-import android.app.*;import android.os.*;import android.content.*;import android.graphics.*;import android.graphics.drawable.*;import android.speech.tts.*;import android.view.*;import android.widget.*;import java.util.*;
 
-public final class MainActivity extends Activity {
-  // Standalone offline UX review, NOT an update of com.storyenglish.app.
-  final int NAVY=Color.rgb(11,18,32), SURFACE=Color.rgb(23,37,58), GOLD=Color.rgb(214,168,95), WHITE=Color.WHITE, MUTED=Color.rgb(203,213,225);
-  final String[] english={"Thanks for coming out tonight.","I've enjoyed getting to know you.","I feel the same way.","I'd like to take things slowly.","Of course. I respect that.","Thank you for understanding.","We can talk again when we're both ready."};
-  final String[] korean={"오늘 저녁에 와 줘서 고마워요.","당신을 알아가는 시간이 즐거웠어요.","저도 같은 마음이에요.","저는 천천히 관계를 발전시키고 싶어요.","물론이죠. 그 마음을 존중해요.","이해해 줘서 고마워요.","서로 준비가 되면 다시 이야기해요."};
-  final String[] expressions={"take things slowly","get to know someone","I respect that"};
-  final String[] meanings={"서두르지 않고 천천히 진행하다","누군가를 알아 가다","그 뜻을 존중해요"};
-  SharedPreferences pref; TextToSpeech tts; boolean voiceReady=false; int page=0,reviewIndex=0; boolean revealed=false;
-  LinearLayout root,body;
-  int dp(int n){return (int)(n*getResources().getDisplayMetrics().density+0.5f);}
-  int sp(int n){return pref.getBoolean("big",false)?Math.round(n*1.16f):n;}
-  GradientDrawable shape(int c){GradientDrawable d=new GradientDrawable();d.setColor(c);d.setCornerRadius(dp(14));return d;}
-  TextView text(String s,int size,int color,boolean heavy){TextView t=new TextView(this);t.setText(s);t.setTextSize(sp(size));t.setTextColor(color);t.setLineSpacing(dp(3),1.09f);if(heavy)t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);return t;}
-  LinearLayout column(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);return l;}
-  void place(LinearLayout l,View v,int gap){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.topMargin=dp(gap);l.addView(v,p);}
-  Button action(String s,Runnable task,boolean strong){Button b=new Button(this);b.setAllCaps(false);b.setText(s);b.setTextSize(sp(15));b.setTextColor(strong?NAVY:WHITE);b.setBackground(shape(strong?GOLD:SURFACE));b.setMinHeight(dp(52));b.setContentDescription(s);b.setOnClickListener(v->task.run());return b;}
-  void section(String title,String description){place(body,text(title,29,WHITE,true),12);place(body,text(description,15,MUTED,false),8);}
-  void box(String label,String detail){LinearLayout c=column();c.setPadding(dp(18),dp(16),dp(18),dp(16));c.setBackground(shape(SURFACE));place(c,text(label,19,WHITE,true),0);place(c,text(detail,15,MUTED,false),8);place(body,c,14);}
-  void navigate(int n){if(tts!=null)tts.stop();page=n;draw();}
-  boolean done(String key){return pref.getBoolean(key,false);}
-  int score(){return (done("listened")?1:0)+(done("quiz")?1:0)+(done("writing")?1:0);}
-  @Override public void onCreate(Bundle b){super.onCreate(b);pref=getSharedPreferences("story_preview",MODE_PRIVATE);if(b!=null)page=b.getInt("page",0);
-    tts=new TextToSpeech(this,code->{if(code==TextToSpeech.SUCCESS&&tts!=null){int r=tts.setLanguage(Locale.US);voiceReady=(r!=TextToSpeech.LANG_MISSING_DATA&&r!=TextToSpeech.LANG_NOT_SUPPORTED);}});
-    tts.setOnUtteranceProgressListener(new UtteranceProgressListener(){
-      public void onStart(String id){}public void onError(String id){}public void onDone(String id){if("whole".equals(id))runOnUiThread(()->{pref.edit().putBoolean("listened",true).apply();if(page==1)draw();});}});
-    draw();
-  }
-  @Override protected void onSaveInstanceState(Bundle out){out.putInt("page",page);super.onSaveInstanceState(out);}
-  @Override protected void onPause(){super.onPause();if(tts!=null)tts.stop();}
-  @Override protected void onDestroy(){if(tts!=null){tts.stop();tts.shutdown();tts=null;}super.onDestroy();}
-  void speak(String s,String id){if(!voiceReady||tts==null){new AlertDialog.Builder(this).setMessage("영어 TTS 음성을 사용할 수 없습니다. 기기의 음성 설정을 확인해 주세요.").setPositiveButton("확인",null).show();return;}tts.speak(s,TextToSpeech.QUEUE_FLUSH,null,id);}
-  void draw(){root=column();root.setBackgroundColor(NAVY);setContentView(root);
-    LinearLayout head=column();head.setPadding(dp(18),dp(12),dp(18),dp(10));place(head,text("STORY ENGLISH",15,GOLD,true),0);place(head,text("3.7.1  ·  OFFLINE UX PREVIEW",12,MUTED,false),4);root.addView(head);
-    ScrollView scroll=new ScrollView(this);body=column();body.setPadding(dp(18),0,dp(18),dp(28));scroll.addView(body);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
-    if(page==0)home();else if(page==1)lesson();else if(page==2)review();else if(page==3)progress();else settings();
-    LinearLayout tabs=new LinearLayout(this);tabs.setOrientation(LinearLayout.HORIZONTAL);tabs.setPadding(dp(5),dp(4),dp(5),dp(4));tabs.setBackgroundColor(SURFACE);
-    String[] names={"오늘","학습","복습","기록","설정"};
-    for(int i=0;i<5;i++){final int j=i;TextView t=text(names[i],13,i==page?GOLD:MUTED,true);t.setGravity(Gravity.CENTER);t.setMinHeight(dp(52));t.setContentDescription(names[i]+" 탭");t.setOnClickListener(v->navigate(j));tabs.addView(t,new LinearLayout.LayoutParams(0,dp(52),1));}
-    root.addView(tabs);
-  }
-  void home(){section("오늘, 한 장면부터.","실제 학습 흐름을 검토하는 독립 오프라인 시연판입니다.");
-    box("THE BOUNDARY  ·  B1 · MATURE","서로의 경계를 존중하는 성인 대화. 비노골적 자체 제작 시연 콘텐츠이며 원본 시리즈의 에피소드는 아닙니다.");
-    place(body,action(score()==3?"학습 결과 보기":"이어서 학습하기 →",()->navigate(score()==3?3:1),true),16);
-    box("학습 진행",score()+" / 3 활동 완료\n영어 듣기 · 의미 확인 · 문장 작성");
-    place(body,text("이 버전은 기존 앱을 대체하지 않습니다. 운영 AI·계정·영상 서비스가 연결되지 않습니다.",14,MUTED,false),16);
-  }
-  void lesson(){section("The Boundary","듣기 → 표현 이해 → 직접 써보기");
-    box("01  듣기","각 문장을 누르면 기기 기본 영어 음성으로 들을 수 있습니다.");
-    for(int i=0;i<english.length;i++){final int index=i;LinearLayout line=column();line.setPadding(dp(14),dp(12),dp(14),dp(12));line.setBackground(shape(SURFACE));place(line,text((i+1)+". "+english[i],17,WHITE,true),0);
-      if(pref.getBoolean("ko",true))place(line,text(korean[i],14,MUTED,false),6);
-      place(line,action("문장 듣기",()->speak(english[index],"line"+index),false),8);place(body,line,10);}
-    place(body,action("전체 대화 듣기",()->speak(String.join(" ",english),"whole"),true),16);
-    place(body,text(done("listened")?"✓ 전체 듣기 완료":"전체 음성 재생이 끝나면 완료 처리됩니다.",14,MUTED,false),8);
-    box("02  이해 확인","I would like to take things slowly. 의 의미는?");
-    place(body,action("A. 바로 결정을 내리고 싶어요",()->answer(false),false),8);
-    place(body,action("B. 천천히 관계를 발전시키고 싶어요",()->answer(true),false),8);
-    place(body,action("C. 대화를 그만두고 싶어요",()->answer(false),false),8);
-    if(done("quiz"))place(body,text("✓ 이해 문제 완료",14,GOLD,true),8);
-    box("03  직접 영어 문장 작성","서로의 결정을 존중하는 영어 문장을 작성하세요. 입력한 문장 자체는 저장하지 않습니다.");
-    EditText input=new EditText(this);input.setSingleLine(false);input.setMinLines(3);input.setTextSize(sp(17));input.setTextColor(WHITE);input.setHintTextColor(MUTED);input.setHint("I understand and respect your decision.");place(body,input,8);
-    place(body,action("작성 완료 표시",()->{if(input.getText().toString().trim().length()<10){new AlertDialog.Builder(this).setMessage("영어 문장 10자 이상 작성해 주세요.").setPositiveButton("확인",null).show();}else{pref.edit().putBoolean("writing",true).apply();input.setText("");draw();}},true),10);
-    if(done("writing"))place(body,text("✓ 쓰기 단계 완료",14,GOLD,true),8);
-    place(body,action("복습으로 이동 →",()->navigate(2),false),18);
-  }
-  void answer(boolean correct){new AlertDialog.Builder(this).setTitle(correct?"정답입니다":"다시 생각해 보세요").setMessage(correct?"서로의 속도를 존중하는 표현입니다.":"take things slowly는 서두르지 않는다는 뜻입니다.").setPositiveButton("확인",(d,w)->{if(correct){pref.edit().putBoolean("quiz",true).apply();draw();}}).show();}
-  void review(){section("표현을 다시 꺼내 보세요.","뜻을 먼저 떠올리고 확인해 보세요.");
-    box((reviewIndex+1)+" / 3   "+expressions[reviewIndex],revealed?meanings[reviewIndex]:"뜻을 가린 상태입니다.");
-    place(body,action(revealed?"뜻 숨기기":"뜻 확인하기",()->{revealed=!revealed;draw();},true),16);
-    if(revealed){place(body,action("기억해요",()->nextReview(true),false),10);place(body,action("다시 볼래요",()->nextReview(false),false),8);}
-    place(body,text("복습 기록은 기기에만 보관됩니다.",14,MUTED,false),16);
-  }
-  void nextReview(boolean remembered){pref.edit().putInt("review",pref.getInt("review",0)+1).putInt("remember",pref.getInt("remember",0)+(remembered?1:0)).apply();reviewIndex=(reviewIndex+1)%3;revealed=false;draw();}
-  void progress(){section("학습 기록","기기에 저장된 데모 진행도입니다.");
-    box("학습 활동",score()+" / 3 완료"+(score()==3?"\n모든 활동이 완료됐습니다.":"\n남은 단계를 계속 진행해 보세요."));
-    box("복습","복습 "+pref.getInt("review",0)+"회 · 기억함 "+pref.getInt("remember",0)+"회");
-    place(body,action("학습으로 돌아가기",()->navigate(1),true),16);
-    place(body,text("이 기록은 CEFR 공식 평가 결과가 아닙니다.",14,MUTED,false),18);
-  }
-  void settings(){section("학습 설정","이 기기에만 저장되는 화면 설정입니다.");
-    place(body,action("한글 번역 "+(pref.getBoolean("ko",true)?"켜짐":"꺼짐"),()->{pref.edit().putBoolean("ko",!pref.getBoolean("ko",true)).apply();draw();},false),14);
-    place(body,action("큰 글자 "+(pref.getBoolean("big",false)?"켜짐":"꺼짐"),()->{pref.edit().putBoolean("big",!pref.getBoolean("big",false)).apply();draw();},false),10);
-    place(body,action("학습 기록 초기화",()->new AlertDialog.Builder(this).setTitle("기록을 삭제하시겠습니까?").setMessage("이 기기의 시연 기록과 설정이 모두 삭제됩니다.").setNegativeButton("취소",null).setPositiveButton("삭제",(d,w)->{pref.edit().clear().apply();reviewIndex=0;revealed=false;draw();}).show(),false),20);
-    box("개인정보 및 제한사항","인터넷·마이크 권한이 없으며, 로그인과 운영 콘텐츠를 제공하지 않습니다. 영어 문장 입력도 저장되지 않습니다.\n정식 STORY ENGLISH 3.7.1 출시 버전이 아닙니다.");
-  }
+import android.Manifest;
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.os.Bundle;
+import android.view.Gravity;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+import android.widget.ProgressBar;
+
+/** STORY ENGLISH 3.7.2 LAB: stand-alone offline feature prototype, not 3.7.0 source integration. */
+public final class MainActivity extends Activity implements SpeechLab.Listener {
+    private static final int BG=0xff0B1220,SURFACE=0xff182438,EDGE=0xff334155,
+                             GOLD=0xffD6A85F,WHITE=0xffF8FAFC,MUTED=0xffCBD5E1,
+                             ROSE=0xffE5A5B3,BLUE=0xff79B9FC;
+    private static final int[] REP={1,2,3,5,10}, GAP={0,1,2,3,5,8};
+    private static final String[][] EN={
+        {"I really enjoy being close to you.","I feel the same way.","May I kiss you?","Yes, I'd like that.","If anything feels uncomfortable, please tell me.","I will. Thank you for asking."},
+        {"I want to be honest about intimacy.","I'm listening. What feels comfortable for you?","I'd prefer to take things slowly.","That works for me. There's no pressure.","We can stop or change our minds at any time.","Exactly. Consent matters every time."},
+        {"Can we talk about sexual health before we become intimate?","Of course. I think that's important.","I'd like us to discuss contraception and STI testing.","I appreciate you bringing it up.","We should make decisions we both feel good about.","Agreed. Let's talk openly and respectfully."}
+    };
+    private static final String[][] KO={
+        {"당신과 가까이 있는 시간이 정말 좋아요.","저도 같은 마음이에요.","키스해도 될까요?","네, 저도 좋아요.","불편한 점이 생기면 꼭 말해 주세요.","그럴게요. 물어봐 줘서 고마워요."},
+        {"친밀한 관계에 대해 솔직하게 이야기하고 싶어요.","듣고 있어요. 어떤 것이 편안한가요?","저는 서두르지 않고 천천히 진행하고 싶어요.","좋아요. 부담 갖지 않아도 돼요.","우리는 언제든 멈추거나 생각을 바꿀 수 있어요.","맞아요. 동의는 매번 중요하죠."},
+        {"친밀한 관계를 갖기 전에 성 건강에 대해 이야기할까요?","물론이죠. 중요하다고 생각해요.","피임과 성매개감염병 검사에 대해 이야기하고 싶어요.","이야기를 꺼내 줘서 고마워요.","두 사람 모두 마음 편한 결정을 해야 해요.","동의해요. 솔직하고 서로 존중하며 이야기해요."}
+    };
+    private static final String[] TITLES={"The First Kiss","An Intimate Conversation","Sexual Health & Boundaries"};
+    private static final String[] DESCRIPTIONS={
+        "친밀한 감정 표현 · 키스 전 동의 요청 · 상대방 반응 존중",
+        "친밀감에 대한 대화 · 속도 조절 · 언제든 동의 철회",
+        "성 건강 · 피임 · STI 검사에 대한 자연스러운 영어 표현"
+    };
+    private static final String[] FUNCTIONS={"데이트와 동의 표현","친밀감·경계 표현","성 건강·책임 있는 대화"};
+    private SharedPreferences prefs;
+    private SpeechLab lab;
+    private LinearLayout root,body;
+    private TextView statusText,countdownText,scoreText;
+    private ProgressBar recordLevel;
+    private SpectrogramView spectra;
+    private float[][] refImage;
+    private SpectralAnalyzer.Result lastResult;
+    private int scene=0,line=2,tab=0,repeatIndex=2,gapIndex=2;
+    private boolean onStage=false;
+    private boolean ttsRequested=false;
+    private boolean canShowAdult=false;
+    private final int micRequest=108;
+    @Override public void onCreate(Bundle saved){super.onCreate(saved);
+        prefs=getSharedPreferences("adult_learning_preview",MODE_PRIVATE);
+        repeatIndex=Math.max(0,Math.min(REP.length-1,prefs.getInt("repeats",2)));
+        gapIndex=Math.max(0,Math.min(GAP.length-1,prefs.getInt("gap",2)));
+        canShowAdult=prefs.getBoolean("confirmed19",false);
+        if(saved!=null){scene=saved.getInt("scene",0);line=saved.getInt("line",2);tab=saved.getInt("tab",0);}
+        lab=new SpeechLab(this,this);
+        render();
+    }
+    @Override protected void onSaveInstanceState(Bundle out){out.putInt("scene",scene);out.putInt("line",line);out.putInt("tab",tab);super.onSaveInstanceState(out);}
+    @Override protected void onPause(){super.onPause();if(lab!=null)lab.stop();ttsRequested=false;}
+    @Override protected void onDestroy(){if(lab!=null)lab.shutdown();super.onDestroy();}
+    private int dp(int n){return (int)(getResources().getDisplayMetrics().density*n+0.5f);}
+    private float font(int s){return prefs.getBoolean("large",false)?s*1.18f:s;}
+    private GradientDrawable surface(int color){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(16));return d;}
+    private TextView label(String value,int size,int color,boolean bold){TextView t=new TextView(this);t.setText(value);t.setTextColor(color);t.setTextSize(font(size));t.setLineSpacing(dp(3),1.10f);if(bold)t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);return t;}
+    private LinearLayout column(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);return l;}
+    private LinearLayout row(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.HORIZONTAL);l.setGravity(Gravity.CENTER_VERTICAL);return l;}
+    private void add(LinearLayout parent,View view,int margin){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.topMargin=dp(margin);parent.addView(view,p);}
+    private void weighted(LinearLayout parent,View view,int margin){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-2,1);p.leftMargin=dp(margin);parent.addView(view,p);}
+    private Button button(String title,Runnable task,boolean primary){Button b=new Button(this);b.setAllCaps(false);b.setText(title);b.setTextColor(primary?BG:WHITE);b.setTextSize(font(15));b.setMinHeight(dp(52));b.setPadding(dp(12),dp(8),dp(12),dp(8));b.setBackground(surface(primary?GOLD:SURFACE));b.setOnClickListener(v->task.run());b.setContentDescription(title);return b;}
+    private LinearLayout card(String title,String detail){LinearLayout c=column();c.setPadding(dp(17),dp(16),dp(17),dp(16));c.setBackground(surface(SURFACE));add(c,label(title,19,WHITE,true),0);if(detail!=null&&!detail.isEmpty())add(c,label(detail,14,MUTED,false),8);return c;}
+    private void heading(String title,String subtitle){add(body,label(title,27,WHITE,true),12);add(body,label(subtitle,15,MUTED,false),7);}
+    private void go(int screen){tab=screen;onStage=false;if(lab!=null)lab.stop();ttsRequested=false;refImage=null;lastResult=null;render();}
+    private void changeScene(int index){scene=index;line=2;go(1);}
+    private void selectLine(int index){line=index;refImage=null;lastResult=null;tab=2;render();prepareReference();}
+    private void prepareReference(){if(lab!=null){ttsRequested=true;lab.setPhrase(EN[scene][line],line);}}
+    private void render(){root=column();root.setBackgroundColor(BG);setContentView(root);
+        LinearLayout title=column();title.setPadding(dp(18),dp(12),dp(18),dp(10));add(title,label("STORY ENGLISH",15,GOLD,true),0);add(title,label("ADULT LANGUAGE LAB  ·  3.7.2  ·  OFFLINE PREVIEW",11,MUTED,false),5);root.addView(title);
+        ScrollView scroll=new ScrollView(this);body=column();body.setPadding(dp(18),0,dp(18),dp(32));scroll.addView(body);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        if(!canShowAdult){ageGate();return;}
+        if(tab==0)home();else if(tab==1)learning();else if(tab==2)shadowing();else if(tab==3)progress();else settings();
+        LinearLayout tabs=row();tabs.setPadding(dp(5),dp(5),dp(5),dp(5));tabs.setBackgroundColor(SURFACE);
+        String[] names={"오늘","장면","쉐도잉","기록","설정"};
+        for(int i=0;i<5;i++){final int idx=i;TextView t=label(names[i],13,i==tab?GOLD:MUTED,true);t.setGravity(Gravity.CENTER);t.setMinHeight(dp(50));t.setContentDescription(names[i]+" 탭");t.setOnClickListener(v->go(idx));tabs.addView(t,new LinearLayout.LayoutParams(0,dp(50),1));}
+        root.addView(tabs,new LinearLayout.LayoutParams(-1,-2));
+    }
+    private void ageGate(){heading("성인 영어 학습","19세 이상 성인 대상 · MATURE 교육용 콘텐츠");
+        add(body,card("포함되는 주제","데이트, 키스 전 동의, 친밀감, 경계 설정, 성 건강 및 피임에 관한 실제 대화 표현을 학습합니다. 노골적인 신체 노출이나 성행위 영상은 포함하지 않습니다."),18);
+        add(body,card("접근 안내","아래 확인은 본인의 성인 여부를 스스로 선언하는 절차이며 법적인 연령 검증이 아닙니다. 이 검토판은 로그인·서버 연결이 없고 녹음 음성을 외부로 전송하지 않습니다."),14);
+        add(body,button("저는 19세 이상이며 성인 학습 콘텐츠를 이용하겠습니다",()->{prefs.edit().putBoolean("confirmed19",true).apply();canShowAdult=true;render();},true),18);
+        add(body,label("이 검토판은 법적 연령 확인과 권리 승인된 EXPLICIT 영상 제공 기능을 대체하지 않습니다.",13,MUTED,false),12);
+    }
+    private void home(){heading("영어, 더 가까운 대화로.","성인이 실제로 마주하는 친밀한 상황을 듣고 말해 보세요.");
+        AdultSceneView hero=new AdultSceneView(this);hero.setVariant(scene);add(body,hero,18);
+        add(body,label("MATURE · 비노골적 성인 상황 · 교육용",13,ROSE,true),12);
+        add(body,card("오늘의 장면 · "+TITLES[scene],DESCRIPTIONS[scene]),10);
+        add(body,button("장면 듣고 학습하기  →",()->go(1),true),14);
+        add(body,label("성인 영어 주제 3개",20,WHITE,true),22);
+        for(int i=0;i<TITLES.length;i++){final int idx=i;
+            add(body,button((i+1)+"  "+TITLES[i]+"  ·  "+FUNCTIONS[i],()->changeScene(idx),false),10);
+        }
+        add(body,label("성우 음성 대신 기기 TTS로 재생합니다. 성인용 몰입 영상·실제 화자 음성은 이 APK에 포함돼 있지 않습니다.",13,MUTED,false),18);
+    }
+    private void learning(){heading(TITLES[scene],"상황을 보고, 실제 대화를 듣고, 필요한 문장을 선택하세요.");
+        AdultSceneView illustration=new AdultSceneView(this);illustration.setVariant(scene);add(body,illustration,12);
+        add(body,label("MATURE  ·  "+FUNCTIONS[scene],13,ROSE,true),10);
+        add(body,button("대화 전체 듣기  ▶",()->lab.playDialogue(EN[scene]),true),12);
+        add(body,label("표현을 눌러 쉐도잉·원음 비교로 이동합니다.",14,MUTED,false),16);
+        for(int i=0;i<EN[scene].length;i++){
+            final int n=i;LinearLayout c=card((i%2==0?"A:  ":"B:  ")+EN[scene][i],prefs.getBoolean("translation",true)?KO[scene][i]:"");
+            add(c,button("이 문장 집중 듣기 · 쉐도잉 →",()->selectLine(n),false),10);
+            add(body,c,10);
+        }
+    }
+    private void adjust(boolean isRepeat,int direction){if(isRepeat){repeatIndex=(repeatIndex+direction+REP.length)%REP.length;prefs.edit().putInt("repeats",repeatIndex).apply();}
+        else{gapIndex=(gapIndex+direction+GAP.length)%GAP.length;prefs.edit().putInt("gap",gapIndex).apply();}render();}
+    private void controlRow(String title,String value,boolean isRepeat){LinearLayout r=row();r.setPadding(dp(12),dp(8),dp(12),dp(8));r.setBackground(surface(SURFACE));
+        TextView name=label(title+"  "+value,16,WHITE,true);r.addView(name,new LinearLayout.LayoutParams(0,-2,1));
+        Button minus=button("−",()->adjust(isRepeat,-1),false);minus.setMinWidth(dp(52));r.addView(minus,new LinearLayout.LayoutParams(dp(52),dp(52)));
+        Button plus=button("+",()->adjust(isRepeat,1),false);plus.setMinWidth(dp(52));r.addView(plus,new LinearLayout.LayoutParams(dp(52),dp(52)));
+        add(body,r,10);
+    }
+    private void shadowing(){heading("쉐도잉 스튜디오","반복 듣기 · 자동 녹음 · 실제 스펙트로그램 비교");
+        add(body,label("THE SCENE  ·  "+TITLES[scene],13,ROSE,true),8);
+        add(body,card("따라 말할 문장",EN[scene][line]+"\n"+(prefs.getBoolean("translation",true)?KO[scene][line]:"")),10);
+        add(body,button("다른 문장 선택하기",()->go(1),false),10);
+        controlRow("반복 횟수",REP[repeatIndex]+"회",true);
+        controlRow("반복 간격",GAP[gapIndex]+"초",false);
+        add(body,button("기준 음성 반복 듣기  ▶",()->{if(!lab.hasReference())prepareReference();else lab.playRepeats(REP[repeatIndex],GAP[gapIndex]);},true),14);
+        add(body,button("재생 중지",()->{lab.stop();ttsRequested=false;refImage=null;lastResult=null;render();},false),9);
+        add(body,label("기준 음성은 현재 기기의 TTS 합성음입니다. 사람이 연기한 원음이 아닙니다.",13,MUTED,false),8);
+        add(body,label("내 목소리로 따라 말하기",20,WHITE,true),20);
+        add(body,label("마이크 허용 → 3 · 2 · 1 → 자동 녹음. 말을 마친 뒤 약 1.3초 정적이면 자동 종료됩니다.",14,MUTED,false),8);
+        countdownText=label("●  READY",37,ROSE,true);countdownText.setGravity(Gravity.CENTER);countdownText.setMinHeight(dp(76));add(body,countdownText,10);
+        recordLevel=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);recordLevel.setMax(100);recordLevel.setProgress(0);add(body,recordLevel,8);
+        add(body,button("3·2·1 카운트다운 후 자동 녹음",this::requestShadowing,true),12);
+        add(body,button("녹음 취소",()->{lab.stop();ttsRequested=false;refImage=null;lastResult=null;render();},false),9);
+        scoreText=label("",19,GOLD,true);add(body,scoreText,14);
+        spectra=new SpectrogramView(this);spectra.setSpectra(refImage,lastResult==null?null:lastResult.learnerImage);add(body,spectra,12);
+        add(body,label("그래프: 가로축 시간, 세로축 주파수 110Hz~6kHz. 음향 유사도는 발음·단어 인식 정확도가 아닙니다.",13,MUTED,false),9);
+        if(lastResult!=null)showComparison(lastResult);
+        statusText=label(lab.hasReference()?"기준 음성 준비됨":ttsRequested?"기준 음성 합성 중…":"기준 음성 준비 버튼을 누르세요.",14,BLUE,false);add(body,statusText,14);
+        if(!lab.hasReference()&&!ttsRequested) add(body,button("기준 음성 생성",this::prepareReference,false),10);
+    }
+    private void showComparison(SpectralAnalyzer.Result result){if(scoreText!=null){
+        if(result.similarity<0)scoreText.setText(result.note);
+        else scoreText.setText("음향 유사도 "+result.similarity+" / 100  ·  "+(result.similarity>=78?"높음":result.similarity>=55?"중간":"다시 비교"));}}
+    private void requestShadowing(){if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){
+        requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},micRequest);return;
+        }startShadowing();
+    }
+    private void startShadowing(){if(!lab.hasReference()){if(!ttsRequested)prepareReference();onStatus("기준 음성 준비 후 녹음할 수 있습니다.");return;}
+        onStage=true;lab.beginCountdown();}
+    @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] results){super.onRequestPermissionsResult(requestCode,permissions,results);
+        if(requestCode==micRequest){if(results.length>0&&results[0]==PackageManager.PERMISSION_GRANTED&&tab==2)startShadowing();
+            else new AlertDialog.Builder(this).setMessage("마이크 권한이 허용되지 않아 녹음을 시작할 수 없습니다. 권한 없이도 듣기 기능은 이용할 수 있습니다.").setPositiveButton("확인",null).show();}
+    }
+    @Override public void status(String text){if(statusText!=null&&tab==2)statusText.setText(text);}
+    @Override public void countdown(int second){if(tab!=2||countdownText==null)return;
+        if(second>0){countdownText.setText(String.valueOf(second));countdownText.setTextColor(GOLD);
+            countdownText.announceForAccessibility("녹음 시작까지 "+second+"초");
+            if(!prefs.getBoolean("reduce_motion",false)){countdownText.setScaleX(1.35f);countdownText.setScaleY(1.35f);countdownText.animate().scaleX(1).scaleY(1).setDuration(380).start();}
+        }else if(second==0){countdownText.setText("●  RECORDING");countdownText.setTextColor(ROSE);countdownText.announceForAccessibility("녹음 시작");}
+        else {countdownText.setText("✓  FINISHED");countdownText.setTextColor(BLUE);}
+    }
+    @Override public void meter(float value){if(tab==2&&recordLevel!=null)recordLevel.setProgress((int)(100*value));}
+    @Override public void reference(float[][] image){refImage=image;if(tab==2&&spectra!=null)spectra.setSpectra(refImage,lastResult==null?null:lastResult.learnerImage);}
+    @Override public void comparison(SpectralAnalyzer.Result result){lastResult=result;
+        if(tab==2){if(spectra!=null)spectra.setSpectra(result.referenceImage,result.learnerImage);showComparison(result);}
+        if(result.similarity>=0){int best=prefs.getInt("best",-1);prefs.edit().putInt("attempts",prefs.getInt("attempts",0)+1).putInt("best",Math.max(best,result.similarity)).apply();
+            if(prefs.getBoolean("sounds",true))SoundFx.play(result.similarity);
+        }
+    }
+    private void progress(){heading("나의 연습 기록","기기 안에 저장되는 시도 횟수와 음향 유사도입니다.");
+        int attempts=prefs.getInt("attempts",0),best=prefs.getInt("best",-1);
+        add(body,card("쉐도잉 횟수",attempts+"회"),14);
+        add(body,card("최고 음향 유사도",best<0?"아직 기록 없음":best+" / 100"),12);
+        add(body,label("다른 목소리·속도·장치·배경 소음에 따라 비교값이 변합니다. 학습 숙련도나 CEFR 등급을 판정하지 않습니다.",13,MUTED,false),14);
+        add(body,button("쉐도잉 시작하기 →",()->{go(2);prepareReference();},true),18);
+    }
+    private void setting(String key,String labelText,boolean defaultValue){boolean value=prefs.getBoolean(key,defaultValue);
+        add(body,button(labelText+"  ·  "+(value?"켜짐":"꺼짐"),()->{prefs.edit().putBoolean(key,!value).apply();render();},false),12);
+    }
+    private void settings(){heading("학습 환경","원하는 속도와 화면·효과음을 직접 조절하세요.");
+        setting("translation","한국어 번역",true);
+        setting("sounds","유사도별 효과음",true);
+        setting("large","글자 확대",false);
+        setting("reduce_motion","시각적 움직임 최소화",false);
+        add(body,card("개인정보","마이크로 녹음한 실제 PCM은 메모리에서 분석한 뒤 폐기하며 파일로 저장하거나 업로드하지 않습니다. 기기에는 반복 설정, 완료 횟수, 최고 음향 유사도만 보관합니다."),18);
+        add(body,button("모든 학습 기록 삭제",()->new AlertDialog.Builder(this).setTitle("기록을 삭제할까요?").setMessage("앱의 학습 기록, 성인 자기확인, 설정이 지워집니다.")
+            .setNegativeButton("취소",null).setPositiveButton("삭제",(d,w)->{lab.stop();prefs.edit().clear().apply();canShowAdult=false;refImage=null;lastResult=null;render();}).show(),false),18);
+        add(body,label("이 APK는 독립 오프라인 기능 검토판입니다. EXPLICIT 영상/음향은 법적 권리 확인·성인 접근 제어·사람 검토 후 별도로 제공해야 합니다.",13,MUTED,false),20);
+    }
 }
