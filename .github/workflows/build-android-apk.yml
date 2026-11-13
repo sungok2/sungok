@@ -37,6 +37,7 @@ jobs:
           bash tests/run-usb-http-policy-tests.sh
           bash tests/run-ntfs-saf-tests.sh
           bash tests/run-ntfs-name-tests.sh
+          bash tests/run-ntfs-transaction-tests.sh
           python3 tests/run-android-signature-smoke.py
       - name: Assemble Android debug APK
         run: gradle --no-daemon :app:assembleDebug --stacktrace
