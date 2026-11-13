@@ -1,6 +1,8 @@
 package com.galaxyuniversalio;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.SharedPreferences;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
@@ -38,13 +40,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class SafNtfsCopyActivity extends Activity {
     private static final int REQ_SOURCES = 3101;
     private static final int REQ_TARGET = 3102;
+    private static final int REQ_RECOVER = 3103;
+    private static final String RECOVERY_PREFS = "ntfs_transfer_journal_v1";
     private static final int MAX_FILES = 128;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final AtomicBoolean cancel = new AtomicBoolean();
     private final ArrayList<Uri> sources = new ArrayList<>();
     private TextView status;
     private ProgressBar progress;
-    private Button selectButton, cancelButton;
+    private Button selectButton, cancelButton, recoveryButton;
     private volatile boolean copying;
 
     @Override
@@ -96,6 +100,12 @@ public final class SafNtfsCopyActivity extends Activity {
         });
         column.addView(cancelButton);
 
+        recoveryButton = new Button(this);
+        recoveryButton.setAllCaps(false);
+        recoveryButton.setText("중단된 임시 전송 파일 정리");
+        recoveryButton.setOnClickListener(v -> confirmRecovery());
+        column.addView(recoveryButton);
+
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setIndeterminate(true);
         progress.setVisibility(View.GONE);
@@ -121,6 +131,7 @@ public final class SafNtfsCopyActivity extends Activity {
         scroll.setFillViewport(true);
         scroll.addView(column);
         setContentView(scroll);
+        refreshRecoveryUi();
     }
 
     private int dp(int n) {
@@ -133,6 +144,11 @@ public final class SafNtfsCopyActivity extends Activity {
 
     private void pickSources() {
         if (copying) return;
+        if (readPending() != null) {
+            showStatus("지난 전송의 임시 파일 기록이 남아 있습니다. 먼저 복구 메뉴를 확인하세요.");
+            refreshRecoveryUi();
+            return;
+        }
         sources.clear();
         Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         pick.addCategory(Intent.CATEGORY_OPENABLE);
@@ -146,6 +162,10 @@ public final class SafNtfsCopyActivity extends Activity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode != RESULT_OK || data == null || copying) return;
+        if (requestCode == REQ_RECOVER) {
+            handleRecoverySelection(data);
+            return;
+        }
         if (requestCode == REQ_SOURCES) {
             sources.clear();
             Set<String> distinct = new HashSet<>();
@@ -199,9 +219,15 @@ public final class SafNtfsCopyActivity extends Activity {
 
     private void beginCopy(Uri tree) {
         if (copying) return;
+        if (readPending() != null) {
+            showStatus("이전 임시 전송 기록을 먼저 확인해야 새 전송을 시작할 수 있습니다.");
+            refreshRecoveryUi();
+            return;
+        }
         copying = true;
         cancel.set(false);
         selectButton.setEnabled(false);
+        recoveryButton.setEnabled(false);
         cancelButton.setEnabled(true);
         progress.setVisibility(View.VISIBLE);
         progress.setIndeterminate(true);
@@ -233,7 +259,7 @@ public final class SafNtfsCopyActivity extends Activity {
                         progress.setMax(1000);
                         progress.setProgress(0);
                     });
-                    copyOne(parent, source, fileName, mimeType, sourceSize);
+                    copyOne(tree, parent, source, fileName, mimeType, sourceSize);
                     completed++;
                 }
                 final int successful = completed;
@@ -250,6 +276,7 @@ public final class SafNtfsCopyActivity extends Activity {
                     progress.setVisibility(View.GONE);
                     selectButton.setEnabled(true);
                     cancelButton.setEnabled(false);
+                    refreshRecoveryUi();
                 });
             }
         });
@@ -286,7 +313,7 @@ public final class SafNtfsCopyActivity extends Activity {
         return false;
     }
 
-    private void copyOne(Uri parent, Uri source, String name, String mimeType, long declaredSize) throws IOException {
+    private void copyOne(Uri tree, Uri parent, Uri source, String name, String mimeType, long declaredSize) throws IOException {
         if (childNameExists(parent, name)) {
             throw new IOException("덮어쓰기 방지: 같은 이름의 대상 파일이 존재합니다: " + name);
         }
@@ -294,6 +321,8 @@ public final class SafNtfsCopyActivity extends Activity {
         String partialName = NtfsNamePolicy.temporaryName();
         Uri temporary = null;
         boolean renamed = false;
+        // Durable record must precede the provider's potentially mutating createDocument.
+        recordPending(tree, partialName, name);
         try {
             temporary = DocumentsContract.createDocument(getContentResolver(),
                     parent, mimeType, partialName);
@@ -350,14 +379,174 @@ public final class SafNtfsCopyActivity extends Activity {
         } catch (RuntimeException e) {
             throw new IOException("USB 문서 제공자 동작 실패: " + e.getMessage(), e);
         } finally {
+            boolean cleaned = renamed;
             if (!renamed && temporary != null) {
                 try {
-                    DocumentsContract.deleteDocument(getContentResolver(), temporary);
+                    cleaned = DocumentsContract.deleteDocument(getContentResolver(), temporary);
                 } catch (Exception cleanupFailure) {
-                    android.util.Log.w("NtfsSafCopy", "Temporary file cleanup failed", cleanupFailure);
+                    android.util.Log.w("NtfsSafCopy", "Temporary cleanup failed; recovery journal kept",
+                            cleanupFailure);
                 }
             }
+            if (cleaned) {
+                clearPending();
+            } else {
+                runOnUiThread(this::refreshRecoveryUi);
+            }
         }
+    }
+
+    private static final class Pending {
+        final String tree, partialName, intendedName;
+        Pending(String tree, String partialName, String intendedName) {
+            this.tree = tree;
+            this.partialName = partialName;
+            this.intendedName = intendedName;
+        }
+    }
+
+    private Pending readPending() {
+        SharedPreferences p = getSharedPreferences(RECOVERY_PREFS, MODE_PRIVATE);
+        String tree = p.getString("tree", null);
+        String partial = p.getString("partial", null);
+        String intended = p.getString("name", null);
+        if (tree == null || partial == null || intended == null) return null;
+        return new Pending(tree, partial, intended);
+    }
+
+    private void recordPending(Uri tree, String partial, String intended) throws IOException {
+        if (readPending() != null) throw new IOException("Unresolved earlier transfer");
+        boolean saved = getSharedPreferences(RECOVERY_PREFS, MODE_PRIVATE).edit()
+                .putString("tree", tree.toString())
+                .putString("partial", partial)
+                .putString("name", intended)
+                .commit();
+        if (!saved) throw new IOException("Could not durably save partial-transfer recovery record");
+    }
+
+    private boolean clearPending() {
+        return getSharedPreferences(RECOVERY_PREFS, MODE_PRIVATE).edit().clear().commit();
+    }
+
+    private void refreshRecoveryUi() {
+        if (recoveryButton == null) return;
+        Pending old = readPending();
+        recoveryButton.setVisibility(old == null ? View.GONE : View.VISIBLE);
+        recoveryButton.setEnabled(!copying && old != null);
+    }
+
+    private void confirmRecovery() {
+        Pending old = readPending();
+        if (copying || old == null) return;
+        new AlertDialog.Builder(this)
+                .setTitle("중단된 전송 파일 정리")
+                .setMessage("이전 작업의 임시 파일 [" + old.partialName +
+                        "]만 찾아 정리합니다. 실제 저장된 다른 파일과 원본은 삭제하지 않습니다." +
+                        "\n대상 폴더를 다시 선택한 다음 삭제 여부를 한 번 더 확인합니다.")
+                .setNegativeButton("취소", (dialog, which) -> { })
+                .setPositiveButton("대상 폴더 선택", (dialog, which) -> {
+                    Intent choose = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+                    choose.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION |
+                            Intent.FLAG_GRANT_WRITE_URI_PERMISSION |
+                            Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+                    startActivityForResult(choose, REQ_RECOVER);
+                }).show();
+    }
+
+    private void handleRecoverySelection(Intent data) {
+        Pending old = readPending();
+        Uri chosen = data.getData();
+        if (old == null || chosen == null) return;
+        if (!old.tree.equals(chosen.toString())) {
+            showStatus("이전 전송과 다른 대상 폴더입니다. 삭제하지 않았습니다.");
+            return;
+        }
+        final int needed = Intent.FLAG_GRANT_READ_URI_PERMISSION |
+                Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
+        if ((data.getFlags() & needed) != needed) {
+            showStatus("복구하려면 기존 대상 폴더의 읽기·쓰기 권한이 필요합니다.");
+            return;
+        }
+        Uri parent = DocumentsContract.buildDocumentUriUsingTree(chosen,
+                DocumentsContract.getTreeDocumentId(chosen));
+        final Uri match;
+        final String displayName;
+        try {
+            Uri childListing = DocumentsContract.buildChildDocumentsUriUsingTree(parent,
+                    DocumentsContract.getDocumentId(parent));
+            Uri found = null;
+            String actual = null;
+            int matching = 0;
+            try (Cursor cursor = getContentResolver().query(childListing,
+                    new String[]{DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                            DocumentsContract.Document.COLUMN_DISPLAY_NAME}, null, null, null)) {
+                if (cursor == null) throw new IOException("대상 파일 목록을 읽을 수 없습니다.");
+                while (cursor.moveToNext()) {
+                    String documentId = cursor.getString(0);
+                    String name = cursor.getString(1);
+                    // Allow MIME-appended suffix only. Never match unrelated filenames.
+                    if (name != null && (name.equals(old.partialName) ||
+                            name.startsWith(old.partialName + "."))) {
+                        matching++;
+                        actual = name;
+                        found = DocumentsContract.buildDocumentUriUsingTree(parent, documentId);
+                    }
+                }
+            }
+            if (matching == 0) {
+                if (clearPending()) showStatus("남아 있는 임시 파일이 없어 기록을 정리했습니다.");
+                else showStatus("임시 파일은 없지만 복구 기록을 지우지 못했습니다.");
+                refreshRecoveryUi();
+                return;
+            }
+            if (matching != 1) {
+                showStatus("임시 파일 후보가 여러 개여서 자동 정리하지 않았습니다.");
+                return;
+            }
+            match = found;
+            displayName = actual;
+        } catch (Exception e) {
+            showStatus("임시 파일 검사 실패: " + e.getMessage());
+            return;
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("임시 파일 삭제 확인")
+                .setMessage("이 파일 하나만 삭제합니다:\n" + displayName +
+                        "\n\n원래 저장하려던 이름: " + old.intendedName)
+                .setNegativeButton("삭제 안 함", (dialog, which) -> { })
+                .setPositiveButton("임시 파일 삭제", (dialog, which) ->
+                        deleteStagedRecoveryFile(match)).show();
+    }
+
+    private void deleteStagedRecoveryFile(Uri item) {
+        if (copying) return;
+        copying = true;
+        selectButton.setEnabled(false);
+        recoveryButton.setEnabled(false);
+        cancelButton.setEnabled(false);
+        progress.setIndeterminate(true);
+        progress.setVisibility(View.VISIBLE);
+        worker.execute(() -> {
+            final String message;
+            try {
+                boolean removed = DocumentsContract.deleteDocument(getContentResolver(), item);
+                if (!removed) throw new IOException("USB 제공자가 임시 파일 삭제에 실패했습니다.");
+                if (!clearPending()) throw new IOException("삭제 후 복구 기록 저장에 실패했습니다.");
+                message = "임시 파일을 삭제했습니다. 기존 원본 파일은 변경하지 않았습니다.";
+            } catch (Exception e) {
+                message = "복구 실패: " + e.getMessage() +
+                        "\n기록이 남아 있으므로 연결 상태를 확인하고 다시 시도하세요.";
+            } finally {
+                copying = false;
+            }
+            runOnUiThread(() -> {
+                showStatus(message);
+                progress.setVisibility(View.GONE);
+                selectButton.setEnabled(true);
+                refreshRecoveryUi();
+            });
+        });
     }
 
     private void requireRenameAndWriteSupport(Uri uri) throws IOException {
