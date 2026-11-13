@@ -31,6 +31,7 @@ public final class SpeechLab {
         void meter(float value);
         void reference(float[][] image);
         void comparison(SpectralAnalyzer.Result result);
+        void playbackFinished();
     }
     private final Context context;
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -42,6 +43,7 @@ public final class SpeechLab {
     private volatile AudioTrack playing;
     private volatile int epoch=0;
     private int voiceVariant=0;
+    private volatile String lastDialogueId=null;
     private File referenceFile;
     private final Object byteLock=new Object();
     private ByteArrayOutputStream ttsBytes;
@@ -68,8 +70,21 @@ public final class SpeechLab {
                 if(!isRef(id))return;
                 synchronized(byteLock){if(ttsBytes!=null&&ttsBytes.size()+data.length<2200000)ttsBytes.write(data,0,data.length);}
             }
-            @Override public void onDone(String id){if(isRef(id))referenceDone(id);}
-            @Override public void onError(String id){if(isRef(id))postStatus("음성 합성에 실패했습니다. TTS 엔진과 언어 설정을 확인하세요.");}
+            @Override public void onDone(String id){
+                if(isRef(id))referenceDone(id);
+                else if(id!=null && id.equals(lastDialogueId)){
+                    main.post(()->{if(id.equals(lastDialogueId))listener.playbackFinished();});
+                }
+            }
+            @Override public void onError(String id){
+                if(isRef(id)){
+                    pendingAutoRepeatEpoch=-1;
+                    postStatus("음성 합성에 실패했습니다. TTS 엔진과 언어 설정을 확인하세요.");
+                    main.post(()->listener.playbackFinished());
+                } else if(id!=null && id.equals(lastDialogueId)){
+                    main.post(()->listener.playbackFinished());
+                }
+            }
         });
     }
     private boolean isRef(String id){return id!=null&&id.startsWith("ref:");}
@@ -159,7 +174,7 @@ public final class SpeechLab {
     public void playOrPrepare(String phrase,int variant,int repetitions,int gapSeconds){
         if(hasReference()){playRepeats(repetitions,gapSeconds);return;}
         setPhrase(phrase,variant);
-        if(!ready)return;
+        if(!ready){main.post(()->listener.playbackFinished());return;}
         pendingRepeatCount=Math.max(1,Math.min(10,repetitions));
         pendingGapSeconds=Math.max(0,Math.min(10,gapSeconds));
         pendingAutoRepeatEpoch=epoch;
@@ -186,7 +201,12 @@ public final class SpeechLab {
                     }
                 }
             }
-            if(fresh(generation))postStatus("선택한 반복 듣기가 끝났습니다. 이제 쉐도잉을 연습해 보세요.");
+            if(fresh(generation))main.post(()->{
+                if(fresh(generation)){
+                    listener.status("선택한 반복 듣기가 끝났습니다. 이제 쉐도잉을 연습해 보세요.");
+                    listener.playbackFinished();
+                }
+            });
         },"repeat-playback").start();
     }
     private void playPcm(short[] pcm,int generation){
@@ -209,9 +229,11 @@ public final class SpeechLab {
         stopPlaybackAndRecording();
         tts.stop();
         tts.setSpeechRate(0.92f);
+        final int dialogueEpoch=epoch;
+        lastDialogueId="dialogue:"+(lines.length-1)+":"+dialogueEpoch;
         for(int i=0;i<lines.length;i++){
             tts.setPitch(i%2==0?1.05f:0.92f);
-            tts.speak(lines[i], i==0?TextToSpeech.QUEUE_FLUSH:TextToSpeech.QUEUE_ADD,new Bundle(),"dialogue:"+i);
+            tts.speak(lines[i], i==0?TextToSpeech.QUEUE_FLUSH:TextToSpeech.QUEUE_ADD,new Bundle(),"dialogue:"+i+":"+dialogueEpoch);
         }
         postStatus("성인 대화 음성을 재생합니다. 기기 합성음이므로 실제 성우 원음은 아닙니다.");
     }
@@ -267,10 +289,11 @@ public final class SpeechLab {
         AudioTrack a=playing;if(a!=null){try{a.pause();a.flush();}catch(Exception ignored){}}
         AudioRecord r=recorder;if(r!=null){try{r.stop();}catch(Exception ignored){}}
     }
-    public void pause(){stopPlaybackAndRecording();pendingAutoRepeatEpoch=-1;if(tts!=null)tts.stop();}
+    public void pause(){stopPlaybackAndRecording();pendingAutoRepeatEpoch=-1;lastDialogueId=null;if(tts!=null)tts.stop();}
     public void stop(){
         stopPlaybackAndRecording();
         pendingAutoRepeatEpoch=-1;
+        lastDialogueId=null;
         referencePcm=null;
         if(tts!=null)tts.stop();
         if(referenceFile!=null){referenceFile.delete();referenceFile=null;}
