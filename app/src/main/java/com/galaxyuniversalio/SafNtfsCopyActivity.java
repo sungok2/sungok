@@ -792,9 +792,27 @@ public final class SafNtfsCopyActivity extends Activity {
                 }
             }
             if (matching == 0) {
-                if (clearPending()) showStatus("남아 있는 임시 파일이 없어 기록을 정리했습니다.");
-                else showStatus("임시 파일은 없지만 복구 기록을 지우지 못했습니다.");
-                refreshRecoveryUi();
+                // A rename may have succeeded even if its binder reply was lost.
+                // Never assume absence of a staging filename implies the final copy is absent.
+                boolean publishedMaybeExists = !old.partialName.equals(old.intendedName) &&
+                        childNameExists(parent, old.intendedName);
+                if (publishedMaybeExists) {
+                    new AlertDialog.Builder(this)
+                            .setTitle("최종 파일이 존재할 가능성")
+                            .setMessage("임시 파일은 보이지 않지만 최종 파일명 [" + old.intendedName +
+                                    "]이 발견됐습니다. 이름 변경이 이미 완료됐을 수 있습니다. " +
+                                    "파일을 자동 삭제하지 않습니다. 파일 내용과 해시를 확인한 후에만 복구 기록을 지우세요.")
+                            .setNegativeButton("기록 유지", (dialog, which) -> {})
+                            .setPositiveButton("확인 후 기록 해제", (dialog, which) -> {
+                                if (clearPending()) showStatus("확인 후 복구 기록만 해제했습니다. 기존 파일은 삭제하지 않았습니다.");
+                                else showStatus("복구 기록 삭제 실패. 대상 파일은 건드리지 않았습니다.");
+                                refreshRecoveryUi();
+                            }).show();
+                } else {
+                    if (clearPending()) showStatus("남아 있는 임시 파일이 없어 기록만 정리했습니다.");
+                    else showStatus("임시 파일은 없지만 복구 기록을 지우지 못했습니다.");
+                    refreshRecoveryUi();
+                }
                 return;
             }
             if (matching != 1) {
@@ -854,7 +872,7 @@ public final class SafNtfsCopyActivity extends Activity {
         Intent choose = new Intent(Intent.ACTION_CREATE_DOCUMENT);
         choose.addCategory(Intent.CATEGORY_OPENABLE);
         choose.setType("text/plain");
-        choose.putExtra(Intent.EXTRA_TITLE, "GalaxyUniversalIO-M0.10-NTFS-SHA256.txt");
+        choose.putExtra(Intent.EXTRA_TITLE, "GalaxyUniversalIO-M0.11-NTFS-SHA256.txt");
         choose.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
         startActivityForResult(choose, REQ_EXPORT_REPORT);
     }
