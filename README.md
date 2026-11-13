@@ -1,3 +1,17 @@
+# Galaxy Universal I/O M0.11 MASTER (2026-11-13)
+
+현재 NTFS USB를 삼성 기본 파일 앱에서 읽기 전용으로 연결했다면 복사가 불가능합니다. 이 APK에 독립형 NTFS 드라이버는 없으며 쓰기가 가능한 별도 DocumentsProvider(예: OTG Master) 연결이 필요합니다.
+
+- 신규: 대상 USB 폴더의 **8KB 실제 파일 생성/재읽기 SHA-256/삭제 시험**. 사용자 명시적 동의 후 실행.
+- 신규: 삼성 기본 NTFS 읽기 전용과 다른 제공자 구분, 내부 저장공간 오선택 방지, 원인별 추정 안내.
+- 보강: rename 응답 유실 시 이미 기록된 파일을 자동으로 지우지 않음. USB 재연결 후 달라진 제공자 URI 문제에서 앱 복구 기록만 해제할 수 있음.
+- 보존: 원본 변경·삭제하지 않는 파일 복사, 파일별 해시 영수증, 중간 실패 시 사용자 확인식 복구, 128개 제한.
+- 설치 패키지: com.galaxyuniversalio.master, 기존 M0.9 debug와 별도 설치.
+- 필독: [NTFS MASTER 구현 및 실제 USB 검증 절차](docs/M0_11_NTFS_MASTER.md).
+- **미완료**: 자체 NTFS 엔진·실제 Galaxy USB 쓰기 실증·전원 차단 내구성·장시간 백그라운드 복사.
+
+---
+
 # Galaxy Universal I/O M0.10 — NTFS SAF MASTER Hardening (2026-11-13)
 
 - 이전 M0.9과 나란히 설치하기 위한 분리 패키지 com.galaxyuniversalio.master를 사용함.
