@@ -33,6 +33,8 @@ public final class StagedPdfExport {
             throw new IOException("Invalid staged PDF destination");
         File temp = File.createTempFile("guio-pdf-", ".part", privateCacheDirectory);
         try {
+            if (Thread.currentThread().isInterrupted())
+                throw new IOException("PDF export interrupted");
             try (OutputStream output = new LimitedOutputStream(new FileOutputStream(temp),
                     maxSpoolBytes)) {
                 encoder.encode(output);
@@ -41,6 +43,8 @@ public final class StagedPdfExport {
             if (size == 0 || size > maxSpoolBytes)
                 throw new IOException("Missing or oversized staged PDF");
             // Do not open/truncate the user destination until PDF rendering succeeds.
+            if (Thread.currentThread().isInterrupted())
+                throw new IOException("PDF export interrupted");
             try (InputStream input = new FileInputStream(temp);
                     OutputStream out = target.open()) {
                 if (out == null) throw new IOException("No output stream from document provider");

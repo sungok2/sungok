@@ -22,6 +22,8 @@ public final class ScannedPdfWriter {
         try {
             int pageNo = 0;
             for (byte[] bytes : imagePages) {
+                if (Thread.currentThread().isInterrupted())
+                    throw new IOException("PDF generation interrupted");
                 EsclProtocol.imageMimeFromBytes(bytes);
                 BitmapFactory.Options opts = new BitmapFactory.Options();
                 opts.inJustDecodeBounds = true;

@@ -1,3 +1,15 @@
+# Galaxy Universal I/O — M0.8 Android runtime QA build
+
+- Target: Galaxy S20 Ultra / Android 13; developer: Windows 11 / JDK 21 / Gradle 9.8.0.
+- M0.8 adds a visible scan cancellation request, guards against concurrent scan requests, makes scan and printer controls full-width on portrait screens, corrects stale report versions, and adds an Android 13 emulator launch/screenshot CI smoke test.
+- Cancellation is **not guaranteed immediate** during an Android USB `bulkTransfer()` or HTTP read timeout. The app requests interruption and prevents partial PDF export when interrupted before the final copy. Android's document picker may create a blank destination even when a scan fails or is cancelled.
+- APK build success and emulator activity launch are separate from real hardware interoperability.
+- **Not supported universally:** vendor-specific USB scanner protocols, TWAIN/WIA-only scanners, all printer drivers, OCR, duplex ADF, mDNS, and every printer document language.
+- Existing eSCL scan limits remain 12 ADF pages / 32 MiB per job and 8 MiB per image. PDFs may downsample to approximately 3 megapixels per page. A large document should be split into multiple scans.
+- The CI workflow is implemented in `.github/workflows/build-android-apk.yml`; `tests/ci-emulator-smoke.sh` checks installation, Activity startup, process survival and captures UI screenshots. Only actual workflow results demonstrate runtime success.
+
+---
+
 # Galaxy Universal I/O — M0.7 USB 통신 및 CI 보강 소스판
 
 - 작업일: 2026-11-12

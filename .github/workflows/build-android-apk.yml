@@ -1,14 +1,14 @@
 name: Galaxy Universal I-O Android debug APK
 on:
   push:
-    branches: [galaxy-universal-io-m0-7]
+    branches: [galaxy-universal-io-m0-7, galaxy-universal-io-m0-8]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
       - name: Set up JDK 21
@@ -50,7 +50,29 @@ jobs:
       - name: Upload debug APK
         uses: actions/upload-artifact@v7
         with:
-          name: GalaxyUniversalIO-M0.7-debug-apk
+          name: GalaxyUniversalIO-M0.8-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          retention-days: 7
+
+      - name: Enable KVM for Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Android 13 emulator launch smoke test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: google_apis
+          arch: x86_64
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash tests/ci-emulator-smoke.sh
+      - name: Upload Android runtime smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: GalaxyUniversalIO-M0.8-emulator-evidence
+          path: ci-evidence/
+          if-no-files-found: warn
           retention-days: 7
