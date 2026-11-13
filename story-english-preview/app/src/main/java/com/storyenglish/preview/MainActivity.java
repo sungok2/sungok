@@ -93,6 +93,7 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
                         runOnUiThread(()->{
                             pauseCinema();
                             if(lab!=null)lab.pause();
+                            releaseAudioFocus();
                             if(statusText!=null)statusText.setText("다른 오디오로 전환되어 재생을 일시중지했습니다.");
                         });
                     }
@@ -285,6 +286,7 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
             else new AlertDialog.Builder(this).setMessage("마이크 권한이 허용되지 않아 녹음을 시작할 수 없습니다. 권한 없이도 듣기 기능은 이용할 수 있습니다.").setPositiveButton("확인",null).show();}
     }
     @Override public void status(String text){if(statusText!=null&&tab==2)statusText.setText(text);}
+    @Override public void playbackFinished(){releaseAudioFocus();}
     @Override public void countdown(int second){if(tab!=2||countdownText==null)return;
         if(second>0){countdownText.setText(String.valueOf(second));countdownText.setTextColor(GOLD);
             countdownText.announceForAccessibility("녹음 시작까지 "+second+"초");
