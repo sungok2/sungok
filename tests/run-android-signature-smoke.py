@@ -161,8 +161,8 @@ public class DocumentsContract {
  public static Uri renameDocument(ContentResolver r,Uri p,String name)throws FileNotFoundException{return null;}
  public static boolean deleteDocument(ContentResolver r,Uri p)throws FileNotFoundException{return false;}
  public static final class Document {
-  public static final String COLUMN_MIME_TYPE="",COLUMN_FLAGS="",COLUMN_DISPLAY_NAME="",MIME_TYPE_DIR="";
-  public static final int FLAG_DIR_SUPPORTS_CREATE=8;
+  public static final String COLUMN_MIME_TYPE="",COLUMN_FLAGS="",COLUMN_DISPLAY_NAME="",COLUMN_DOCUMENT_ID="",MIME_TYPE_DIR="";
+  public static final int FLAG_DIR_SUPPORTS_CREATE=8,FLAG_SUPPORTS_WRITE=2,FLAG_SUPPORTS_RENAME=64;
  }
 }"""
 })
