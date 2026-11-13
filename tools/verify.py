@@ -44,3 +44,10 @@ with tempfile.TemporaryDirectory() as td:
         str(SRC/'RawDepthFrameGate.java'),str(ROOT/'tests/RawDepthFrameGateTest.java')],check=True)
     out=subprocess.run(['java','-cp',td,'RawDepthFrameGateTest'],capture_output=True,text=True,check=True)
     print(out.stdout.strip())
+
+# Guidance is testable without an Android device or emulator.
+with tempfile.TemporaryDirectory() as td:
+    subprocess.run(['javac','-encoding','UTF-8','-d',td,
+        str(SRC/'ScanModel.java'),str(SRC/'ScanCoach.java'),str(ROOT/'tests/ScanCoachTest.java')],check=True)
+    out=subprocess.run(['java','-cp',td,'ScanCoachTest'],capture_output=True,text=True,check=True)
+    print(out.stdout.strip())
