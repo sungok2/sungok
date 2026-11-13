@@ -13,8 +13,9 @@ M0.10은 자체 NTFS 드라이버가 아니다. USB를 읽기/쓰기로 직접 �
 2. SafVerifiedTransaction: 순수 Java의 거래 처리 엔진. 저장 전 이름 중복 확인 → 임시 이름 난수 생성 → 복구 기록 저장 → 임시 파일 생성 → 쓰기/rename 지원 확인 → 스트리밍 복사 → 출력 닫기 → 대상 재읽기 SHA-256+크기 검증 → 중복 재검사 → 최종 rename → 변경된 실제 파일명 확인.
 3. 기록이 실패하면 대상 변경 전 중단. 중간 실패 시 임시 파일 삭제 시도, 삭제 불가/생성 결과 불확실 시 복구 기록 유지.
 4. 앱 재실행 시 중단된 작업 기록을 표시. 사용자가 동일 대상 폴더를 선택한 후 실제 임시 파일을 확인하고 2차 확인을 눌러야 삭제. 임의의 다른 파일은 자동 삭제하지 않음.
-5. ContentResolver openOutputStream("wt") 요청, 작업 진행률과 작업 취소 유지.
-6. 기존 프린터·PTP·eSCL 스캐너 관련 소스 보존.
+5. 검증 완료된 파일명·바이트 크기·SHA-256을 TSV 형태로 TXT에 내보내는 감사 보고서. 완전/부분 완료 상태를 구분.
+6. ContentResolver openOutputStream("wt") 요청, 작업 진행률과 작업 취소 유지.
+7. 기존 프린터·PTP·eSCL 스캐너 관련 소스 보존.
 
 ## 인식해야 할 제한
 
@@ -30,6 +31,7 @@ M0.10은 자체 NTFS 드라이버가 아니다. USB를 읽기/쓰기로 직접 �
 - bash tests/run-ntfs-saf-tests.sh
 - bash tests/run-ntfs-name-tests.sh
 - bash tests/run-ntfs-transaction-tests.sh
+- bash tests/run-ntfs-audit-tests.sh
 - python3 tests/run-android-signature-smoke.py
 - gradle --no-daemon :app:assembleDebug
 
