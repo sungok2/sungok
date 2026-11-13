@@ -3,6 +3,10 @@
 기준 버전: M0.9
 브랜치: galaxy-universal-io-ntfs-m1-0-hardening
 
+## 설치 보호 정책
+
+M0.10 MASTER 디버그 APK는 applicationId=com.galaxyuniversalio.master로 별도 설치되므로 이전 M0.9 debug 앱의 서명·앱 내부 자료에 영향을 주지 않는다. 이는 정식 업데이트 서명 정책을 대체하지 않는다.
+
 ## 실제 지원 범위
 
 M0.10은 자체 NTFS 드라이버가 아니다. USB를 읽기/쓰기로 직접 처리하고 Android DocumentsProvider로 노출하는 외부 앱(예: OTG Master)이 반드시 필요하다. 삼성 기본 NTFS 읽기 전용 마운트를 쓰기 가능으로 해제하거나 Android 시스템 전체에 커널 파일시스템 드라이버를 설치하지 않는다. 외부 제공자 없는 갤럭시 NTFS 직접 쓰기는 미구현이다.
