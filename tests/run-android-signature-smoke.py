@@ -146,6 +146,9 @@ public class ProgressBar extends android.view.View {
  public ProgressBar(Context c,Object attrs,int style){}
  public void setIndeterminate(boolean b){}
 }""",
+'android/util/Log.java': """package android.util; public class Log {
+ public static int w(String tag,String msg,Throwable ex){return 0;}
+}""",
 'android/provider/DocumentsContract.java': """package android.provider;
 import android.content.ContentResolver;import android.net.Uri;import java.io.FileNotFoundException;
 public class DocumentsContract {
