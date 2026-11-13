@@ -5,6 +5,8 @@ import android.app.AlertDialog;
 import android.content.Intent;
 import android.net.Uri;
 import java.io.InputStream;
+import java.io.FileInputStream;
+import java.io.OutputStream;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
@@ -28,6 +30,8 @@ public final class ScanLibraryActivity extends Activity {
     private final ExecutorService io=Executors.newSingleThreadExecutor();
     private LinearLayout cards;
     private TextView subtitle;
+    private File pendingExport;
+    private static final int EXPORT_DOCUMENT_REQUEST=403;
     @Override public void onCreate(Bundle state){
         super.onCreate(state);getWindow().setStatusBarColor(UiKit.INK);getWindow().setNavigationBarColor(UiKit.INK);
         LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);
@@ -64,9 +68,64 @@ public final class ScanLibraryActivity extends Activity {
         setContentView(root);
         back.setOnClickListener(v->finish());newScan.setOnClickListener(v->finish());
     }
-    @Override protected void onResume(){super.onResume();refresh();}
+    @Override protected void onResume(){
+        super.onResume();refresh();
+        String path=getIntent().getStringExtra("export_zip_path");
+        getIntent().removeExtra("export_zip_path");
+        if(path!=null){
+            File folder=new File(path);
+            if(allowedFolder(folder)){exportArchive(folder);}
+        }
+    }
+    private boolean allowedFolder(File folder){
+        try{
+            String root=ScanRepository.root(this).getCanonicalPath()+File.separator;
+            return folder.getCanonicalPath().startsWith(root) && folder.isDirectory();
+        }catch(Exception ignored){return false;}
+    }
+    private void startDocumentExport(File file,String mime){
+        if(!file.isFile()){Toast.makeText(this,"저장할 파일이 없습니다",Toast.LENGTH_SHORT).show();return;}
+        pendingExport=file;
+        Intent save=new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        save.addCategory(Intent.CATEGORY_OPENABLE);
+        save.setType(mime);
+        save.putExtra(Intent.EXTRA_TITLE,file.getName());
+        try{startActivityForResult(save,EXPORT_DOCUMENT_REQUEST);}
+        catch(Exception e){pendingExport=null;new AlertDialog.Builder(this).setTitle("저장 위치 선택 불가")
+            .setMessage(e.getMessage()).setPositiveButton("확인",null).show();}
+    }
+    private void exportArchive(File folder){
+        Toast.makeText(this,"프로젝트 ZIP 준비 중",Toast.LENGTH_SHORT).show();
+        io.execute(()->{
+            try{
+                File zip=ScanRepository.archive(folder);
+                runOnUiThread(()->startDocumentExport(zip,"application/zip"));
+            }catch(Exception e){runOnUiThread(()->new AlertDialog.Builder(this).setTitle("ZIP 생성 실패")
+                .setMessage(e.getMessage()).setPositiveButton("확인",null).show());}
+        });
+    }
     @Override protected void onActivityResult(int request,int result,Intent data){
         super.onActivityResult(request,result,data);
+        if(request==EXPORT_DOCUMENT_REQUEST){
+            File source=pendingExport;pendingExport=null;
+            if(result!=RESULT_OK||data==null||data.getData()==null||source==null)return;
+            Uri output=data.getData();
+            io.execute(()->{
+                try(OutputStream out=getContentResolver().openOutputStream(output,"w");
+                    FileInputStream in=new FileInputStream(source)){
+                    if(out==null)throw new java.io.IOException("선택한 저장 위치를 열 수 없습니다");
+                    byte[] buffer=new byte[64*1024];int n;
+                    while((n=in.read(buffer))!=-1)out.write(buffer,0,n);
+                    out.flush();
+                    runOnUiThread(()->new AlertDialog.Builder(this).setTitle("파일 내보내기 완료")
+                        .setMessage(source.getName()+" 파일을 선택한 폴더에 저장했습니다.\n\n파일 앱의 해당 폴더에서 확인할 수 있습니다.")
+                        .setPositiveButton("확인",null).show());
+                }catch(Exception e){runOnUiThread(()->new AlertDialog.Builder(this).setTitle("파일 내보내기 실패")
+                    .setMessage("앱 내부 프로젝트는 유지됩니다.\n\n"+e.getMessage())
+                    .setPositiveButton("확인",null).show());}
+            });
+            return;
+        }
         if(request!=402 || result!=RESULT_OK || data==null || data.getData()==null)return;
         Uri uri=data.getData();
         Toast.makeText(this,"PLY 검사 및 가져오기 중…",Toast.LENGTH_SHORT).show();
@@ -139,18 +198,21 @@ public final class ScanLibraryActivity extends Activity {
     }
     private void showActions(File folder){
         new AlertDialog.Builder(this).setTitle("스캔 파일 관리")
-            .setItems(new String[]{"PLY 점군 공유","OBJ 메시 공유","전체 ZIP 프로젝트 공유","GPS 메타데이터 공유","스캔 삭제"},(d,which)->{
-                if(which==0)ScanShare.share(this,new File(folder,"model.ply"));
-                if(which==1)ScanShare.share(this,new File(folder,"model.obj"));
-                if(which==3)ScanShare.share(this,new File(folder,"metadata.json"));
-                if(which==2){
+            .setItems(new String[]{"다운로드 폴더 등에 ZIP 저장","PLY 파일로 저장","OBJ 파일로 저장", "PLY 점군 공유","OBJ 메시 공유","전체 ZIP 프로젝트 공유","GPS 메타데이터 공유","스캔 삭제"},(d,which)->{
+                if(which==0)exportArchive(folder);
+                if(which==1)startDocumentExport(new File(folder,"model.ply"),"application/octet-stream");
+                if(which==2)startDocumentExport(new File(folder,"model.obj"),"text/plain");
+                if(which==3)ScanShare.share(this,new File(folder,"model.ply"));
+                if(which==4)ScanShare.share(this,new File(folder,"model.obj"));
+                if(which==6)ScanShare.share(this,new File(folder,"metadata.json"));
+                if(which==5){
                     Toast.makeText(this,"ZIP 파일 준비 중…",Toast.LENGTH_SHORT).show();
                     io.execute(()->{
                         try{File zip=ScanRepository.archive(folder);runOnUiThread(()->ScanShare.share(this,zip));}
                         catch(Exception e){runOnUiThread(()->Toast.makeText(this,"ZIP 생성 실패: "+e.getMessage(),Toast.LENGTH_LONG).show());}
                     });
                 }
-                if(which==4)confirmDelete(folder);
+                if(which==7)confirmDelete(folder);
             }).setNegativeButton("닫기",null).show();
     }
     private void confirmDelete(File folder){
