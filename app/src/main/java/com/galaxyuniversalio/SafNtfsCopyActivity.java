@@ -44,6 +44,7 @@ public final class SafNtfsCopyActivity extends Activity {
     private static final int REQ_TARGET = 3102;
     private static final int REQ_RECOVER = 3103;
     private static final int REQ_EXPORT_REPORT = 3104;
+    private static final int REQ_WRITE_PROBE = 3105;
     private static final String RECOVERY_PREFS = "ntfs_transfer_journal_v1";
     private static final AtomicBoolean PROCESS_TRANSFER_ACTIVE = new AtomicBoolean(false);
     private static final int MAX_FILES = 128;
@@ -52,7 +53,7 @@ public final class SafNtfsCopyActivity extends Activity {
     private final ArrayList<Uri> sources = new ArrayList<>();
     private TextView status;
     private ProgressBar progress;
-    private Button selectButton, cancelButton, recoveryButton, auditButton;
+    private Button selectButton, cancelButton, recoveryButton, auditButton, probeButton;
     private volatile String lastAudit;
     private volatile boolean copying;
 
@@ -98,7 +99,7 @@ public final class SafNtfsCopyActivity extends Activity {
         heading.setPadding(dp(2), dp(4), 0, dp(8));
         column.addView(heading);
 
-        TextView sub = text("Galaxy Universal I/O · MASTER 0.10", 12, slate);
+        TextView sub = text("Galaxy Universal I/O · MASTER 0.11", 12, slate);
         sub.setPadding(dp(2), 0, 0, dp(14));
         column.addView(sub);
 
@@ -116,16 +117,44 @@ public final class SafNtfsCopyActivity extends Activity {
         guide.setPadding(dp(15), dp(12), dp(15), dp(12));
         guide.setBackground(surface(0xFFFFFFFF, 15, 0xFFE1E7EF));
 
-        TextView line1 = text("①  OTG Master 등에서 NTFS를 읽기·쓰기로 연결", 14, navy);
+        TextView line1 = text("①  NTFS 읽기·쓰기 제공자에서 USB 연결", 14, navy);
         line1.setPadding(0, dp(4), 0, dp(8));
         guide.addView(line1);
-        TextView line2 = text("②  복사할 파일 선택 (최대 128개)", 14, navy);
+        TextView line2 = text("②  USB 폴더 쓰기 진단으로 먼저 확인", 14, navy);
         line2.setPadding(0, 0, 0, dp(8));
         guide.addView(line2);
-        TextView line3 = text("③  USB의 쓰기 가능한 대상 폴더 선택", 14, navy);
+        TextView line3 = text("③  휴대전화 파일 선택 → USB 대상 폴더 선택", 14, navy);
         line3.setPadding(0, 0, 0, dp(4));
         guide.addView(line3);
         column.addView(guide);
+
+        TextView help = text("삼성 '내 파일'의 NTFS 읽기 전용 폴더로는 쓰기가 불가능합니다. " +
+                "별도 NTFS 읽기·쓰기 제공자를 먼저 연결해야 합니다.", 13, 0xFF8A501C);
+        help.setPadding(dp(4), dp(10), dp(4), dp(9));
+        column.addView(help);
+
+        TextView showGuide = text("삼성 NTFS 읽기 전용 안내 자세히 보기", 13, 0xFF2459A6);
+        showGuide.setPadding(dp(5), dp(5), dp(5), dp(10));
+        showGuide.setOnClickListener(v -> explainSamsungReadOnly());
+        column.addView(showGuide);
+
+        probeButton = new Button(this);
+        probeButton.setAllCaps(false);
+        probeButton.setText("먼저: USB 쓰기 가능 여부 진단 (8KB)");
+        probeButton.setTextSize(15);
+        probeButton.setTextColor(0xFF145F56);
+        probeButton.setBackground(surface(0xFFE4F4EE, 12, 0xFFB4DCCC));
+        probeButton.setOnClickListener(v -> confirmProbe());
+        column.addView(probeButton);
+
+        TextView link = text("NTFS 연결 제공자 설치 안내 · 공식 프로젝트 열기", 13, 0xFF2459A6);
+        link.setPadding(dp(6), dp(10), dp(6), dp(12));
+        link.setOnClickListener(v -> {
+            Intent browser = new Intent(Intent.ACTION_VIEW,
+                    Uri.parse("https://github.com/moylali/OTGMaster/releases"));
+            startActivity(browser);
+        });
+        column.addView(link);
 
         selectButton = new Button(this);
         selectButton.setAllCaps(false);
@@ -213,6 +242,20 @@ public final class SafNtfsCopyActivity extends Activity {
         if (status != null) status.setText(text);
     }
 
+    private void explainSamsungReadOnly() {
+        new AlertDialog.Builder(this)
+                .setTitle("삼성 내 파일에서 NTFS 복사가 안 될 때")
+                .setMessage("갤럭시 기본 파일 관리자가 NTFS USB를 읽기 전용으로 처리하면 " +
+                        "파일을 보거나 휴대전화로 복사하는 기능과 달리 USB에 새 파일을 쓸 수 없습니다.\n\n" +
+                        "해결 절차:\n1. NTFS USB의 중요한 파일을 PC에 백업\n" +
+                        "2. NTFS 읽기·쓰기를 제공하는 별도 앱에서 USB를 연결\n" +
+                        "3. 이 앱의 'USB 쓰기 가능 여부 진단'에서 그 앱의 USB 폴더 선택\n" +
+                        "4. 8KB 검사 통과 후 실제 파일 복사\n\n" +
+                        "진단 통과는 선택한 폴더의 쓰기 성공만 의미하며, NTFS 드라이버 자체를 이 앱이 가진 것은 아닙니다.")
+                .setPositiveButton("확인", (dialog, which) -> {})
+                .show();
+    }
+
     private void pickSources() {
         if (copying || PROCESS_TRANSFER_ACTIVE.get()) {
             showStatus("다른 전송 작업이 아직 종료되지 않았습니다.");
@@ -236,6 +279,10 @@ public final class SafNtfsCopyActivity extends Activity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode != RESULT_OK || data == null || copying) return;
+        if (requestCode == REQ_WRITE_PROBE) {
+            beginWriteProbe(data);
+            return;
+        }
         if (requestCode == REQ_EXPORT_REPORT) {
             writeAuditDocument(data.getData());
             return;
@@ -295,6 +342,146 @@ public final class SafNtfsCopyActivity extends Activity {
         }
     }
 
+    private void confirmProbe() {
+        if (copying || PROCESS_TRANSFER_ACTIVE.get()) {
+            showStatus("전송 작업이 진행 중이므로 진단을 시작할 수 없습니다.");
+            return;
+        }
+        if (readPending() != null) {
+            showStatus("기존 임시 파일 복구 기록을 먼저 정리하세요.");
+            refreshRecoveryUi();
+            return;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("USB 쓰기 실험 안내")
+                .setMessage("선택한 USB 폴더에 무작위 내용의 약 8KB 임시 파일을 만든 다음 " +
+                        "재읽어 SHA-256을 검증하고 삭제합니다.\n\n" +
+                        "기존 파일은 덮어쓰지 않습니다. USB 분리·전원 장애·파일 제공자 오류가 " +
+                        "발생하면 임시 파일이 남을 수 있습니다. 중요한 자료를 백업한 USB에서만 시도하세요.\n\n" +
+                        "주의: 휴대전화 내부 저장공간을 선택해도 NTFS 지원이 입증되지는 않습니다.")
+                .setNegativeButton("취소", (dialog, which) -> {})
+                .setPositiveButton("폴더 선택", (dialog, which) -> {
+                    Intent choose = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+                    choose.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION |
+                            Intent.FLAG_GRANT_WRITE_URI_PERMISSION |
+                            Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+                    startActivityForResult(choose, REQ_WRITE_PROBE);
+                }).show();
+    }
+
+    private void beginWriteProbe(Intent data) {
+        Uri tree = data.getData();
+        if (tree == null) return;
+        int permissionFlags = data.getFlags() &
+                (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+        int required = Intent.FLAG_GRANT_READ_URI_PERMISSION |
+                Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
+        if ((permissionFlags & required) != required) {
+            showStatus("선택한 대상의 읽기·쓰기 권한을 받지 못했습니다. 삼성 NTFS 읽기 전용 경로일 수 있습니다.");
+            return;
+        }
+        if (copying || !PROCESS_TRANSFER_ACTIVE.compareAndSet(false, true)) {
+            showStatus("다른 전송 또는 진단이 실행 중입니다.");
+            return;
+        }
+        if (readPending() != null) {
+            PROCESS_TRANSFER_ACTIVE.set(false);
+            showStatus("복구 기록이 남아 있어 진단을 중단했습니다.");
+            refreshRecoveryUi();
+            return;
+        }
+
+        copying = true;
+        cancel.set(false);
+        selectButton.setEnabled(false);
+        probeButton.setEnabled(false);
+        recoveryButton.setEnabled(false);
+        cancelButton.setVisibility(View.VISIBLE);
+        cancelButton.setEnabled(true);
+        progress.setVisibility(View.VISIBLE);
+        progress.setIndeterminate(true);
+        showStatus("선택한 저장소 제공자와 쓰기 가능 여부를 검사합니다.");
+        worker.execute(() -> {
+            String report;
+            try {
+                Uri parent = DocumentsContract.buildDocumentUriUsingTree(tree,
+                        DocumentsContract.getTreeDocumentId(tree));
+                final String treeId = DocumentsContract.getTreeDocumentId(tree);
+                final String authority = tree.getAuthority();
+                final boolean directory;
+                final int flags;
+                try (Cursor c = getContentResolver().query(parent,
+                        new String[] {DocumentsContract.Document.COLUMN_MIME_TYPE,
+                                DocumentsContract.Document.COLUMN_FLAGS},null,null,null)) {
+                    if (c == null || !c.moveToFirst()) {
+                        throw new IOException("대상 폴더의 기능 정보를 읽지 못했습니다.");
+                    }
+                    directory = DocumentsContract.Document.MIME_TYPE_DIR.equals(c.getString(0));
+                    flags = c.getInt(1);
+                }
+                NtfsProviderAdvisor.Assessment check =
+                        NtfsProviderAdvisor.assess(authority, treeId, directory, flags);
+                if (check.definitelyInternal) {
+                    throw new IOException(check.title+"\n"+check.details);
+                }
+                if (!check.providerAllowsCreate) {
+                    throw new IOException(check.title+"\\n"+check.details);
+                }
+                NtfsWriteProbe.Result result = NtfsWriteProbe.execute(new NtfsWriteProbe.Backend() {
+                    @Override public void assertWritableDirectory() throws IOException {
+                        ensureWritableDirectory(parent);
+                    }
+                    @Override public void journal(String partialName) throws IOException {
+                        recordPending(tree, partialName, partialName);
+                    }
+                    @Override public String createTemporary(String name) throws IOException {
+                        Uri created = DocumentsContract.createDocument(getContentResolver(),
+                                parent,"application/octet-stream",name);
+                        return created == null ? null : created.toString();
+                    }
+                    @Override public void assertWritableFile(String id) throws IOException {
+                        requireDocumentWritable(Uri.parse(id));
+                    }
+                    @Override public OutputStream openWrite(String id) throws IOException {
+                        return getContentResolver().openOutputStream(Uri.parse(id),"wt");
+                    }
+                    @Override public InputStream openRead(String id) throws IOException {
+                        return getContentResolver().openInputStream(Uri.parse(id));
+                    }
+                    @Override public boolean deleteTemporary(String id) throws IOException {
+                        return DocumentsContract.deleteDocument(getContentResolver(),Uri.parse(id));
+                    }
+                    @Override public boolean clearJournal() {return clearPending();}
+                    @Override public void cleanupError(Exception e) {
+                        android.util.Log.w("NtfsWriteProbe","Cleanup failed; journal retained",e);
+                    }
+                },cancel);
+                report = "쓰기 진단 성공: " + result.bytes +
+                        "바이트 임시 파일 기록·SHA-256 재읽기 검증·삭제 완료.\n" +
+                        "선택한 제공자: " + (authority == null ? "알 수 없음" : authority) +
+                        "\n" + check.details +
+                        "\n실제 NTFS 형식과 안전 제거 이후 데이터 영속성은 확인되지 않았습니다.";
+            } catch (Exception e) {
+                report = "쓰기 진단 실패: " + e.getMessage() +
+                        "\n" + NtfsFailureAdvice.nextStep(e.toString()) +
+                        "\n임시 파일 복구 메뉴가 표시되면 확인 후 정리하세요.";
+            } finally {
+                copying = false;
+                PROCESS_TRANSFER_ACTIVE.set(false);
+            }
+            final String finalReport = report;
+            runOnUiThread(() -> {
+                showStatus(finalReport);
+                progress.setVisibility(View.GONE);
+                selectButton.setEnabled(true);
+                probeButton.setEnabled(true);
+                cancelButton.setEnabled(false);
+                cancelButton.setVisibility(View.GONE);
+                refreshRecoveryUi();
+            });
+        });
+    }
+
     private void beginCopy(Uri tree) {
         if (copying || !PROCESS_TRANSFER_ACTIVE.compareAndSet(false, true)) {
             showStatus("현재 다른 USB 전송이 실행 중입니다. 완료 또는 취소 후 다시 시도하세요.");
@@ -312,6 +499,7 @@ public final class SafNtfsCopyActivity extends Activity {
         auditButton.setEnabled(false);
         selectButton.setEnabled(false);
         recoveryButton.setEnabled(false);
+        probeButton.setEnabled(false);
         cancelButton.setEnabled(true);
         cancelButton.setVisibility(View.VISIBLE);
         progress.setVisibility(View.VISIBLE);
@@ -325,6 +513,13 @@ public final class SafNtfsCopyActivity extends Activity {
                 Uri parent = DocumentsContract.buildDocumentUriUsingTree(tree,
                         DocumentsContract.getTreeDocumentId(tree));
                 ensureWritableDirectory(parent);
+                // A phone destination could pass write tests while not being the USB.
+                NtfsProviderAdvisor.Assessment destination = NtfsProviderAdvisor.assess(
+                        tree.getAuthority(), DocumentsContract.getTreeDocumentId(tree),
+                        true, DocumentsContract.Document.FLAG_DIR_SUPPORTS_CREATE);
+                if (destination.definitelyInternal) {
+                    throw new IOException("USB 폴더가 아니라 휴대전화 내부 저장공간을 선택했습니다.");
+                }
                 // Validate the entire batch before touching any destination files.
                 List<String> plannedNames = new ArrayList<>();
                 for (Uri source : selection) {
@@ -359,8 +554,9 @@ public final class SafNtfsCopyActivity extends Activity {
                 final String details = e.getClass().getSimpleName() + ": " + e.getMessage();
                 failureSummary = details;
                 runOnUiThread(() -> showStatus("중단: " + successful + "/" + selection.size() +
-                        "개 완료. " + details + "\n이미 저장된 파일은 자동 삭제하지 않습니다. " +
-                        "대상 파일과 복구 메뉴를 확인하세요."));
+                        "개 완료. " + details + "\n" +
+                        NtfsFailureAdvice.nextStep(details) +
+                        "\n이미 저장된 파일은 자동 삭제하지 않습니다. 대상 파일과 복구 메뉴를 확인하세요."));
             } finally {
                 lastAudit = audit.finish(selection.size(), completed == selection.size(),
                         failureSummary);
@@ -369,6 +565,7 @@ public final class SafNtfsCopyActivity extends Activity {
                 runOnUiThread(() -> {
                     progress.setVisibility(View.GONE);
                     selectButton.setEnabled(true);
+                    probeButton.setEnabled(true);
                     cancelButton.setEnabled(false);
                     cancelButton.setVisibility(View.GONE);
                     auditButton.setEnabled(lastAudit != null);
@@ -541,6 +738,7 @@ public final class SafNtfsCopyActivity extends Activity {
                 .setMessage("이전 작업의 임시 파일 [" + old.partialName +
                         "]만 찾아 정리합니다. 실제 저장된 다른 파일과 원본은 삭제하지 않습니다." +
                         "\n대상 폴더를 다시 선택한 다음 삭제 여부를 한 번 더 확인합니다.")
+                .setNeutralButton("기록만 해제", (dialog, which) -> confirmAbandonRecovery())
                 .setNegativeButton("취소", (dialog, which) -> { })
                 .setPositiveButton("대상 폴더 선택", (dialog, which) -> {
                     Intent choose = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
@@ -548,6 +746,27 @@ public final class SafNtfsCopyActivity extends Activity {
                             Intent.FLAG_GRANT_WRITE_URI_PERMISSION |
                             Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
                     startActivityForResult(choose, REQ_RECOVER);
+                }).show();
+    }
+
+    private void confirmAbandonRecovery() {
+        Pending old = readPending();
+        if (copying || PROCESS_TRANSFER_ACTIVE.get() || old == null) return;
+        new AlertDialog.Builder(this)
+                .setTitle("임시 파일을 삭제하지 않고 기록만 해제")
+                .setMessage("USB가 분리됐다가 재연결되면 저장소 제공자의 폴더 주소가 바뀔 수 있습니다.\n\n" +
+                        "이 기능은 USB 안의 파일을 전혀 삭제하지 않고 앱 내부의 복구 기록만 지웁니다." +
+                        " 실제 USB에 임시 파일이나 이미 복사한 파일이 남아 있을 수 있으므로 " +
+                        "PC 또는 연결 앱에서 파일들을 직접 확인해야 합니다.\n\n" +
+                        "확인되지 않은 USB 파일이 있으면 '취소'를 선택하세요.")
+                .setNegativeButton("취소", (dialog, which) -> {})
+                .setPositiveButton("기록만 해제", (dialog, which) -> {
+                    if (clearPending()) {
+                        showStatus("앱의 복구 기록만 해제했습니다. USB에 남은 파일은 삭제·검증하지 않았습니다.");
+                    } else {
+                        showStatus("복구 기록 해제에 실패했습니다.");
+                    }
+                    refreshRecoveryUi();
                 }).show();
     }
 
@@ -596,9 +815,27 @@ public final class SafNtfsCopyActivity extends Activity {
                 }
             }
             if (matching == 0) {
-                if (clearPending()) showStatus("남아 있는 임시 파일이 없어 기록을 정리했습니다.");
-                else showStatus("임시 파일은 없지만 복구 기록을 지우지 못했습니다.");
-                refreshRecoveryUi();
+                // A rename may have succeeded even if its binder reply was lost.
+                // Never assume absence of a staging filename implies the final copy is absent.
+                boolean publishedMaybeExists = !old.partialName.equals(old.intendedName) &&
+                        childNameExists(parent, old.intendedName);
+                if (publishedMaybeExists) {
+                    new AlertDialog.Builder(this)
+                            .setTitle("최종 파일이 존재할 가능성")
+                            .setMessage("임시 파일은 보이지 않지만 최종 파일명 [" + old.intendedName +
+                                    "]이 발견됐습니다. 이름 변경이 이미 완료됐을 수 있습니다. " +
+                                    "파일을 자동 삭제하지 않습니다. 파일 내용과 해시를 확인한 후에만 복구 기록을 지우세요.")
+                            .setNegativeButton("기록 유지", (dialog, which) -> {})
+                            .setPositiveButton("확인 후 기록 해제", (dialog, which) -> {
+                                if (clearPending()) showStatus("확인 후 복구 기록만 해제했습니다. 기존 파일은 삭제하지 않았습니다.");
+                                else showStatus("복구 기록 삭제 실패. 대상 파일은 건드리지 않았습니다.");
+                                refreshRecoveryUi();
+                            }).show();
+                } else {
+                    if (clearPending()) showStatus("남아 있는 임시 파일이 없어 기록만 정리했습니다.");
+                    else showStatus("임시 파일은 없지만 복구 기록을 지우지 못했습니다.");
+                    refreshRecoveryUi();
+                }
                 return;
             }
             if (matching != 1) {
@@ -658,7 +895,7 @@ public final class SafNtfsCopyActivity extends Activity {
         Intent choose = new Intent(Intent.ACTION_CREATE_DOCUMENT);
         choose.addCategory(Intent.CATEGORY_OPENABLE);
         choose.setType("text/plain");
-        choose.putExtra(Intent.EXTRA_TITLE, "GalaxyUniversalIO-M0.10-NTFS-SHA256.txt");
+        choose.putExtra(Intent.EXTRA_TITLE, "GalaxyUniversalIO-M0.11-NTFS-SHA256.txt");
         choose.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
         startActivityForResult(choose, REQ_EXPORT_REPORT);
     }
@@ -686,6 +923,16 @@ public final class SafNtfsCopyActivity extends Activity {
                 auditButton.setEnabled(lastAudit != null);
             });
         });
+    }
+
+    private void requireDocumentWritable(Uri uri) throws IOException {
+        try (Cursor c = getContentResolver().query(uri,
+                new String[]{DocumentsContract.Document.COLUMN_FLAGS},null,null,null)) {
+            if (c == null || !c.moveToFirst() ||
+                    (c.getInt(0)&DocumentsContract.Document.FLAG_SUPPORTS_WRITE)==0) {
+                throw new IOException("임시 파일이 기록을 지원하지 않습니다. NTFS 제공자 권한을 확인하세요.");
+            }
+        }
     }
 
     private void requireRenameAndWriteSupport(Uri uri) throws IOException {

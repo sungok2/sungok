@@ -204,6 +204,29 @@ stubs['android/view/View.java'] = stubs['android/view/View.java'].replace(
  'public void setBackgroundColor(int color){} public void setBackground(Object d){} public void setPadding(int a,int b,int c,int d){}'
 )
 
+# M0.11: Browser-link guide and provider URI authority for active write preflight.
+stubs['android/content/Intent.java'] = stubs['android/content/Intent.java'].replace(
+ 'ACTION_OPEN_DOCUMENT_TREE="",CATEGORY_OPENABLE',
+ 'ACTION_OPEN_DOCUMENT_TREE="",ACTION_VIEW="",CATEGORY_OPENABLE'
+).replace(
+ 'public Intent(String s){}public Intent(Context c,Class<?> cl){}',
+ 'public Intent(String s){}public Intent(String s,Uri uri){}public Intent(Context c,Class<?> cl){}'
+)
+stubs['android/net/Uri.java'] = stubs['android/net/Uri.java'].replace(
+ 'public String getLastPathSegment(){return null;}',
+ 'public String getLastPathSegment(){return null;}public String getAuthority(){return null;}'
+)
+
+stubs['android/view/View.java'] = stubs['android/view/View.java'].replace(
+ 'public void setContentDescription(CharSequence c){}',
+ 'public void setOnClickListener(OnClickListener listener){} public void setContentDescription(CharSequence c){}'
+)
+
+stubs['android/app/AlertDialog.java'] = stubs['android/app/AlertDialog.java'].replace(
+ 'public Builder setNegativeButton(String s,DialogInterface.OnClickListener l){return this;}',
+ 'public Builder setNeutralButton(String s, DialogInterface.OnClickListener l){return this;} public Builder setNegativeButton(String s, DialogInterface.OnClickListener l){return this;}'
+)
+
 with tempfile.TemporaryDirectory() as tmp:
  t=Path(tmp)
  for n,content in stubs.items():
