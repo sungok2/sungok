@@ -145,12 +145,20 @@ public final class NovelLessonEngine {
             int at=indexOfIgnoreCase(containing,match.matchedSurface);
             if(at<0)continue;
             String hidden=containing.substring(0,at)+"_____"+containing.substring(at+match.matchedSurface.length());
+            // Source-grounded four-way cloze. Correct option is not fixed at index zero.
+            // Put plausible same-register distractors first; deterministic order permits QA.
             List<String> options=new ArrayList<>();
             options.add(match.entry.phrase);
             for(GlossaryEntry other:GLOSSARY){
                 if(options.size()==4)break;
-                if(!other.phrase.equalsIgnoreCase(match.entry.phrase))options.add(other.phrase);
+                if(!other.phrase.equalsIgnoreCase(match.entry.phrase) &&
+                   other.register.equals(match.entry.register)) options.add(other.phrase);
             }
+            for(GlossaryEntry other:GLOSSARY){
+                if(options.size()==4)break;
+                if(!options.contains(other.phrase))options.add(other.phrase);
+            }
+            Collections.rotate(options,1+Math.floorMod(containing.hashCode(),options.size()-1));
             exercise=new Exercise(containing,hidden,match.entry.phrase,options);
             break;
         }
