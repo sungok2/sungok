@@ -33,24 +33,7 @@ jobs:
           target: google_apis
           arch: x86_64
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: |
-            set -euo pipefail
-            mkdir -p direct-ui-evidence
-            adb wait-for-device
-            adb install -r direct-ntfs.apk
-            adb logcat -c
-            adb shell am start -W -n com.galaxyuniversalio.ntfsdirect/app.fayaz.otgmaster.MainActivity | tee direct-ui-evidence/launch.txt
-            sleep 6
-            adb shell pidof com.galaxyuniversalio.ntfsdirect | tee direct-ui-evidence/pid.txt
-            adb shell uiautomator dump /sdcard/direct-ntfs-window.xml || true
-            adb pull /sdcard/direct-ntfs-window.xml direct-ui-evidence/window.xml || true
-            adb exec-out screencap -p > direct-ui-evidence/main-screen.png
-            if adb logcat -d -t 6000 | grep -A15 'FATAL EXCEPTION' | grep -F 'com.galaxyuniversalio.ntfsdirect'; then
-              echo 'Fatal process exception found' >&2
-              exit 1
-            fi
-            test -s direct-ui-evidence/main-screen.png
-            echo 'PASS: Android 13 APK installs, launches, process stays live without USB'
+          script: bash tests/ci-ntfs-direct-smoke.sh
       - name: Upload emulator evidence
         if: always()
         uses: actions/upload-artifact@v7
