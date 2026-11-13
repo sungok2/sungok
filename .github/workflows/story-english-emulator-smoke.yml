@@ -1,0 +1,47 @@
+name: STORY ENGLISH 3.7.4 Emulator UX Smoke
+on:
+  push:
+    branches: [story-english-3.7.4-quality]
+    paths:
+      - 'story-english-preview/**'
+      - '.github/workflows/story-english-emulator-smoke.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  emulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.13'
+          cache-read-only: true
+      - name: Build debug for emulator smoke
+        run: gradle -p story-english-preview :app:assembleDebug --no-daemon
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -noaudio -no-boot-anim -gpu swiftshader_indirect -camera-back none
+          script: bash story-english-preview/qa/emulator_smoke.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: STORY-ENGLISH-374-EMULATOR-EVIDENCE
+          path: story-english-emulator-evidence/
+          if-no-files-found: warn
+          retention-days: 30
