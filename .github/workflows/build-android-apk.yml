@@ -50,11 +50,11 @@ jobs:
         run: |
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose app/build/outputs/apk/debug/app-debug.apk
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | tee apk-badging.txt
-          grep -F "package: name='com.galaxyuniversalio.debug'" apk-badging.txt
+          grep -F "package: name='com.galaxyuniversalio.master'" apk-badging.txt
       - name: Upload debug APK
         uses: actions/upload-artifact@v7
         with:
-          name: GalaxyUniversalIO-M0.10-debug-apk
+          name: GalaxyUniversalIO-M0.10-MASTER-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
@@ -76,7 +76,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: GalaxyUniversalIO-M0.10-emulator-evidence
+          name: GalaxyUniversalIO-M0.10-MASTER-emulator-evidence
           path: ci-evidence/
           if-no-files-found: warn
           retention-days: 7
