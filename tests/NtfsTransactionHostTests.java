@@ -25,7 +25,9 @@ public final class NtfsTransactionHostTests {
         String tempId, journal, finalName;
         int nameChecks, cleanupErrors, creates, deletes;
         boolean corruptRead, corruptPublished, failWrite, failDelete, renameToAlternate;
-        boolean failCreateBeforeReturn, failJournal, conflictOnSecondCheck, failClearJournal;
+        boolean failCreateBeforeReturn, failJournal, conflictOnSecondCheck, failClearJournal,
+                renameSucceedsButThrows, openSourceReturnsNull, openTargetReturnsNull,
+                openReadbackReturnsNull, openFinalReadbackReturnsNull;
 
         @Override public void ensureFinalAbsent(String name) throws IOException {
             nameChecks++;
@@ -47,9 +49,10 @@ public final class NtfsTransactionHostTests {
         }
         @Override public void requireWritableAndRenameable(String id) throws IOException {}
         @Override public InputStream openSource() throws IOException {
-            return new ByteArrayInputStream(source);
+            return openSourceReturnsNull ? null : new ByteArrayInputStream(source);
         }
         @Override public OutputStream openTemporaryForWrite(String id) throws IOException {
+            if(openTargetReturnsNull) return null;
             return new ByteArrayOutputStream() {
                 @Override public void write(byte[] b,int off,int len) {
                     if(failWrite) throw new UncheckedIOException(new IOException("write interrupted"));
@@ -62,6 +65,7 @@ public final class NtfsTransactionHostTests {
             };
         }
         @Override public InputStream openTemporaryForRead(String id) throws IOException {
+            if(openReadbackReturnsNull) return null;
             byte[] b = documents.get(id);
             if (corruptRead && b.length > 0) {
                 b = Arrays.copyOf(b,b.length);
@@ -75,10 +79,12 @@ public final class NtfsTransactionHostTests {
             documents.put(assigned,documents.remove(id));
             published.add(assigned);
             finalName=assigned;
+            if (renameSucceedsButThrows) throw new IOException("Provider lost rename acknowledgement");
             return assigned;
         }
         @Override public String displayName(String id) { return id; }
         @Override public InputStream openPublishedForRead(String id) {
+            if(openFinalReadbackReturnsNull) return null;
             byte[] b=documents.get(id);
             if (corruptPublished && b.length>0) {
                 b=Arrays.copyOf(b,b.length);b[b.length-1]^=0x21;
@@ -140,6 +146,29 @@ public final class NtfsTransactionHostTests {
         fails(() -> send(postRenameCorrupt),"published content corrupted after rename");
         check(postRenameCorrupt.documents.containsKey("myfile.txt"),"do not silently delete published data");
         check(postRenameCorrupt.journal==null,"journal cleared after publishing even on final verification error");
+
+        Fake renameAmbiguous=new Fake();renameAmbiguous.renameSucceedsButThrows=true;
+        fails(() -> send(renameAmbiguous),"rename may have succeeded before provider response failure");
+        check(renameAmbiguous.documents.containsKey("myfile.txt"),"never delete published data after uncertain rename");
+        check(renameAmbiguous.journal!=null,"ambiguous rename retains journal");
+        check(renameAmbiguous.deletes==0,"no cleanup delete after ambiguous rename");
+
+        Fake nullSource=new Fake();nullSource.openSourceReturnsNull=true;
+        fails(() -> send(nullSource),"null source stream");
+        check(nullSource.documents.isEmpty()&&nullSource.journal==null,"source stream unavailable cleanup");
+
+        Fake nullWrite=new Fake();nullWrite.openTargetReturnsNull=true;
+        fails(() -> send(nullWrite),"null target stream");
+        check(nullWrite.documents.isEmpty()&&nullWrite.journal==null,"target stream unavailable cleanup");
+
+        Fake nullStaged=new Fake();nullStaged.openReadbackReturnsNull=true;
+        fails(() -> send(nullStaged),"null staged readback");
+        check(nullStaged.documents.isEmpty()&&nullStaged.journal==null,"staged readback unavailable cleanup");
+
+        Fake nullPublished=new Fake();nullPublished.openFinalReadbackReturnsNull=true;
+        fails(() -> send(nullPublished),"null final readback");
+        check(nullPublished.documents.containsKey("myfile.txt"),"final readback unavailable does not delete copied file");
+        check(nullPublished.journal==null,"published file keeps no temporary recovery journal");
 
         Fake lostResponse=new Fake();lostResponse.failCreateBeforeReturn=true;
         fails(() -> send(lostResponse),"ambiguous create response");
