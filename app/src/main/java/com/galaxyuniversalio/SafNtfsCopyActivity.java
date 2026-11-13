@@ -6,6 +6,7 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.DocumentsContract;
+import android.provider.OpenableColumns;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
@@ -43,7 +44,7 @@ public final class SafNtfsCopyActivity extends Activity {
     private TextView status;
     private ProgressBar progress;
     private Button selectButton, cancelButton;
-    private boolean copying;
+    private volatile boolean copying;
 
     @Override
     public void onCreate(Bundle state) {
@@ -213,7 +214,13 @@ public final class SafNtfsCopyActivity extends Activity {
                     final String currentName = fileName;
                     runOnUiThread(() -> showStatus(index + "/" + selection.size() +
                             " 복사 및 검증: " + currentName));
-                    copyOne(parent, source, fileName, mimeType);
+                    long sourceSize = getSourceLength(source);
+                    runOnUiThread(() -> {
+                        progress.setIndeterminate(sourceSize <= 0);
+                        progress.setMax(1000);
+                        progress.setProgress(0);
+                    });
+                    copyOne(parent, source, fileName, mimeType, sourceSize);
                     completed++;
                 }
                 final int successful = completed;
@@ -266,7 +273,7 @@ public final class SafNtfsCopyActivity extends Activity {
         return false;
     }
 
-    private void copyOne(Uri parent, Uri source, String name, String mimeType) throws IOException {
+    private void copyOne(Uri parent, Uri source, String name, String mimeType, long declaredSize) throws IOException {
         if (childNameExists(parent, name)) {
             throw new IOException("덮어쓰기 방지: 같은 이름의 대상 파일이 존재합니다: " + name);
         }
@@ -283,8 +290,30 @@ public final class SafNtfsCopyActivity extends Activity {
             try (InputStream in = getContentResolver().openInputStream(source);
                  OutputStream out = getContentResolver().openOutputStream(temporary, "w")) {
                 if (in == null || out == null) throw new IOException("입출력 스트림을 열지 못했습니다.");
-                written = VerifiedStreamCopy.copy(in, out, cancel, null);
+                final long[] lastShownAt = {0L};
+                written = VerifiedStreamCopy.copy(in, out, cancel, bytes -> {
+                    long now = System.nanoTime();
+                    if (now - lastShownAt[0] < 250_000_000L) return;
+                    lastShownAt[0] = now;
+                    runOnUiThread(() -> {
+                        if (declaredSize > 0) {
+                            int fraction = (int) Math.min(1000.0, bytes * 1000.0 / declaredSize);
+                            progress.setProgress(fraction);
+                        }
+                        showStatus("복사: " + name + "\\n전송 " + bytes + "바이트" +
+                                (declaredSize >= 0 ? " / " + declaredSize + "바이트" : ""));
+                    });
+                });
+                if (declaredSize >= 0 && written.bytes != declaredSize) {
+                    throw new IOException("원본 크기와 복사된 크기가 다릅니다: " +
+                            written.bytes + " / " + declaredSize);
+                }
             }
+            runOnUiThread(() -> {
+                progress.setIndeterminate(true);
+                showStatus("SHA-256 재검증 중: " + name +
+                        "\\nUSB 파일을 다시 읽어 기록 내용을 비교합니다.");
+            });
             VerifiedStreamCopy.Result readBack;
             try (InputStream in = getContentResolver().openInputStream(temporary)) {
                 if (in == null) throw new IOException("USB에 기록한 파일을 다시 읽지 못했습니다.");
@@ -315,6 +344,16 @@ public final class SafNtfsCopyActivity extends Activity {
                 }
             }
         }
+    }
+
+    private long getSourceLength(Uri source) {
+        try (Cursor cursor = getContentResolver().query(source,
+                new String[] { OpenableColumns.SIZE }, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst() && !cursor.isNull(0)) {
+                return cursor.getLong(0);
+            }
+        } catch (RuntimeException ignored) { }
+        return -1;
     }
 
     private String getDisplayName(Uri uri) {
