@@ -91,7 +91,7 @@ jobs:
           if-no-files-found: error
       - name: Publish M11 public test release
         env:
-          GH_TOKEN: \${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           APK=$(find netshare-p2p/build/android-app/build/outputs/apk/debug -name '*.apk' -print -quit)
           cp "$APK" netshare-p2p/NetShareP2P_M11_Safe_Discovery_Debug.apk
