@@ -1,0 +1,40 @@
+name: STORY ENGLISH Source Snapshot for Work
+on:
+  push:
+    branches: [story-english-work-handoff]
+    paths:
+      - '.github/workflows/story-english-work-export.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Archive source code and GitHub workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          test -f story-english-preview/app/build.gradle
+          git ls-files story-english-preview | sort > out/SOURCE_FILE_LIST.txt
+          git ls-files '.github/workflows/story-english-*.yml' | sort >> out/SOURCE_FILE_LIST.txt
+          cat out/SOURCE_FILE_LIST.txt | xargs -d '\n' sha256sum > out/FILE_SHA256.txt
+          git rev-parse HEAD > out/EXPORT_COMMIT_SHA.txt
+          git log -1 --format='%H %s' > out/EXPORT_COMMIT_INFO.txt
+          zip -q -r out/STORY_ENGLISH_3.7.5_GITHUB_SOURCE_SNAPSHOT.zip story-english-preview \
+             .github/workflows/story-english-audio-lab.yml \
+             .github/workflows/story-english-cinematic.yml \
+             .github/workflows/story-english-quality.yml \
+             .github/workflows/story-english-novel.yml \
+             .github/workflows/story-english-novel-emulator.yml \
+             .github/workflows/story-english-work-export.yml
+          sha256sum out/STORY_ENGLISH_3.7.5_GITHUB_SOURCE_SNAPSHOT.zip > out/SOURCE_ZIP_SHA256.txt
+          unzip -t out/STORY_ENGLISH_3.7.5_GITHUB_SOURCE_SNAPSHOT.zip | tail -1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: STORY-ENGLISH-375-SOURCE-SNAPSHOT
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
