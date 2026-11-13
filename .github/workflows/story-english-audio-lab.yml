@@ -1,0 +1,72 @@
+name: STORY ENGLISH 3.7.2 Audio Lab APK
+
+on:
+  push:
+    branches: [story-english-3.7.2-audio-lab]
+    paths:
+      - 'story-english-preview/**'
+      - '.github/workflows/story-english-audio-lab.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.13'
+          cache-read-only: true
+      - name: Install Android SDK 36
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-36" "build-tools;36.0.0"
+      - name: Create ephemeral nonproduction signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          PASS="$(openssl rand -hex 24)"
+          echo "::add-mask::$PASS"
+          K="$RUNNER_TEMP/storyenglish-audiolab.jks"
+          keytool -genkeypair -noprompt -keystore "$K" -storepass "$PASS" -keypass "$PASS" \
+             -alias preview -keyalg RSA -keysize 3072 -validity 4 \
+             -dname "CN=Story English Audio Lab Evaluation, O=Evaluation Only, C=KR"
+          echo "STORY_KEYSTORE=$K" >> "$GITHUB_ENV"
+          echo "STORY_KEYPASS=$PASS" >> "$GITHUB_ENV"
+      - name: Compile, unit test, lint, and build signed release-mode evaluation APK
+        run: |
+          gradle -p story-english-preview :app:verifyPreviewRelease :app:testReleaseUnitTest :app:lintRelease :app:assembleRelease --no-daemon --stacktrace
+      - name: Verify binary and publish inspection files
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="story-english-preview/app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/signing.txt
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml | tee /tmp/manifest.txt
+          grep -F "package: name='com.storyenglish.audiolab'" /tmp/badging.txt
+          grep -F "versionName='3.7.2-audiolab.1'" /tmp/badging.txt
+          grep -F "android.permission.RECORD_AUDIO" /tmp/manifest.txt
+          ! grep -F "android.permission.INTERNET" /tmp/manifest.txt
+          grep -E 'android:usesCleartextTraffic.*0x0' /tmp/manifest.txt
+          grep -E 'android:allowBackup.*0x0' /tmp/manifest.txt
+          ! grep -Eq 'android:debuggable.*(0x1|0xffffffff)' /tmp/manifest.txt
+          mkdir -p dist
+          cp "$APK" dist/STORY_ENGLISH_3.7.2_AUDIO_LAB.apk
+          cp /tmp/{signing.txt,badging.txt,manifest.txt} dist/
+          sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
+          printf 'OFFLINE AUDITABLE PREVIEW ONLY: Source voice = device TTS, not licensed actor audio. No explicit sexual footage, no original backend integration, no device QA. Ephemeral signing key.\n' > dist/NOT_PRODUCTION_RELEASE.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: STORY-ENGLISH-372-AUDIO-LAB
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
