@@ -27,6 +27,12 @@ public final class ArCameraRenderer implements GLSurfaceView.Renderer {
     private volatile ScanModel model;
     private volatile ScanModel.Mode mode=ScanModel.Mode.OUTDOOR;
     private boolean depthSupported;
+    private volatile boolean surfaceFirst=true;
+    private volatile boolean subjectCrop=true;
+    private final SubjectVolume subjectVolume=new SubjectVolume(1.1f);
+    public void setSurfaceFirst(boolean value){surfaceFirst=value;}
+    public boolean isSurfaceFirst(){return surfaceFirst;}
+    public void setSubjectCrop(boolean value){subjectCrop=value;}
     private volatile PhotoDataset photos;
     private long lastPhotoTime;
     private int texId=0,program=0,positionSlot,uvSlot,textureSlot;
@@ -47,7 +53,7 @@ public final class ArCameraRenderer implements GLSurfaceView.Renderer {
     public void scan(ScanModel next,ScanModel.Mode target,boolean enabled){
         if(this.model!=next){
             lastCaptureMillis=0;lastPoseMillis=0;lastPosePosition=null;lastPoseRotation=null;
-            depthGate.reset();rejectedFrames=0;rawAccepted=0;rawAvailable=0;rawReused=0;rawUnavailable=0;
+            depthGate.reset();subjectVolume.reset();rejectedFrames=0;rawAccepted=0;rawAvailable=0;rawReused=0;rawUnavailable=0;
             captureHelp="카메라를 천천히 움직여 표면 깊이를 측정하세요";
         }
         this.model=next;this.mode=target;this.recording=enabled;
@@ -115,14 +121,18 @@ public final class ArCameraRenderer implements GLSurfaceView.Renderer {
                 if(depthSupported){
                     Image depth=null, confidence=null, rgb=null;
                     try {
-                        depth=f.acquireRawDepthImage16Bits();
-                        confidence=f.acquireRawDepthConfidenceImage();
+                        if(surfaceFirst){
+                            depth=f.acquireDepthImage16Bits(); // dense, interpolated scene depth
+                        }else{
+                            depth=f.acquireRawDepthImage16Bits(); // sparse measurement depth
+                            confidence=f.acquireRawDepthConfidenceImage();
+                        }
                         // Compare each raw depth frame only with the preceding raw depth timestamp.
                         // ARCore camera Frame timestamps need not equal raw depth timestamps.
                         rawAvailable++;
                         if(depthGate.shouldIntegrate(depth.getTimestamp())){
                             try {rgb=f.acquireCameraImage();}catch(NotYetAvailableException ignored){}
-                            if(DepthSampler.capture(f,depth,confidence,rgb,model,mode)){
+                            if(DepthSampler.capture(f,depth,confidence,rgb,model,mode,subjectCrop?subjectVolume:null)){
                                 rawAccepted++;
                                 com.google.ar.core.Pose pose=f.getCamera().getPose();
                                 lastPosePosition=pose.getTranslation();lastPoseRotation=pose.getRotationQuaternion();lastPoseMillis=now;
@@ -159,14 +169,14 @@ public final class ArCameraRenderer implements GLSurfaceView.Renderer {
                 ScanModel m=model;
                 if(!depthSupported)captureHelp="기기가 깊이를 지원하지 않아 희소 특징점만 기록됩니다";
                 else if(f.getCamera().getTrackingState()!=TrackingState.TRACKING)captureHelp="AR 추적 대기: 주변의 질감 있는 물체를 천천히 비춰주세요";
-                else if(rawAccepted>0)captureHelp="깊이 프레임 "+rawAccepted+"개 수집 · 계속 천천히 이동하세요";
+                else if(rawAccepted>0)captureHelp="깊이 프레임 "+rawAccepted+"개 수집 · "+(surfaceFirst?"표면 보간 중, 정확도 미검증":"원시 측정점 기록 중");
                 else if(rawUnavailable>0 && rawAvailable==0)captureHelp="깊이 생성 대기: 빛을 밝게 하고 천천히 이동하세요 (대기 "+rawUnavailable+")";
                 else if(rejectedFrames>0)captureHelp="깊이 샘플이 필터에 걸렸습니다: 사물과 0.5~2m 거리, 밝은 조명을 확인하세요";
                 else if(rawReused>0)captureHelp="새 깊이 업데이트 대기 중: 다른 각도로 천천히 이동하세요";
                 else captureHelp="포인트 수집 대기 중: 사물을 향해 0.5~2m에서 천천히 이동하세요";
                 String tracking=f.getCamera().getTrackingState()==TrackingState.TRACKING?"추적 중":"추적 대기";
                 String counts=m==null?"":String.format(java.util.Locale.KOREAN," · 점 %,d · 면 %,d · 프레임 %d",m.vertices(),m.triangles(),m.frames());
-                String type=depthSupported?"정밀 Raw Depth":"희소 포인트";
+                String type=depthSupported?(surfaceFirst?"표면 우선(보간 깊이)":"원시 깊이(신뢰도 필터)"):"희소 포인트";
                 String msg=tracking+" · "+type+counts
                     +(depthSupported && m!=null?" · 깊이 수집 "+rawAccepted+"/대기 "+rawUnavailable+"/제외 "+rejectedFrames:"")
                     +(m!=null && m.limitReached()?" · 용량 제한 도달":"");

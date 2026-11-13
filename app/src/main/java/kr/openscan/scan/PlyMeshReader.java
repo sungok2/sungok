@@ -11,11 +11,11 @@ import java.util.Arrays;
 public final class PlyMeshReader {
     private PlyMeshReader() {}
     public static final class Result {
-        public final float[] points, pointColors, mesh, meshColors;
+        public final float[] points, pointColors, mesh, meshColors, meshNormals;
         public final int pointCount, meshVertexCount, sourceVertexCount, sourceFaceCount;
         public final float cx, cy, cz, radius;
-        Result(float[] p,float[] c,float[] m,float[] mc,int pn,int mn,int totalVertices,int totalFaces,float x,float y,float z,float r){
-            points=p;pointColors=c;mesh=m;meshColors=mc;pointCount=pn;meshVertexCount=mn;
+        Result(float[] p,float[] c,float[] m,float[] mc,float[] normals,int pn,int mn,int totalVertices,int totalFaces,float x,float y,float z,float r){
+            points=p;pointColors=c;mesh=m;meshColors=mc;meshNormals=normals;pointCount=pn;meshVertexCount=mn;
             sourceVertexCount=totalVertices;sourceFaceCount=totalFaces;
             cx=x;cy=y;cz=z;radius=r;
         }
@@ -95,7 +95,19 @@ public final class PlyMeshReader {
                 mesh[dest]=vertices[index*3]-cx;mesh[dest+1]=vertices[index*3+1]-cy;mesh[dest+2]=vertices[index*3+2]-cz;
                 floatColor(rgb[index],meshColors,dest);
             }
-            return new Result(points,colors,mesh,meshColors,pn,kept*3,vertexCount,faceCount,cx,cy,cz,radius);
+            float[] normals=new float[kept*9];
+            for(int i=0;i<kept;i++){
+                int offset=i*9;
+                float ux=mesh[offset+3]-mesh[offset],uy=mesh[offset+4]-mesh[offset+1],uz=mesh[offset+5]-mesh[offset+2];
+                float vx=mesh[offset+6]-mesh[offset],vy=mesh[offset+7]-mesh[offset+1],vz=mesh[offset+8]-mesh[offset+2];
+                float nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;
+                float norm=(float)Math.sqrt(nx*nx+ny*ny+nz*nz);
+                if(norm>1e-8f){nx/=norm;ny/=norm;nz/=norm;}else{nx=0;ny=0;nz=1;}
+                for(int j=0;j<3;j++){
+                    normals[offset+j*3]=nx;normals[offset+j*3+1]=ny;normals[offset+j*3+2]=nz;
+                }
+            }
+            return new Result(points,colors,mesh,meshColors,normals,pn,kept*3,vertexCount,faceCount,cx,cy,cz,radius);
         }
     }
     private static void floatColor(int rgb,float[] into,int idx){

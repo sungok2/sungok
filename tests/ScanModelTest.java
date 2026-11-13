@@ -40,6 +40,8 @@ public final class ScanModelTest {
         require(depthModel.triangles()==0,"occlusion depth gap must reject stretched triangles");
         PlyMeshReader.Result decoded=PlyMeshReader.read(ply,100,100);
         require(decoded.sourceVertexCount==4 && decoded.sourceFaceCount==2 && decoded.pointCount==4 && decoded.meshVertexCount==6,"PLY mesh should be loaded and rendered");
+        require(decoded.meshNormals.length==decoded.meshVertexCount*3,"mesh normals for shaded viewer");
+        require(Math.abs(decoded.meshNormals[2])>0.5,"nonzero normal of generated triangle");
         require(Math.abs(decoded.points[0]+decoded.cx)<0.0001,"viewer points centered without corrupting world coordinates");
         System.out.println("PASS occlusion gap filtering and PLY mesh viewer decoding");
         System.out.println("PASS edge filtering, invalid-mask handling, immutable snapshot");

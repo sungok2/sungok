@@ -89,16 +89,23 @@ public final class CloudViewerActivity extends Activity {
             panel.setBackground(UiKit.fill(this,UiKit.PANEL,22));
             Button viewMode=UiKit.button(this,points.meshVertexCount>=600?"점군 보기 (표면 표시 중)":"점군 보기 (생성된 표면 부족)",UiKit.SURFACE,UiKit.TEXT,13);
             panel.addView(viewMode,new LinearLayout.LayoutParams(-1,UiKit.dp(this,44)));
+            Button pointSize=UiKit.button(this,"점 크기 4",UiKit.SURFACE,UiKit.TEXT,13);
             viewMode.setOnClickListener(v->{
                 if(points.meshVertexCount<600){
                     android.widget.Toast.makeText(this,"연결된 삼각면이 적어 점군만 표시합니다",android.widget.Toast.LENGTH_SHORT).show();return;
                 }
                 boolean onlyPoints=renderer.togglePointsOnly();
                 viewMode.setText(onlyPoints?"표면 보기 (점군 표시 중)":"점군 보기 (표면 표시 중)");
+                pointSize.setVisibility(onlyPoints?View.VISIBLE:View.GONE);
             });
             TextView instructions=UiKit.text(this,"한 손가락: 회전  ·  두 손가락: 확대",13,UiKit.TEXT,false);
             instructions.setGravity(Gravity.CENTER);panel.addView(instructions);
             LinearLayout tools=new LinearLayout(this);tools.setGravity(Gravity.CENTER);
+            pointSize.setOnClickListener(v->pointSize.setText("점 크기 "+renderer.nextPointSize()));
+            LinearLayout.LayoutParams ptLp=new LinearLayout.LayoutParams(-1,UiKit.dp(this,40));
+            ptLp.topMargin=UiKit.dp(this,7);
+            panel.addView(pointSize,ptLp);
+            pointSize.setVisibility(points.meshVertexCount>=600?View.GONE:View.VISIBLE);
             Button zoomOut=UiKit.button(this,"−",UiKit.SURFACE,UiKit.TEXT,13);
             Button reset=UiKit.button(this,"원래 보기",UiKit.ACCENT,UiKit.INK,13);
             Button zoomIn=UiKit.button(this,"+",UiKit.SURFACE,UiKit.TEXT,13);
@@ -130,12 +137,12 @@ public final class CloudViewerActivity extends Activity {
     @Override protected void onResume(){super.onResume();if(surface!=null)surface.onResume();}
     @Override protected void onPause(){if(surface!=null)surface.onPause();super.onPause();}
     static final class PointSet {
-        final FloatBuffer positions,colors,meshPositions,meshColors;
+        final FloatBuffer positions,colors,meshPositions,meshColors,meshNormals;
         final int size,meshVertexCount;
         final float cx,cy,cz,radius;
         PointSet(PlyMeshReader.Result r){
             positions=buffer(r.points);colors=buffer(r.pointColors);
-            meshPositions=buffer(r.mesh);meshColors=buffer(r.meshColors);
+            meshPositions=buffer(r.mesh);meshColors=buffer(r.meshColors);meshNormals=buffer(r.meshNormals);
             size=r.pointCount;meshVertexCount=r.meshVertexCount;
             cx=r.cx;cy=r.cy;cz=r.cz;radius=r.radius;
         }
@@ -151,7 +158,9 @@ public final class CloudViewerActivity extends Activity {
         private final PointSet pts;
         private volatile float yaw=20,pitch=15,distanceScale=2.8f;
         private volatile boolean pointsOnly;
-        private int program,position,color,mvp;
+        private volatile float pointSize=4f;
+        int nextPointSize(){pointSize=pointSize>=7f?2f:pointSize+2f;return (int)pointSize;}
+        private int program,position,color,normal,mvp,worldRotation,surfaceFlag,pointSizeSlot;
         private int viewportWidth=1,viewportHeight=1;
         ViewerRenderer(PointSet pts){this.pts=pts;}
         void resetView(){yaw=20;pitch=15;distanceScale=2.8f;}
@@ -160,12 +169,19 @@ public final class CloudViewerActivity extends Activity {
         void zoom(float ratio){if(ratio>0.5f&&ratio<2f)distanceScale=Math.max(1.25f,Math.min(18f,distanceScale/ratio));}
         @Override public void onSurfaceCreated(GL10 gl,EGLConfig cfg){
             GLES20.glClearColor(0.055f,0.08f,0.12f,1);GLES20.glEnable(GLES20.GL_DEPTH_TEST);
-            String vs="uniform mat4 mvp;attribute vec3 aPoint;attribute vec3 aColor;varying vec3 vColor;"+
-                "void main(){gl_Position=mvp*vec4(aPoint,1.);gl_PointSize=3.0;vColor=aColor;}";
+            String vs="uniform mat4 mvp;uniform mat4 rotation;uniform float uSurface;uniform float uPointSize;"+
+                "attribute vec3 aPoint;attribute vec3 aColor;attribute vec3 aNormal;varying vec3 vColor;"+
+                "void main(){gl_Position=mvp*vec4(aPoint,1.);gl_PointSize=uPointSize;"+
+                "float light=1.0;if(uSurface>0.5){vec3 n=normalize((rotation*vec4(aNormal,0.0)).xyz);"+
+                "light=0.46+0.54*abs(dot(n,normalize(vec3(0.5,0.75,0.43))));}vColor=aColor*light;}";
             String fs="precision mediump float;varying vec3 vColor;void main(){gl_FragColor=vec4(vColor,1.);}";
             int v=shader(GLES20.GL_VERTEX_SHADER,vs),f=shader(GLES20.GL_FRAGMENT_SHADER,fs);
             program=GLES20.glCreateProgram();GLES20.glAttachShader(program,v);GLES20.glAttachShader(program,f);GLES20.glLinkProgram(program);
-            position=GLES20.glGetAttribLocation(program,"aPoint");color=GLES20.glGetAttribLocation(program,"aColor");mvp=GLES20.glGetUniformLocation(program,"mvp");
+            position=GLES20.glGetAttribLocation(program,"aPoint");color=GLES20.glGetAttribLocation(program,"aColor");
+            normal=GLES20.glGetAttribLocation(program,"aNormal");mvp=GLES20.glGetUniformLocation(program,"mvp");
+            worldRotation=GLES20.glGetUniformLocation(program,"rotation");
+            surfaceFlag=GLES20.glGetUniformLocation(program,"uSurface");
+            pointSizeSlot=GLES20.glGetUniformLocation(program,"uPointSize");
             GLES20.glDeleteShader(v);GLES20.glDeleteShader(f);
         }
         static int shader(int type,String src){int id=GLES20.glCreateShader(type);GLES20.glShaderSource(id,src);GLES20.glCompileShader(id);return id;}
@@ -178,16 +194,23 @@ public final class CloudViewerActivity extends Activity {
             Matrix.setIdentityM(model,0);Matrix.rotateM(model,0,pitch,1,0,0);Matrix.rotateM(model,0,yaw,0,1,0);
             Matrix.multiplyMM(tmp,0,view,0,model,0);Matrix.multiplyMM(result,0,projection,0,tmp,0);
             GLES20.glUseProgram(program);GLES20.glUniformMatrix4fv(mvp,1,false,result,0);
+            GLES20.glUniformMatrix4fv(worldRotation,1,false,model,0);
+            GLES20.glUniform1f(pointSizeSlot,pointSize);
             GLES20.glEnableVertexAttribArray(position);GLES20.glEnableVertexAttribArray(color);
             if(pts.meshVertexCount>=600 && !pointsOnly){
-                pts.meshPositions.position(0);pts.meshColors.position(0);
+                GLES20.glUniform1f(surfaceFlag,1.0f);
+                GLES20.glEnableVertexAttribArray(normal);
+                pts.meshPositions.position(0);pts.meshColors.position(0);pts.meshNormals.position(0);
                 GLES20.glVertexAttribPointer(position,3,GLES20.GL_FLOAT,false,0,pts.meshPositions);
                 GLES20.glVertexAttribPointer(color,3,GLES20.GL_FLOAT,false,0,pts.meshColors);
+                GLES20.glVertexAttribPointer(normal,3,GLES20.GL_FLOAT,false,0,pts.meshNormals);
                 GLES20.glDrawArrays(GLES20.GL_TRIANGLES,0,pts.meshVertexCount);
+                GLES20.glDisableVertexAttribArray(normal);
             }
             // Drawing all points on top of a solid mesh makes the surface look like
             // speckled noise. Show ONE representation at a time by default.
             if(pointsOnly || pts.meshVertexCount<600){
+                GLES20.glUniform1f(surfaceFlag,0.0f);
                 pts.positions.position(0);pts.colors.position(0);
                 GLES20.glVertexAttribPointer(position,3,GLES20.GL_FLOAT,false,0,pts.positions);
                 GLES20.glVertexAttribPointer(color,3,GLES20.GL_FLOAT,false,0,pts.colors);

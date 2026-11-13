@@ -32,7 +32,7 @@ public final class ScanRepository {
         return path;
     }
     public static File[] list(Context context) {
-        File[] folders=root(context).listFiles(File::isDirectory);
+        File[] folders=root(context).listFiles(f->f.isDirectory() && !f.getName().startsWith("."));
         if(folders==null)return new File[0];
         java.util.Arrays.sort(folders,(a,b)->Long.compare(b.lastModified(),a.lastModified()));
         return folders;
@@ -40,8 +40,9 @@ public final class ScanRepository {
     public static File save(Context ctx,ScanModel.Snapshot data,Location location) throws Exception {
         if(data.vertices.isEmpty())throw new IllegalArgumentException("스캔 데이터가 없습니다");
         String name="Scan_"+new SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(new Date());
-        File folder=new File(root(ctx),name);
-        if(!folder.mkdirs())throw new IOException("Cannot create folder");
+        File destination=new File(root(ctx),name);
+        File folder=new File(root(ctx),"."+name+".partial");
+        if(!folder.mkdirs())throw new IOException("Cannot create staging folder");
         try {
             ScanFileFormats.writePly(new File(folder,"model.ply"),data);
             ScanFileFormats.writeObj(new File(folder,"model.obj"),data);
@@ -50,6 +51,13 @@ public final class ScanRepository {
             meta.put("created_at_epoch_ms",System.currentTimeMillis());
             meta.put("mode",data.mode.name()); meta.put("frames",data.frameCount);
             meta.put("points",data.vertices.size());meta.put("triangles",data.triangles.size());
+            ScanQuality.Report quality=ScanQuality.from(data);
+            meta.put("quality_note","Capture coverage only: NOT verified geometric accuracy");
+            meta.put("connected_vertex_ratio",(double)quality.meshCoverage);
+            meta.put("extent_x_m",(double)quality.spanX);
+            meta.put("extent_y_m",(double)quality.spanY);
+            meta.put("extent_z_m",(double)quality.spanZ);
+            meta.put("quality_concern",quality.concern);
             meta.put("coordinates","local_ARCore_world_meters");
             meta.put("gps_role","approximate_scan_site_only_not_georeferenced");
             if(location!=null) {
@@ -60,8 +68,9 @@ public final class ScanRepository {
             try(FileOutputStream out=new FileOutputStream(new File(folder,"metadata.json"))){
                 out.write(meta.toString(2).getBytes(StandardCharsets.UTF_8));
             }
-            return folder;
-        } catch(Exception e) { // Avoid exposing partially written scan as completed.
+            if(!folder.renameTo(destination))throw new IOException("Scan finalization failed");
+            return destination;
+        } catch(Exception e) { // Never display a partially written scan as complete.
             File[] files=folder.listFiles();if(files!=null)for(File f:files)f.delete();folder.delete();throw e;
         }
     }

@@ -51,3 +51,12 @@ with tempfile.TemporaryDirectory() as td:
         str(SRC/'ScanModel.java'),str(SRC/'ScanCoach.java'),str(ROOT/'tests/ScanCoachTest.java')],check=True)
     out=subprocess.run(['java','-cp',td,'ScanCoachTest'],capture_output=True,text=True,check=True)
     print(out.stdout.strip())
+
+# v1.6: object-world ROI and honest coverage reports.
+with tempfile.TemporaryDirectory() as td:
+    subprocess.run(['javac','-encoding','UTF-8','-d',td,
+        str(SRC/'ScanModel.java'),str(SRC/'ScanQuality.java'),str(SRC/'SubjectVolume.java'),
+        str(ROOT/'tests/ScanQualityTest.java'),str(ROOT/'tests/SubjectVolumeTest.java')],check=True)
+    for test in ('ScanQualityTest','SubjectVolumeTest'):
+        out=subprocess.run(['java','-cp',td,test],capture_output=True,text=True,check=True)
+        print(out.stdout.strip())

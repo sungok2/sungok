@@ -3,6 +3,8 @@ package kr.openscan.scan;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Canvas;
@@ -46,6 +48,7 @@ public final class MainActivity extends Activity {
     private ScanModel.Mode selectedMode=ScanModel.Mode.OBJECT;
     private boolean isRecording=false, installRequested=false, sessionResumed=false, exporting=false;
     private boolean includePhotos=false, includeGps=false;
+    private boolean surfaceFirst=true, subjectCrop=true;
     private String lastReport="카메라 준비 중";
     private TextView cameraStatus,scanState,pointCount,faceCount,helper,modeHint,stageText,privacyNote,modeButtons[];
     private View[] stageBars;
@@ -63,6 +66,8 @@ public final class MainActivity extends Activity {
         getWindow().setStatusBarColor(UiKit.INK);getWindow().setNavigationBarColor(UiKit.INK);
         includePhotos=getPreferences(MODE_PRIVATE).getBoolean("photos",false);
         includeGps=getPreferences(MODE_PRIVATE).getBoolean("gps",false);
+        surfaceFirst=getPreferences(MODE_PRIVATE).getBoolean("surface_first",true);
+        subjectCrop=getPreferences(MODE_PRIVATE).getBoolean("subject_crop",true);
         feedback=new ScanFeedback(this);
         createScreen();
         if(checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED)
@@ -80,6 +85,7 @@ public final class MainActivity extends Activity {
             }
             refreshState();
         }));
+        renderer.setSurfaceFirst(surfaceFirst);renderer.setSubjectCrop(subjectCrop);
         surface.setRenderer(renderer);surface.setRenderMode(GLSurfaceView.RENDERMODE_CONTINUOUSLY);
         root.addView(surface,new FrameLayout.LayoutParams(-1,-1));
         root.addView(new Reticle(this),new FrameLayout.LayoutParams(-1,-1));
@@ -205,7 +211,7 @@ public final class MainActivity extends Activity {
             renderer.getCaptureHelp(),exporting);
         stageText.setText(advice.stageLabel);
         stageText.setTextColor(advice.needsAttention?UiKit.WARNING:UiKit.MUTED);
-        modeHint.setText(advice.modeHint);
+        modeHint.setText(advice.modeHint+" · "+(surfaceFirst?"표면 우선":"원시 깊이 우선"));
         // Give the camera view more room while recording; reveal hints again on pause.
         modeHint.setVisibility(isRecording?View.GONE:View.VISIBLE);
         privacyNote.setVisibility(model!=null?View.GONE:View.VISIBLE);
@@ -335,7 +341,14 @@ public final class MainActivity extends Activity {
                 .setMessage("카메라 화면만 표시된 상태이며 3D 측정 데이터가 수집되지 않았습니다. 빈 PLY/OBJ 파일은 만들지 않습니다.\n\n"+
                     renderer.getCaptureHelp()+"\n\n조명을 밝게 하고 사물을 0.5~2m 거리에서 비춘 뒤 천천히 움직이세요. 상단의 추적 상태와 포인트 숫자를 확인하세요.")
                 .setPositiveButton("계속 촬영",(d,w)->{if(!isRecording)toggleScan();})
-                .setNegativeButton("닫기",null).show();
+                .setNeutralButton("진단 복사",(d,w)->{
+                    String diagnostic="OpenScan 3D / 포인트 0 / 모드="+selectedMode.name()
+                        +" / 깊이="+(surfaceFirst?"표면":"원시")
+                        +" / 상태="+lastReport+" / 안내="+renderer.getCaptureHelp();
+                    ClipboardManager clip=(ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
+                    if(clip!=null){clip.setPrimaryClip(ClipData.newPlainText("OpenScan 진단",diagnostic));
+                        Toast.makeText(this,"진단 정보를 복사했습니다",Toast.LENGTH_LONG).show();}
+                }).setNegativeButton("닫기",null).show();
             return;
         }
         if(model.frames()<12 || model.triangles()<300 || model.vertices()<1500){
@@ -350,10 +363,13 @@ public final class MainActivity extends Activity {
     }
     private void saveCurrentUnchecked(){
         isRecording=false;renderer.stop();exporting=true;refreshState();
-        final ScanModel.Snapshot snap=model.snapshot(); // stable capture on UI thread
+        // Snapshot can be hundreds of thousands of vertices: do not freeze the camera UI thread.
+        final ScanModel heldModel=model;
         final Location location=getLocation();final PhotoDataset photos=photoSet;renderer.setPhotos(null);
         disk.submit(()->{
             try{
+                final ScanModel.Snapshot snap=heldModel.snapshot();
+                final ScanQuality.Report quality=ScanQuality.from(snap);
                 File folder=ScanRepository.save(getApplicationContext(),snap,location);
                 int count=0;String photoNote="";
                 if(photos!=null){try{count=photos.finish(folder);}catch(Exception ex){photoNote=" (사진 일부 저장 실패)";}}
@@ -364,7 +380,8 @@ public final class MainActivity extends Activity {
                     lastReport="추적 대기";refreshState();
                     new AlertDialog.Builder(this).setTitle("3D 스캔 저장 완료")
                         .setMessage(String.format(Locale.KOREAN,"%,d 포인트 · %,d 메시\n사진 %d장%s\n\n3D 모델을 바로 확인하시겠습니까?",
-                            snap.vertices.size(),snap.triangles.size(),photoCount,note))
+                            snap.vertices.size(),snap.triangles.size(),photoCount,note)
+                            +"\n\n"+quality.description())
                         .setPositiveButton("3D 보기",(d,w)->openViewer(folder))
                         .setNeutralButton("파일로 내보내기",(d,w)->openExport(folder))
                         .setNegativeButton("닫기",null).show();
@@ -397,6 +414,12 @@ public final class MainActivity extends Activity {
             feedback.cue(ScanFeedback.Cue.PAUSE,settings);refreshState();}
         LinearLayout options=new LinearLayout(this);options.setOrientation(LinearLayout.VERTICAL);
         options.setPadding(UiKit.dp(this,20),UiKit.dp(this,8),UiKit.dp(this,20),0);
+        CheckBox dense=new CheckBox(this);
+        dense.setText("표면 우선: 보간 깊이로 연속된 메시 생성 (기본)");
+        dense.setTextSize(14);dense.setChecked(surfaceFirst);dense.setEnabled(model==null);
+        CheckBox crop=new CheckBox(this);
+        crop.setText("사물 모드: 처음 잡은 대상 주변만 기록 (먼 배경 제외)");
+        crop.setTextSize(14);crop.setChecked(subjectCrop);crop.setEnabled(model==null);
         CheckBox photos=new CheckBox(this);photos.setText("연속 사진도 저장 (외부 포토그래메트리용)");
         photos.setTextSize(14);photos.setChecked(includePhotos);photos.setEnabled(model==null);
         CheckBox gps=new CheckBox(this);gps.setText("스캔 장소의 GPS 위치 기록 (선택)");
@@ -405,20 +428,28 @@ public final class MainActivity extends Activity {
         sound.setTextSize(14);sound.setChecked(feedback.soundEnabled());
         CheckBox haptics=new CheckBox(this);haptics.setText("버튼 진동 피드백");
         haptics.setTextSize(14);haptics.setChecked(feedback.hapticsEnabled());
+        options.addView(dense);options.addView(crop);
         options.addView(sound);options.addView(haptics);
         options.addView(photos);options.addView(gps);
         if(model!=null){
-            TextView lockNote=UiKit.text(this,"촬영을 시작한 후에는 사진·GPS 옵션을 바꿀 수 없습니다. 효과음·진동은 즉시 설정할 수 있습니다.",12,0xFF42596A,false);
+            TextView lockNote=UiKit.text(this,"촬영을 시작한 후에는 깊이 방식·대상 제한·사진·GPS 옵션을 바꿀 수 없습니다. 효과음·진동은 즉시 설정할 수 있습니다.",12,0xFF42596A,false);
             options.addView(lockNote);
         }
-        TextView info=UiKit.text(this,"사진 수집은 저장 공간을 더 사용합니다. 이 앱은 사진만으로 정밀 3D 복원을 수행하지 않습니다. GPS는 3D 좌표의 측량 보정값이 아닙니다.",12,0xFF445465,false);
+        TextView info=UiKit.text(this,"표면 우선은 보간 깊이를 사용하며 실제 없는 표면이 나타날 수 있습니다. 꺼두면 신뢰도로 선별한 원시 측정점을 사용하지만 메시가 희소할 수 있습니다. 사진만으로 자동 정밀 복원하지 않으며 GPS는 측량 보정값이 아닙니다.",12,0xFF445465,false);
         LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(-1,-2);ip.topMargin=UiKit.dp(this,10);
         options.addView(info,ip);
         new AlertDialog.Builder(this).setTitle("스캔 옵션").setView(options)
             .setPositiveButton("적용",(d,w)->{
                 feedback.configure(sound.isChecked(),haptics.isChecked());
+                if(model==null){
+                    surfaceFirst=dense.isChecked();subjectCrop=crop.isChecked();
+                    renderer.setSurfaceFirst(surfaceFirst);renderer.setSubjectCrop(subjectCrop);
+                    getPreferences(MODE_PRIVATE).edit().putBoolean("surface_first",surfaceFirst)
+                        .putBoolean("subject_crop",subjectCrop).apply();
+                }
                 includePhotos=photos.isChecked();includeGps=gps.isChecked();
                 getPreferences(MODE_PRIVATE).edit().putBoolean("photos",includePhotos).putBoolean("gps",includeGps).apply();
+                refreshState();
                 if(includeGps && checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)!=PackageManager.PERMISSION_GRANTED)
                     requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION},LOCATION_REQUEST);
             }).setNeutralButton("촬영 도움말",(d,w)->showHelp())
@@ -426,7 +457,8 @@ public final class MainActivity extends Activity {
     }
     private void showHelp(){
         new AlertDialog.Builder(this).setTitle("촬영 가이드 · "+selectedMode.label)
-            .setMessage(ScanCoach.modeGuide(selectedMode)+"\n\n화면의 4단계 막대는 수집량 안내이며 정확도 점수가 아닙니다. 포인트가 늘어도 형상이 정확하다는 보장은 없습니다.\n\n정밀한 사진 기반 복원과 텍스처 생성은 현재 앱에서 지원하지 않습니다.")
+            .setMessage(ScanCoach.modeGuide(selectedMode)+"\n\n현재 깊이 방식: "+(surfaceFirst?"표면 우선 · 보간 포함":"원시 깊이 우선 · 측정 포인트 중심")
+                +"\n\n4단계 막대는 데이터 수집량 안내이며 정확도 점수가 아닙니다. 포인트가 늘어도 형상이 정확하다는 보장은 없습니다.\n\n정밀한 사진 기반 복원과 텍스처 생성은 현재 앱에서 지원하지 않습니다.")
             .setPositiveButton("확인",null).show();
     }
     private void openLibrary(){
