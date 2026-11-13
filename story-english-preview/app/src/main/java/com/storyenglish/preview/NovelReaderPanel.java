@@ -146,7 +146,7 @@ public final class NovelReaderPanel {
             if(sent.length()<=380){
                 add(item,button("원문 듣기 (TTS)",()->{session.actions++;host.listen(sent);},false),10);
                 if(sent.length()<=100)add(item,button("쉐도잉 · 음향 비교",()->{session.actions++;host.shadow(sent);},true),8);
-                else add(item,text("170자를 초과해 쉐도잉은 지원하지 않습니다.",12,MUTED,false),8);
+                else add(item,text("100자를 초과한 문장은 10초 자동녹음으로 정확하게 비교하기 어려워 쉐도잉을 제공하지 않습니다.",12,MUTED,false),8);
             } else add(item,text("긴 문장입니다. 더 짧은 구간으로 나누어 다시 불러오세요.",12,MUTED,false),8);
             add(root,item,11);
         }
