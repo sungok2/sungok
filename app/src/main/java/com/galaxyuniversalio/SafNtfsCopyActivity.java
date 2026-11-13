@@ -277,7 +277,8 @@ public final class SafNtfsCopyActivity extends Activity {
                 final int successful = completed;
                 final String details = e.getClass().getSimpleName() + ": " + e.getMessage();
                 runOnUiThread(() -> showStatus("중단: " + successful + "/" + selection.size() +
-                        "개 완료. " + details + "\n미완료 파일의 임시 데이터 정리를 시도했습니다."));
+                        "개 완료. " + details + "\n이미 저장된 파일은 자동 삭제하지 않습니다. " +
+                        "대상 파일과 복구 메뉴를 확인하세요."));
             } finally {
                 copying = false;
                 PROCESS_TRANSFER_ACTIVE.set(false);
@@ -375,6 +376,9 @@ public final class SafNtfsCopyActivity extends Activity {
                     }
                     @Override public String displayName(String id) {
                         return getDisplayName(Uri.parse(id));
+                    }
+                    @Override public InputStream openPublishedForRead(String id) throws IOException {
+                        return getContentResolver().openInputStream(Uri.parse(id));
                     }
                     @Override public boolean deleteTemporary(String id) throws IOException {
                         return DocumentsContract.deleteDocument(getContentResolver(), Uri.parse(id));
