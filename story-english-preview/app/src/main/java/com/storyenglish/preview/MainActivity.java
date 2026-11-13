@@ -21,6 +21,9 @@ import android.widget.ImageView;
 import android.widget.VideoView;
 import android.widget.MediaController;
 import android.net.Uri;
+import android.media.AudioManager;
+import android.media.AudioFocusRequest;
+import android.media.AudioAttributes;
 
 /** STORY ENGLISH 3.7.2 LAB: stand-alone offline feature prototype, not 3.7.0 source integration. */
 public final class MainActivity extends Activity implements SpeechLab.Listener {
@@ -62,19 +65,45 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
     private boolean cinemaOpen=false;
     private VideoView cinematicVideo;
     private boolean canShowAdult=false;
+    private AudioManager audioManager;
+    private AudioFocusRequest focusRequest;
+    private boolean audioFocused=false;
     private final int micRequest=108;
     @Override public void onCreate(Bundle saved){super.onCreate(saved);
         prefs=getSharedPreferences("adult_learning_preview",MODE_PRIVATE);
         repeatIndex=Math.max(0,Math.min(REP.length-1,prefs.getInt("repeats",2)));
         gapIndex=Math.max(0,Math.min(GAP.length-1,prefs.getInt("gap",2)));
         canShowAdult=prefs.getBoolean("confirmed19",false);
-        if(saved!=null){scene=saved.getInt("scene",0);line=saved.getInt("line",2);tab=saved.getInt("tab",0);}
+        if(saved!=null){
+            scene=Math.max(0,Math.min(TITLES.length-1,saved.getInt("scene",scene)));
+            line=Math.max(0,Math.min(EN[scene].length-1,saved.getInt("line",line)));
+            tab=Math.max(0,Math.min(4,saved.getInt("tab",tab)));
+        }
+        audioManager=(AudioManager)getSystemService(AUDIO_SERVICE);
+        if(audioManager!=null){
+            AudioAttributes attributes=new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build();
+            focusRequest=new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                .setAudioAttributes(attributes)
+                .setWillPauseWhenDucked(true)
+                .setOnAudioFocusChangeListener(change->{
+                    if(change==AudioManager.AUDIOFOCUS_LOSS || change==AudioManager.AUDIOFOCUS_LOSS_TRANSIENT ||
+                       change==AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK){
+                        runOnUiThread(()->{
+                            pauseCinema();
+                            if(lab!=null)lab.pause();
+                            if(statusText!=null)statusText.setText("다른 오디오로 전환되어 재생을 일시중지했습니다.");
+                        });
+                    }
+                }).build();
+        }
         lab=new SpeechLab(this,this);
         render();
     }
     @Override protected void onSaveInstanceState(Bundle out){out.putInt("scene",scene);out.putInt("line",line);out.putInt("tab",tab);super.onSaveInstanceState(out);}
-    @Override protected void onPause(){super.onPause();if(cinematicVideo!=null)cinematicVideo.pause();if(lab!=null)lab.pause();ttsRequested=false;}
-    @Override protected void onDestroy(){stopCinema();if(lab!=null)lab.shutdown();super.onDestroy();}
+    @Override protected void onPause(){super.onPause();if(cinematicVideo!=null)cinematicVideo.pause();if(lab!=null)lab.pause();releaseAudioFocus();ttsRequested=false;}
+    @Override protected void onDestroy(){stopCinema();releaseAudioFocus();if(lab!=null)lab.shutdown();super.onDestroy();}
     private int dp(int n){return (int)(getResources().getDisplayMetrics().density*n+0.5f);}
     private float font(int s){return prefs.getBoolean("large",false)?s*1.18f:s;}
     private GradientDrawable surface(int color){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(16));return d;}
@@ -86,12 +115,27 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
     private Button button(String title,Runnable task,boolean primary){Button b=new Button(this);b.setAllCaps(false);b.setText(title);b.setTextColor(primary?BG:WHITE);b.setTextSize(font(15));b.setMinHeight(dp(52));b.setPadding(dp(12),dp(8),dp(12),dp(8));b.setBackground(surface(primary?GOLD:SURFACE));b.setOnClickListener(v->task.run());b.setContentDescription(title);return b;}
     private LinearLayout card(String title,String detail){LinearLayout c=column();c.setPadding(dp(17),dp(16),dp(17),dp(16));c.setBackground(surface(SURFACE));add(c,label(title,19,WHITE,true),0);if(detail!=null&&!detail.isEmpty())add(c,label(detail,14,MUTED,false),8);return c;}
     private void heading(String title,String subtitle){add(body,label(title,27,WHITE,true),12);add(body,label(subtitle,15,MUTED,false),7);}
-    private void go(int screen){stopCinema();cinemaOpen=false;tab=screen;onStage=false;if(lab!=null)lab.stop();ttsRequested=false;refImage=null;lastResult=null;render();}
+    private void go(int screen){stopCinema();releaseAudioFocus();cinemaOpen=false;tab=screen;onStage=false;if(lab!=null)lab.stop();ttsRequested=false;refImage=null;lastResult=null;render();}
     private void changeScene(int index){scene=index;line=2;go(1);}
     private void selectLine(int index){line=index;refImage=null;lastResult=null;tab=2;render();prepareReference();}
     private void prepareReference(){pauseCinema();if(lab!=null){ttsRequested=true;lab.setPhrase(EN[scene][line],line);}}
+    private boolean requestAudioFocus(){
+        if(audioManager==null||focusRequest==null)return false;
+        if(audioFocused)return true;
+        audioFocused=audioManager.requestAudioFocus(focusRequest)==AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+        if(!audioFocused)new AlertDialog.Builder(this)
+            .setMessage("현재 다른 오디오 앱을 사용 중입니다. 재생을 다시 시도해 주세요.")
+            .setPositiveButton("확인",null).show();
+        return audioFocused;
+    }
+    private void releaseAudioFocus(){
+        if(audioManager!=null&&focusRequest!=null&&audioFocused){
+            audioManager.abandonAudioFocusRequest(focusRequest);
+            audioFocused=false;
+        }
+    }
     private void render(){stopCinema();root=column();root.setBackgroundColor(BG);setContentView(root);
-        LinearLayout title=column();title.setPadding(dp(18),dp(12),dp(18),dp(10));add(title,label("STORY ENGLISH",15,GOLD,true),0);add(title,label("ADULT LANGUAGE LAB  ·  3.7.2  ·  OFFLINE PREVIEW",11,MUTED,false),5);root.addView(title);
+        LinearLayout title=column();title.setPadding(dp(18),dp(12),dp(18),dp(10));add(title,label("STORY ENGLISH",15,GOLD,true),0);add(title,label("CINEMATIC AUDIO LAB · 3.7.4 · OFFLINE PREVIEW",11,MUTED,false),5);root.addView(title);
         ScrollView scroll=new ScrollView(this);body=column();body.setPadding(dp(18),0,dp(18),dp(32));scroll.addView(body);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         if(!canShowAdult){ageGate();return;}
         if(tab==0)home();else if(tab==1)learning();else if(tab==2)shadowing();else if(tab==3)progress();else settings();
@@ -143,19 +187,20 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
         controller.setAnchorView(video);
         video.setMediaController(controller);
         video.setOnPreparedListener(mp->{mp.setLooping(false);});
+        video.setOnCompletionListener(mp->releaseAudioFocus());
         video.setOnErrorListener((mp,what,extra)->{
             new AlertDialog.Builder(this).setMessage("영상을 재생할 수 없습니다. 저장 공간 또는 미디어 코덱을 확인해 주세요.")
                 .setPositiveButton("확인",null).show();
             return true;
         });
         add(body,button("▶ 재생 / 일시정지",()->{
-            if(video.isPlaying())video.pause();
-            else {if(lab!=null)lab.stop();video.start();}
+            if(video.isPlaying()){video.pause();releaseAudioFocus();}
+            else if(requestAudioFocus()){if(lab!=null)lab.stop();video.start();}
         },true),10);
         add(body,button("↻ 처음부터 다시 보기",()->{
-            if(lab!=null)lab.stop();video.seekTo(0);video.start();
+            if(requestAudioFocus()){if(lab!=null)lab.stop();video.seekTo(0);video.start();}
         },false),9);
-        add(body,button("영상 닫기",()->{stopCinema();cinemaOpen=false;render();},false),8);
+        add(body,button("영상 닫기",()->{stopCinema();releaseAudioFocus();cinemaOpen=false;render();},false),8);
         add(body,label("학습 표현: I want to be closer to you. / Is this okay? / Let's take our time. / We can stop whenever you want.",14,MUTED,false),12);
         add(body,label("이 영상은 정지 이미지에 화면 이동과 장면 전환을 더한 교육용 편집물입니다. 실제 성우·배우 촬영 영상이 아닙니다.",12,MUTED,false),8);
     }
@@ -182,13 +227,13 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
         for(int i=0;i<TITLES.length;i++){final int idx=i;
             add(body,button((i+1)+"  "+TITLES[i]+"  ·  "+FUNCTIONS[i],()->changeScene(idx),false),10);
         }
-        add(body,label("성우 음성 대신 기기 TTS로 재생합니다. 성인용 몰입 영상·실제 화자 음성은 이 APK에 포함돼 있지 않습니다.",13,MUTED,false),18);
+        add(body,label("A Quiet Evening에는 합성음성 기반 25초 시네마틱 장면이 포함됩니다. 전문 성우·배우 영상 및 기존 앱 전체 콘텐츠는 제공되지 않습니다.",13,MUTED,false),18);
     }
     private void learning(){heading(TITLES[scene],"상황을 보고, 실제 대화를 듣고, 필요한 문장을 선택하세요.");
         add(body,sceneArtwork(),12);
         cinematicLesson();
         add(body,label("MATURE  ·  "+FUNCTIONS[scene],13,ROSE,true),10);
-        add(body,button("대화 전체 듣기  ▶",()->{pauseCinema();lab.playDialogue(EN[scene]);},true),12);
+        add(body,button("대화 전체 듣기  ▶",()->{if(requestAudioFocus()){pauseCinema();lab.playDialogue(EN[scene]);}},true),12);
         add(body,label("표현을 눌러 쉐도잉·원음 비교로 이동합니다.",14,MUTED,false),16);
         for(int i=0;i<EN[scene].length;i++){
             final int n=i;LinearLayout c=card((i%2==0?"A:  ":"B:  ")+EN[scene][i],prefs.getBoolean("translation",true)?KO[scene][i]:"");
@@ -210,15 +255,15 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
         add(body,button("다른 문장 선택하기",()->go(1),false),10);
         controlRow("반복 횟수",REP[repeatIndex]+"회",true);
         controlRow("반복 간격",GAP[gapIndex]+"초",false);
-        add(body,button("기준 음성 반복 듣기  ▶",()->{if(!lab.hasReference())prepareReference();else lab.playRepeats(REP[repeatIndex],GAP[gapIndex]);},true),14);
-        add(body,button("재생 중지",()->{lab.stop();ttsRequested=false;refImage=null;lastResult=null;render();},false),9);
+        add(body,button("기준 음성 반복 듣기  ▶",()->{if(requestAudioFocus()){pauseCinema();lab.playOrPrepare(EN[scene][line],line,REP[repeatIndex],GAP[gapIndex]);}},true),14);
+        add(body,button("재생 중지",()->{lab.stop();releaseAudioFocus();ttsRequested=false;refImage=null;lastResult=null;render();},false),9);
         add(body,label("기준 음성은 현재 기기의 TTS 합성음입니다. 사람이 연기한 원음이 아닙니다.",13,MUTED,false),8);
         add(body,label("내 목소리로 따라 말하기",20,WHITE,true),20);
         add(body,label("마이크 허용 → 3 · 2 · 1 → 자동 녹음. 말을 마친 뒤 약 1.3초 정적이면 자동 종료됩니다.",14,MUTED,false),8);
         countdownText=label("●  READY",37,ROSE,true);countdownText.setGravity(Gravity.CENTER);countdownText.setMinHeight(dp(76));add(body,countdownText,10);
         recordLevel=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);recordLevel.setMax(100);recordLevel.setProgress(0);add(body,recordLevel,8);
         add(body,button("3·2·1 카운트다운 후 자동 녹음",this::requestShadowing,true),12);
-        add(body,button("녹음 취소",()->{lab.stop();ttsRequested=false;refImage=null;lastResult=null;render();},false),9);
+        add(body,button("녹음 취소",()->{lab.stop();releaseAudioFocus();ttsRequested=false;refImage=null;lastResult=null;render();},false),9);
         scoreText=label("",19,GOLD,true);add(body,scoreText,14);
         spectra=new SpectrogramView(this);spectra.setSpectra(refImage,lastResult==null?null:lastResult.learnerImage);add(body,spectra,12);
         add(body,label("그래프: 가로축 시간, 세로축 주파수 110Hz~6kHz. 음향 유사도는 발음·단어 인식 정확도가 아닙니다.",13,MUTED,false),9);
@@ -233,7 +278,7 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
         requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},micRequest);return;
         }startShadowing();
     }
-    private void startShadowing(){pauseCinema();if(!lab.hasReference()){if(!ttsRequested)prepareReference();status("기준 음성 준비 후 녹음할 수 있습니다.");return;}
+    private void startShadowing(){pauseCinema();releaseAudioFocus();if(!lab.hasReference()){if(!ttsRequested)prepareReference();status("기준 음성 준비 후 녹음할 수 있습니다.");return;}
         onStage=true;lab.beginCountdown();}
     @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] results){super.onRequestPermissionsResult(requestCode,permissions,results);
         if(requestCode==micRequest){if(results.length>0&&results[0]==PackageManager.PERMISSION_GRANTED&&tab==2)startShadowing();
