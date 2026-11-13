@@ -223,7 +223,7 @@ stubs['android/view/View.java'] = stubs['android/view/View.java'].replace(
 )
 
 stubs['android/app/AlertDialog.java'] = stubs['android/app/AlertDialog.java'].replace(
- 'public Builder setNegativeButton(String s, DialogInterface.OnClickListener l){return this;}',
+ 'public Builder setNegativeButton(String s,DialogInterface.OnClickListener l){return this;}',
  'public Builder setNeutralButton(String s, DialogInterface.OnClickListener l){return this;} public Builder setNegativeButton(String s, DialogInterface.OnClickListener l){return this;}'
 )
 
