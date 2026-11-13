@@ -1,0 +1,103 @@
+name: NetShare P2P M11 safe peer discovery APK
+
+on:
+  push:
+    branches:
+      - netshare-m11-safe-discovery
+    paths:
+      - '.github/workflows/netshare-m11-build.yml'
+      - 'netshare-p2p/M8_build_source.zip'
+      - 'netshare-p2p/m9_patch.py'
+      - 'netshare-p2p/M10_ProbeActivity.kt.zlib'
+      - 'netshare-p2p/M11_from_M10.patch.zlib'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-debug:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: true
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+      - name: Install Android SDK 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.14'
+      - name: Reconstruct M11 source (M8 M9 M10 M11)
+        run: |
+          mkdir -p netshare-p2p/build
+          unzip -q netshare-p2p/M8_build_source.zip -d netshare-p2p/build
+          cd netshare-p2p/build
+          python3 ../m9_patch.py
+          python3 - <<'PY'
+          import hashlib, zlib, subprocess
+          from pathlib import Path
+          base=Path('android-app/src/main/java/netshare/app/ProbeActivity.kt')
+          m10=zlib.decompress(Path('../M10_ProbeActivity.kt.zlib').read_bytes())
+          assert hashlib.sha256(m10).hexdigest() == 'c91b86bb09c666ebc6c986bb6d6d44bbdfcaa29273fea8a676adcaa4e13d9435'
+          base.write_bytes(m10)
+          patch=zlib.decompress(Path('../M11_from_M10.patch.zlib').read_bytes())
+          assert hashlib.sha256(patch).hexdigest() == '140687dfcc5ca0d8aeeaf86cb68670a69b47174e5e98fc4023001b292463f98c'
+          Path('../M11_from_M10.patch').write_bytes(patch)
+          subprocess.run(['patch', '--batch', '-p1', '-i', '../M11_from_M10.patch'], check=True)
+          assert hashlib.sha256(base.read_bytes()).hexdigest() == '528d9d74bab504d8998c2fa04319c776bfa9c8dfa47be12ac1dddbca597f93df'
+          print('M11 patched source SHA-256 verified')
+          PY
+      - name: Verify M11 Android permissions and forbidden operations
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          b=Path('netshare-p2p/build')
+          activity=(b/'android-app/src/main/java/netshare/app/ProbeActivity.kt').read_text()
+          for required in ('requestP2pState(channel)', 'discoverPeers(channel', 'requestPeers(channel)', 'requestConnectionInfo(channel)', 'requestGroupInfo(channel)'):
+              assert required in activity, required
+          all_src='\n'.join(p.read_text() for p in b.rglob('*.kt'))
+          prohibited=('createGroup(', 'manager.connect(', 'manager.removeGroup(', 'startTethering(', 'TetheringManager', 'startLocalOnlyHotspot(', 'setWifiApEnabled(')
+          hits=[x for x in prohibited if x in all_src]
+          assert not hits, hits
+          manifest=ET.parse(b/'android-app/src/main/AndroidManifest.xml').getroot()
+          ns='{http://schemas.android.com/apk/res/android}'
+          permissions={x.attrib.get(ns+'name') for x in manifest.findall('uses-permission')}
+          for req in ('android.permission.NEARBY_WIFI_DEVICES', 'android.permission.ACCESS_WIFI_STATE', 'android.permission.INTERNET'):
+              assert req in permissions, req
+          print('PASS: P2P discovery only, prohibited direct network API patterns absent')
+          PY
+      - name: Build M11 debug APK
+        working-directory: netshare-p2p/build
+        run: gradle --no-daemon --stacktrace :android-app:assembleDebug
+      - name: Package APK and source with checksums
+        run: |
+          cd netshare-p2p/build
+          zip -qr ../netshare-m11-build-source.zip settings.gradle.kts build.gradle.kts gradle.properties core/src/main/kotlin android-adapter/src/main/java android-app/src/main android-app/build.gradle.kts
+          sha256sum android-app/build/outputs/apk/debug/*.apk ../netshare-m11-build-source.zip | tee ../M11_SHA256.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: netshare-p2p-m11-safe-discovery-apk-and-source
+          path: |
+            netshare-p2p/build/android-app/build/outputs/apk/debug/*.apk
+            netshare-p2p/netshare-m11-build-source.zip
+            netshare-p2p/M11_SHA256.txt
+          if-no-files-found: error
+      - name: Publish M11 public test release
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          APK=$(find netshare-p2p/build/android-app/build/outputs/apk/debug -name '*.apk' -print -quit)
+          cp "$APK" netshare-p2p/NetShareP2P_M11_Safe_Discovery_Debug.apk
+          TAG=netshare-p2p-m11
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" netshare-p2p/NetShareP2P_M11_Safe_Discovery_Debug.apk netshare-p2p/netshare-m11-build-source.zip netshare-p2p/M11_SHA256.txt --clobber
+          else
+            gh release create "$TAG" netshare-p2p/NetShareP2P_M11_Safe_Discovery_Debug.apk netshare-p2p/netshare-m11-build-source.zip netshare-p2p/M11_SHA256.txt --title 'NetShare P2P M11 (safe discovery and link diagnostics)' --notes 'TEST DEBUG APK. P2P peer discovery only; no P2P group/connection creation, Hotspot, SoftAP or Tethering. NOT a complete internet sharing app. Device-level compliance not demonstrated.' --latest=false
+          fi
