@@ -33,6 +33,29 @@ public final class NovelReaderPanel {
         }
         public void clear(){lesson=null;title="";author="저자 미기재";tier="미분류";page=0;actions=0;answer=null;}
     }
+    /** Original adults-only thematic fiction, no graphic sexual description. */
+    public static final String REUNION=
+        "When Elena stepped into the restaurant, Daniel looked up from the table they had shared years ago. " +
+        "She had not expected to feel drawn to him again, but she also knew how quickly nostalgia could become a misunderstanding. " +
+        "He stood up, smiling, and said that he had not been able to stop thinking about their last conversation. " +
+        "\n\nShe answered carefully, choosing every word. They had once wanted different things from life, and that difference had left them both hurt. " +
+        "She was still attracted to him, but she was not ready to promise anything. " +
+        "\"I'd rather not rush into this,\" she said. \"We can take it slow, and neither of us needs to decide tonight.\" " +
+        "Daniel took a moment before answering. \"No pressure. I understand your boundaries.\" " +
+        "\n\nLater they walked by the river, speaking openly about trust, desire, and mutual respect. " +
+        "The evening ended with a promise to be honest instead of a promise to stay together.";
+
+    public static final String HEALTH=
+        "Asha closed the medical brochure and looked across the kitchen table at her partner, Sam. " +
+        "They had been talking about intimacy for weeks, but tonight she wanted to be more specific. " +
+        "\"Before we become intimate, can we talk about contraception and STI testing?\" she asked. " +
+        "Sam answered without embarrassment. \"Of course. I appreciate you bringing it up.\" " +
+        "\n\nThey agreed that the conversation should be practical, not a test of anyone's feelings. " +
+        "They talked about protection, personal boundaries, and what being comfortable with each other really meant. " +
+        "Neither person wanted to treat consent as something that could be assumed. " +
+        "\n\n\"If either of us is not ready, we can stop,\" Sam said. Asha smiled because that was exactly the kind of mutual respect she wanted. " +
+        "By the end of the evening, they had a clearer understanding of their options and of one another.";
+
     /** Newly authored, non-graphic adult fiction for an offline demonstration. */
     public static final String SAMPLE=
         "The hotel lobby was quiet after midnight. Mara noticed how drawn to Daniel she felt, but she wanted to take things slowly. " +
@@ -81,6 +104,12 @@ public final class NovelReaderPanel {
         add(root,button("TXT 원문 파일 불러오기",host::importText,true),14);
         add(root,button("성인 로맨스 오리지널 예문 체험",()->{
             session.load(SAMPLE,"After Midnight: An Honest Conversation",true);host.refresh();
+        },false),9);
+        add(root,button("재회의 밤 · 관계 표현 예문",()->{
+            session.load(REUNION,"The Reunion: Trust and Desire",true);host.refresh();
+        },false),9);
+        add(root,button("성 건강·피임 대화 소설 예문",()->{
+            session.load(HEALTH,"An Honest Conversation: Sexual Health",true);host.refresh();
         },false),9);
         LinearLayout manual=card("영어 원문 직접 붙여넣기","한 번에 최대 24,000자. 종료 후 원문을 보관하지 않습니다.");
         EditText input=new EditText(activity);input.setTextColor(WHITE);input.setHintTextColor(MUTED);input.setTextSize(large?18:16);
