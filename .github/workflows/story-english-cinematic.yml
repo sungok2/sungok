@@ -32,15 +32,13 @@ jobs:
           PASS="$(openssl rand -hex 24)"
           echo "::add-mask::$PASS"
           K="$RUNNER_TEMP/storyenglish-cinematic.jks"
-          keytool -genkeypair -noprompt -keystore "$K" -storepass "$PASS" -keypass "$PASS" -alias preview \
-            -keyalg RSA -keysize 3072 -validity 4 \
-            -dname "CN=STORY ENGLISH Cinematic Evaluation, O=Evaluation Only, C=KR"
+          keytool -genkeypair -noprompt -keystore "$K" -storepass "$PASS" -keypass "$PASS" -alias preview -keyalg RSA -keysize 3072 -validity 4 -dname "CN=STORY ENGLISH Cinematic Evaluation, O=Evaluation Only, C=KR"
           echo "STORY_KEYSTORE=$K" >> "$GITHUB_ENV"
           echo "STORY_KEYPASS=$PASS" >> "$GITHUB_ENV"
-      - name: Run unit tests, Android Lint and build offline evaluation APK
+      - name: Unit tests, lint and signed evaluation APK
         run: |
           gradle -p story-english-preview :app:verifyPreviewRelease :app:testReleaseUnitTest :app:lintRelease :app:assembleRelease --no-daemon --stacktrace
-      - name: Verify APK signing, privacy and packaged media
+      - name: Verify signature, privacy and video bytes
         shell: bash
         run: |
           set -euo pipefail
@@ -57,29 +55,16 @@ jobs:
           grep -E 'android:allowBackup.*0x0' /tmp/manifest.txt
           ! grep -Eq 'android:debuggable.*(0x1|0xffffffff)' /tmp/manifest.txt
           unzip -Z1 "$APK" | tee /tmp/entries.txt
-          # AAPT2 shortens packaged resource filenames; compare unpacked bytes with source.
-          MP4_ENTRY="$(grep -E '^res/[^[:space:]]+\.mp4
-          mkdir -p dist
-          cp "$APK" dist/STORY_ENGLISH_3.7.3_CINEMATIC_LAB.apk
-          cp /tmp/{signing.txt,badging.txt,manifest.txt,entries.txt,embedded_video_sha256.txt} dist/
-          sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
-          printf 'OFFLINE MATURE EDUCATIONAL EVALUATION ONLY. Synthetic actors/voices, self-attested age, not production identity. Temporary signing key; not an update to the original STORY ENGLISH app.\n' > dist/NOT_PRODUCTION_RELEASE.txt
-      - uses: actions/upload-artifact@v4
-        with:
-          name: STORY-ENGLISH-373-CINEMATIC-LAB
-          path: dist/
-          if-no-files-found: error
-          retention-days: 30
- /tmp/entries.txt | head -n 1)"
+          MP4_ENTRY="$(grep -E '[.]mp4$' /tmp/entries.txt | head -n 1)"
           test -n "$MP4_ENTRY"
           unzip -p "$APK" "$MP4_ENTRY" > /tmp/embedded_scene.mp4
           cmp /tmp/embedded_scene.mp4 story-english-preview/app/src/main/res/raw/scene_quiet_evening.mp4
           sha256sum /tmp/embedded_scene.mp4 | tee /tmp/embedded_video_sha256.txt
           mkdir -p dist
           cp "$APK" dist/STORY_ENGLISH_3.7.3_CINEMATIC_LAB.apk
-          cp /tmp/{signing.txt,badging.txt,manifest.txt,entries.txt} dist/
+          cp /tmp/signing.txt /tmp/badging.txt /tmp/manifest.txt /tmp/entries.txt /tmp/embedded_video_sha256.txt dist/
           sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
-          printf 'OFFLINE MATURE EDUCATIONAL EVALUATION ONLY. Synthetic actors/voices, self-attested age, not production identity. Temporary signing key; not an update to the original STORY ENGLISH app.\n' > dist/NOT_PRODUCTION_RELEASE.txt
+          echo "OFFLINE MATURE EDUCATIONAL EVALUATION. Synthetic visuals and voices. Self-attested age and temporary signing key, not a production release." > dist/NOT_PRODUCTION_RELEASE.txt
       - uses: actions/upload-artifact@v4
         with:
           name: STORY-ENGLISH-373-CINEMATIC-LAB
