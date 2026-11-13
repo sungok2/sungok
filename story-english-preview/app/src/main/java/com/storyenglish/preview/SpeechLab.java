@@ -39,6 +39,8 @@ public final class SpeechLab {
     private TextToSpeech tts;
     private volatile boolean ready=false;
     private volatile short[] referencePcm;
+    private volatile String referencePhrase=null;
+    private volatile int referenceVariant=-1;
     private volatile AudioRecord recorder;
     private volatile AudioTrack playing;
     private volatile int epoch=0;
@@ -103,6 +105,7 @@ public final class SpeechLab {
     public boolean hasReference(){return referencePcm!=null&&referencePcm.length>6000;}
     public void setPhrase(String phrase,int variant){
         stop();voiceVariant=variant;
+        referencePhrase=phrase;referenceVariant=variant;
         if(!ready||tts==null){postStatus("기기에 영어 TTS 음성이 필요합니다. 준비 후 다시 선택하세요.");return;}
         final int version=epoch;
         try {
@@ -182,7 +185,7 @@ public final class SpeechLab {
     }
     /** A single tap starts playback, even when the TTS reference still needs synthesis. */
     public void playOrPrepare(String phrase,int variant,int repetitions,int gapSeconds){
-        if(hasReference()){playRepeats(repetitions,gapSeconds);return;}
+        if(hasReference() && phrase!=null && phrase.equals(referencePhrase) && variant==referenceVariant){playRepeats(repetitions,gapSeconds);return;}
         if(!ready){
             queuedPhrase=phrase;queuedVariant=variant;queuedCount=repetitions;queuedGap=gapSeconds;queuedEpoch=epoch;
             postStatus("기기 영어 TTS 초기화가 완료되면 자동 재생합니다.");
@@ -233,7 +236,7 @@ public final class SpeechLab {
             playing=a;a.play();
             int pos=0;
             while(fresh(generation)&&pos<pcm.length){int n=a.write(pcm,pos,Math.min(1024,pcm.length-pos),AudioTrack.WRITE_BLOCKING);if(n<=0)break;pos+=n;}
-            long timeout=System.currentTimeMillis()+Math.min(15000,2000+(long)pcm.length*1000/16000);
+            long timeout=System.currentTimeMillis()+Math.min(50000,3000+(long)pcm.length*1000/16000);
             while(fresh(generation)&&a.getPlaybackHeadPosition()<pos&&System.currentTimeMillis()<timeout)Thread.sleep(20);
         }catch(Exception e){postStatus("기준 음성 재생에 실패했습니다.");}
         finally{playing=null;if(a!=null){try{a.stop();}catch(Exception ignored){}a.release();}}
@@ -310,6 +313,8 @@ public final class SpeechLab {
         queuedPhrase=null;
         lastDialogueId=null;
         referencePcm=null;
+        referencePhrase=null;
+        referenceVariant=-1;
         if(tts!=null)tts.stop();
         if(referenceFile!=null){referenceFile.delete();referenceFile=null;}
     }
