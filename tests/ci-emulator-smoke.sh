@@ -46,6 +46,33 @@ adb exec-out screencap -p > ci-evidence/ntfs-copy-screen.png
 grep -q 'USB 파일 전송' ci-evidence/ntfs-window.xml
 grep -q '파일 선택하고 복사' ci-evidence/ntfs-window.xml
 grep -q 'USB 쓰기 가능 여부 진단' ci-evidence/ntfs-window.xml
+
+# Verify that the new destructive-operation warning is shown before any probe.
+python3 - <<'PY' > ci-evidence/probe-tap.txt
+from xml.etree import ElementTree as ET
+import re
+root = ET.parse("ci-evidence/ntfs-window.xml").getroot()
+found = [n for n in root.iter("node") if "USB 쓰기 가능 여부 진단" in n.attrib.get("text","")]
+if len(found) != 1:
+    raise SystemExit("Expected exactly one user-consent NTFS probe button")
+bounds = found[0].attrib.get("bounds","")
+match = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]",bounds)
+if not match:
+    raise SystemExit("Bad probe button bounds "+bounds)
+l,t,r,b=map(int,match.groups())
+print((l+r)//2,(t+b)//2)
+PY
+read -r PROBE_X PROBE_Y < ci-evidence/probe-tap.txt
+adb shell input tap "$PROBE_X" "$PROBE_Y"
+sleep 1
+adb shell uiautomator dump /sdcard/probe-warning.xml
+adb pull /sdcard/probe-warning.xml ci-evidence/probe-warning.xml
+grep -q 'USB 쓰기 실험 안내' ci-evidence/probe-warning.xml
+grep -q '폴더 선택' ci-evidence/probe-warning.xml
+adb exec-out screencap -p > ci-evidence/probe-warning.png
+adb shell input keyevent KEYCODE_BACK
+sleep 1
+
 adb shell pidof "$PKG" > ci-evidence/ntfs-pid.txt
 if grep -q 'FATAL EXCEPTION' <(adb logcat -d -t 4000 | grep -A20 'FATAL EXCEPTION' || true); then
   echo 'Fatal Android exception detected while opening NTFS transfer' >&2
