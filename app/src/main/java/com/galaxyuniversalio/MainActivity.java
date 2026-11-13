@@ -174,13 +174,13 @@ public final class MainActivity extends Activity {
         root.setPadding(pad, pad, pad, pad);
 
         TextView title = new TextView(this);
-        title.setText("Galaxy Universal I/O · M0.8");
+        title.setText("Galaxy Universal I/O · M0.9");
         title.setTextSize(22);
         title.setTextColor(0xFF172554);
         root.addView(title);
 
         TextView subtitle = new TextView(this);
-        subtitle.setText("USB 진단 · LAN/HTTPS/USB eSCL 스캔 → PDF · USB IPP/RAW/시스템 인쇄 · PTP");
+        subtitle.setText("USB 진단 · NTFS 파일 전송(SAF) · LAN/USB 스캔 · PDF/IPP/RAW 인쇄 · PTP");
         subtitle.setTextSize(13);
         subtitle.setTextColor(0xFF475569);
         subtitle.setPadding(0, dp(4), 0, dp(8));
