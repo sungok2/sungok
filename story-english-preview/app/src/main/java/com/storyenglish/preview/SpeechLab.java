@@ -47,6 +47,8 @@ public final class SpeechLab {
     private ByteArrayOutputStream ttsBytes;
     private int ttsRate=0,ttsEncoding=0,ttsChannels=0;
     private int ttsEpoch=-1;
+    private volatile int pendingAutoRepeatEpoch=-1;
+    private int pendingRepeatCount=1, pendingGapSeconds=0;
     public SpeechLab(Context c,Listener l){
         context=c.getApplicationContext();listener=l;
         tts=new TextToSpeech(context,status->{
@@ -89,21 +91,36 @@ public final class SpeechLab {
     private void referenceDone(String id){
         int generation;
         try{generation=Integer.parseInt(id.substring(4));}catch(NumberFormatException ex){return;}
-        if(!fresh(generation))return;
-        final short[] decoded=readWav(referenceFile);
+        final File completedFile=new File(context.getCacheDir(),"story_ref_"+generation+".wav");
+        if(!fresh(generation)){
+            // A canceled/obsolete synthesis must not leave reference speech on disk.
+            completedFile.delete();
+            return;
+        }
+        final short[] decoded=readWav(completedFile);
         short[] output=decoded;
         if(output.length<3000){
             byte[] raw;int rate,channels,enc;
             synchronized(byteLock){raw=ttsBytes==null?new byte[0]:ttsBytes.toByteArray();rate=ttsRate;channels=ttsChannels;enc=ttsEncoding;}
             if(rate>=8000&&channels>=1){output=SpectralAnalyzer.resample(decodeRaw(raw,enc),rate,channels);}
         }
-        if(referenceFile!=null)referenceFile.delete();
-        if(output.length<6000){postStatus("현재 TTS 엔진에서 비교용 PCM을 얻지 못했습니다. 다른 영어 음성을 선택하세요.");return;}
+        completedFile.delete();
+        if(completedFile.equals(referenceFile))referenceFile=null;
+        if(output.length<6000){pendingAutoRepeatEpoch=-1;postStatus("현재 TTS 엔진에서 비교용 PCM을 얻지 못했습니다. 다른 영어 음성을 선택하세요.");return;}
         referencePcm=output;
         final short[] spectrumData=output;
         new Thread(()->{
             SpectralAnalyzer.Result result=SpectralAnalyzer.compare(spectrumData,spectrumData);
-            if(fresh(generation))main.post(()->{listener.reference(result.referenceImage);listener.status("기준 음성이 준비됐습니다. 반복 듣기 또는 쉐도잉을 시작하세요.");});
+            if(fresh(generation))main.post(()->{
+                if(!fresh(generation))return;
+                listener.reference(result.referenceImage);
+                listener.status("기준 음성이 준비됐습니다. 반복 듣기 또는 쉐도잉을 시작하세요.");
+                if(pendingAutoRepeatEpoch==generation){
+                    int count=pendingRepeatCount,gap=pendingGapSeconds;
+                    pendingAutoRepeatEpoch=-1;
+                    playRepeats(count,gap);
+                }
+            });
         },"reference-spectrum").start();
     }
     private static short[] decodeRaw(byte[] raw,int encoding){
@@ -138,10 +155,21 @@ public final class SpeechLab {
             return SpectralAnalyzer.resample(samples,rate,channels);
         }catch(Exception e){return new short[0];}
     }
+    /** A single tap starts playback, even when the TTS reference still needs synthesis. */
+    public void playOrPrepare(String phrase,int variant,int repetitions,int gapSeconds){
+        if(hasReference()){playRepeats(repetitions,gapSeconds);return;}
+        setPhrase(phrase,variant);
+        if(!ready)return;
+        pendingRepeatCount=Math.max(1,Math.min(10,repetitions));
+        pendingGapSeconds=Math.max(0,Math.min(10,gapSeconds));
+        pendingAutoRepeatEpoch=epoch;
+        postStatus("기준 음성 생성 후 자동으로 반복 재생합니다.");
+    }
     public void playRepeats(int repetitions,int gapSeconds){
         short[] pcm=referencePcm;
         if(pcm==null){postStatus("먼저 기준 문장을 선택하고 합성이 완료될 때까지 확인하세요.");return;}
         stopPlaybackAndRecording();
+        if(tts!=null)tts.stop();
         final int generation=epoch;
         final int count=Math.max(1,Math.min(10,repetitions)),gap=Math.max(0,Math.min(10,gapSeconds));
         new Thread(()->{
@@ -190,6 +218,7 @@ public final class SpeechLab {
     public void beginCountdown(){
         if(referencePcm==null){postStatus("기준 음성 준비가 필요합니다.");return;}
         stopPlaybackAndRecording();
+        if(tts!=null)tts.stop();
         final int generation=epoch;
         new Thread(()->{
             for(int i=3;i>=1;i--){if(!fresh(generation))return;int count=i;main.post(()->listener.countdown(count));
@@ -238,7 +267,13 @@ public final class SpeechLab {
         AudioTrack a=playing;if(a!=null){try{a.pause();a.flush();}catch(Exception ignored){}}
         AudioRecord r=recorder;if(r!=null){try{r.stop();}catch(Exception ignored){}}
     }
-    public void pause(){stopPlaybackAndRecording();}
-    public void stop(){stopPlaybackAndRecording();referencePcm=null;}
+    public void pause(){stopPlaybackAndRecording();pendingAutoRepeatEpoch=-1;if(tts!=null)tts.stop();}
+    public void stop(){
+        stopPlaybackAndRecording();
+        pendingAutoRepeatEpoch=-1;
+        referencePcm=null;
+        if(tts!=null)tts.stop();
+        if(referenceFile!=null){referenceFile.delete();referenceFile=null;}
+    }
     public void shutdown(){stop();if(tts!=null){tts.stop();tts.shutdown();tts=null;}if(referenceFile!=null)referenceFile.delete();}
 }
