@@ -14,6 +14,8 @@ M0.9는 NTFS 드라이버 자체가 아니다. 사용자가 Android DocumentsPro
 
 1. PC에서 NTFS USB 데이터 **백업**을 마련하고, Windows에서 전체 종료(Fast Startup 우회) 및 안전 제거. 문제 있는 드라이브를 포맷하거나 복구하여 실험하지 말 것.
 2. Galaxy S20 Ultra에서 OTG Master 또는 읽기/쓰기 DocumentsProvider를 지원하는 검증된 앱으로 NTFS USB를 연결. NTFS가 안전하지 않다고 읽기 전용으로 표시되면 반드시 쓰기 중단.
+   - 검증된 GitHub 정식 릴리스 v0.5.2에는 NTFS 쓰기 기능이 포함됨: https://github.com/moylali/OTGMaster/releases/tag/v0.5.2
+   - **주의:** 검색으로 확인된 F-Droid OTG Master v0.3.10 페이지에는 NTFS 미지원이라고 명시되어 있으므로 그 버전만 설치하면 이 절차가 동작하지 않음: https://f-droid.org/en/packages/app.fayaz.otgmaster/
 3. Galaxy Universal I/O 실행 → 'USB 저장장치 복사 (NTFS / 외부 제공자)' → 작은 임시 테스트 파일 선택 → Android 폴더 선택기에서 해당 USB의 폴더 선택.
 4. 복사 완료 메시지 확인 후 OTG Master에서 파일 내용 확인. PC에서도 해시를 대조.
 5. 이름 충돌, 쓰기 권한 거부, USB 강제 분리, 작업 취소, 공간 부족, 장시간 대용량 파일을 차례로 테스트. 중요한 실제 데이터가 있는 USB에는 쓰기 테스트하지 말 것.
