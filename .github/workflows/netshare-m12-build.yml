@@ -1,0 +1,88 @@
+name: NetShare P2P M12 UX and original audio APK
+
+on:
+  push:
+    branches: [netshare-m12-ux-feedback]
+    paths:
+      - ".github/workflows/netshare-m12-build.yml"
+      - "netshare-p2p/M12_source.zip"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: true
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v4
+      - name: Install Android SDK 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "8.14"
+      - name: Expand versioned source and verify package
+        run: |
+          mkdir -p netshare-p2p/m12
+          unzip -q netshare-p2p/M12_source.zip -d netshare-p2p/m12
+          cd netshare-p2p/m12
+          test -f android-app/src/main/java/netshare/app/ProbeActivity.kt
+          test -f android-app/src/main/java/netshare/app/UiFeedback.kt
+          python3 - <<'PY'
+          import wave
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          base=Path('android-app/src/main')
+          root=ET.parse(base/'AndroidManifest.xml').getroot()
+          ns='{http://schemas.android.com/apk/res/android}'
+          permissions={n.attrib.get(ns+'name') for n in root.findall('uses-permission')}
+          assert 'android.permission.NEARBY_WIFI_DEVICES' in permissions
+          for name in ('ui_tap','ui_success','ui_warning'):
+              with wave.open(str(base/f'res/raw/{name}.wav'),'rb') as wav:
+                  assert wav.getnchannels()==1 and wav.getframerate()==24000
+                  assert wav.getnframes()/wav.getframerate()<0.30
+          src='\n'.join(x.read_text(encoding='utf8') for x in Path('.').rglob('*.kt'))
+          banned=('createGroup(', 'manager.connect(', 'startTethering(', 'TetheringManager', 'startLocalOnlyHotspot(', 'setWifiApEnabled(')
+          hits=[s for s in banned if s in src]
+          assert not hits, hits
+          assert 'R.raw.ui_success' in src and '효과음' in src
+          print('PASS: 3 original short WAV cues, UX source and prohibited direct API patterns')
+          PY
+          sha256sum ../M12_source.zip
+      - name: JVM regression tests
+        working-directory: netshare-p2p/m12
+        run: bash tools/verify.sh
+      - name: Build M12 debug APK with Android SDK
+        working-directory: netshare-p2p/m12
+        run: gradle --no-daemon --stacktrace :android-app:assembleDebug
+      - name: Source and APK SHA-256
+        run: |
+          sha256sum netshare-p2p/m12/android-app/build/outputs/apk/debug/*.apk netshare-p2p/M12_source.zip | tee netshare-p2p/M12_SHA256.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: netshare-p2p-m12-ux-sounds-apk-and-source
+          path: |
+            netshare-p2p/m12/android-app/build/outputs/apk/debug/*.apk
+            netshare-p2p/M12_source.zip
+            netshare-p2p/M12_SHA256.txt
+          if-no-files-found: error
+      - name: Publish test release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK=$(find netshare-p2p/m12/android-app/build/outputs/apk/debug -name '*.apk' -print -quit)
+          cp "$APK" netshare-p2p/NetShareP2P_M12_UX_Audio_Debug.apk
+          TAG=netshare-p2p-m12
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" netshare-p2p/NetShareP2P_M12_UX_Audio_Debug.apk netshare-p2p/M12_source.zip netshare-p2p/M12_SHA256.txt --clobber
+          else
+            gh release create "$TAG" netshare-p2p/NetShareP2P_M12_UX_Audio_Debug.apk netshare-p2p/M12_source.zip netshare-p2p/M12_SHA256.txt --title "NetShare P2P M12 – UX and feedback sounds (debug)" --notes "TEST BUILD: redesigned status dashboard, step guidance, original UI sounds with mute control, accessible actions, and existing conditional HTTP proxy. This build does not create P2P groups, start Hotspot, SoftAP or Tethering, or prove any firmware is free of such internal activity. Not a complete internet sharing app." --latest=false
+          fi
