@@ -20,7 +20,7 @@ android {
 
     buildTypes {
         debug {
-            applicationIdSuffix '.master'
+            applicationIdSuffix '.m011'
             versionNameSuffix '-master-debug'
         }
         release {
