@@ -188,6 +188,22 @@ stubs['android/content/Context.java'] = stubs['android/content/Context.java'].re
  'public SharedPreferences getSharedPreferences(String name,int mode){return null;}public String getPackageName()'
 )
 
+
+# Built-in Android UI surfaces used by the M0.10 master transfer screen.
+stubs.update({
+'android/graphics/drawable/GradientDrawable.java': """package android.graphics.drawable;
+public class GradientDrawable {
+ public GradientDrawable(){}
+ public void setColor(int c){}
+ public void setCornerRadius(float r){}
+ public void setStroke(int width,int color){}
+}"""
+})
+stubs['android/view/View.java'] = stubs['android/view/View.java'].replace(
+ 'public void setPadding(int a,int b,int c,int d){}',
+ 'public void setBackgroundColor(int color){} public void setBackground(Object d){} public void setPadding(int a,int b,int c,int d){}'
+)
+
 with tempfile.TemporaryDirectory() as tmp:
  t=Path(tmp)
  for n,content in stubs.items():
