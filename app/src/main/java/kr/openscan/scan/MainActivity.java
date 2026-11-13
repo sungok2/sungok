@@ -182,16 +182,19 @@ public final class MainActivity extends Activity {
         if(exporting){
             scanState.setText("3D 파일 저장 중");helper.setText("저장이 완료될 때까지 이 화면을 유지하세요");
         }else if(isRecording){
-            scanState.setText("공간을 스캔하고 있습니다");helper.setText("천천히 움직이며 대상의 여러 면을 촬영하세요");
+            scanState.setText(n>0?"공간을 스캔하고 있습니다":"깊이 측정 중 · 아직 포인트 0개");
+            helper.setText(n>0?"천천히 움직이며 대상의 여러 면을 촬영하세요":renderer.getCaptureHelp());
         }else if(model!=null){
-            scanState.setText("일시정지됨");helper.setText("이어 촬영하거나 현재 데이터를 저장하세요");
+            scanState.setText("일시정지됨");
+            helper.setText(n>0?"이어 촬영하거나 현재 데이터를 저장하세요":renderer.getCaptureHelp());
         }else{
             scanState.setText("스캔 준비");helper.setText("사물을 화면 중앙에 두고 0.5~2m에서 천천히 이동하세요");
         }
         capture.setText(model==null?"스캔 시작":isRecording?"일시정지":"스캔 계속");
         capture.setEnabled(!exporting && (sessionResumed||model!=null));
         capture.setAlpha(capture.isEnabled()?1f:0.55f);
-        save.setEnabled(hasData&&!exporting);save.setAlpha(save.isEnabled()?1f:0.45f);
+        // Keep SAVE interactive after capture starts: explain why zero-point export is impossible.
+        save.setEnabled(model!=null&&!exporting);save.setAlpha(save.isEnabled()?1f:0.45f);
         reset.setVisibility(model!=null&&!exporting?View.VISIBLE:View.GONE);
         settings.setEnabled(model==null&&!exporting);settings.setAlpha(settings.isEnabled()?1f:0.5f);
         library.setEnabled(!exporting);
@@ -281,7 +284,15 @@ public final class MainActivity extends Activity {
     }
     private void saveCurrent(){
         if(exporting)return;
-        if(model==null||model.vertices()==0){Toast.makeText(this,"저장할 포인트가 없습니다",Toast.LENGTH_SHORT).show();return;}
+        if(model==null)return;
+        if(model.vertices()==0){
+            new AlertDialog.Builder(this).setTitle("스캔 데이터 0개 · 저장 불가")
+                .setMessage("카메라 화면만 표시된 상태이며 3D 측정 데이터가 수집되지 않았습니다. 빈 PLY/OBJ 파일은 만들지 않습니다.\n\n"+
+                    renderer.getCaptureHelp()+"\n\n조명을 밝게 하고 사물을 0.5~2m 거리에서 비춘 뒤 천천히 움직이세요. 상단의 추적 상태와 포인트 숫자를 확인하세요.")
+                .setPositiveButton("계속 촬영",(d,w)->{if(!isRecording)toggleScan();})
+                .setNegativeButton("닫기",null).show();
+            return;
+        }
         if(model.frames()<12 || model.triangles()<300 || model.vertices()<1500){
             new AlertDialog.Builder(this).setTitle("3D 형상 데이터가 부족합니다")
                 .setMessage("현재 "+model.frames()+"프레임, "+model.vertices()+"포인트, "+model.triangles()+"면입니다.\n\n이대로 저장하면 3D 형상이 희미하거나 비어 보일 수 있습니다. 여러 방향에서 조금 더 천천히 촬영하는 것이 좋습니다.")
@@ -309,7 +320,7 @@ public final class MainActivity extends Activity {
                         .setMessage(String.format(Locale.KOREAN,"%,d 포인트 · %,d 메시\n사진 %d장%s\n\n3D 모델을 바로 확인하시겠습니까?",
                             snap.vertices.size(),snap.triangles.size(),photoCount,note))
                         .setPositiveButton("3D 보기",(d,w)->openViewer(folder))
-                        .setNeutralButton("보관함",(d,w)->openLibrary())
+                        .setNeutralButton("파일로 내보내기",(d,w)->openExport(folder))
                         .setNegativeButton("닫기",null).show();
                 });
             }catch(Exception ex){runOnUiThread(()->{
@@ -361,6 +372,10 @@ public final class MainActivity extends Activity {
     private void openLibrary(){
         if(isRecording){isRecording=false;renderer.stop();refreshState();}
         startActivity(new Intent(this,ScanLibraryActivity.class));
+    }
+    private void openExport(File folder){
+        Intent i=new Intent(this,ScanLibraryActivity.class);
+        i.putExtra("export_zip_path",folder.getAbsolutePath());startActivity(i);
     }
     private void openViewer(File folder){
         Intent i=new Intent(this,CloudViewerActivity.class);i.putExtra("scan_path",folder.getAbsolutePath());startActivity(i);
