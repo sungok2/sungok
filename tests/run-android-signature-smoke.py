@@ -167,6 +167,27 @@ public class DocumentsContract {
 }"""
 })
 
+
+# M0.10: durable recovery journal uses SharedPreferences.
+stubs.update({
+'android/content/SharedPreferences.java': """package android.content;
+public interface SharedPreferences {
+ String getString(String k,String fallback);
+ Editor edit();
+ interface Editor {
+  Editor putString(String k,String v);
+  Editor clear();
+  boolean commit();
+ }
+}"""
+})
+stubs['android/content/Context.java'] = stubs['android/content/Context.java'].replace(
+ 'public class Context {', 'public class Context { public static final int MODE_PRIVATE=0;'
+).replace(
+ 'public String getPackageName()',
+ 'public SharedPreferences getSharedPreferences(String name,int mode){return null;}public String getPackageName()'
+)
+
 with tempfile.TemporaryDirectory() as tmp:
  t=Path(tmp)
  for n,content in stubs.items():
