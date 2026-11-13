@@ -268,7 +268,10 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
         NovelReaderPanel.Host host=new NovelReaderPanel.Host(){
             @Override public void importText(){importNovelTxt();}
             @Override public void listen(String phrase){
-                if(requestAudioFocus())lab.playOrPrepare(phrase,0,REP[repeatIndex],GAP[gapIndex]);
+                if(requestAudioFocus()){
+                    if(phrase.length()<=100)lab.playOrPrepare(phrase,0,REP[repeatIndex],GAP[gapIndex]);
+                    else lab.playTextRepeats(phrase,REP[repeatIndex],GAP[gapIndex]);
+                }
             }
             @Override public void shadow(String phrase){
                 novelSentence=phrase;go(2);prepareReference();
