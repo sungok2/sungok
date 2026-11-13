@@ -5,6 +5,7 @@ import android.app.AlertDialog;
 import android.content.SharedPreferences;
 import android.content.Intent;
 import android.database.Cursor;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.DocumentsContract;
@@ -65,81 +66,140 @@ public final class SafNtfsCopyActivity extends Activity {
         buildUi();
     }
 
-    private void buildUi() {
-        int pad = dp(18);
-        LinearLayout column = new LinearLayout(this);
-        column.setPadding(pad, pad, pad, pad);
-        column.setOrientation(LinearLayout.VERTICAL);
+    private GradientDrawable surface(int color, int radiusDp, int strokeColor) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(color);
+        d.setCornerRadius(dp(radiusDp));
+        if (strokeColor != 0) d.setStroke(dp(1), strokeColor);
+        return d;
+    }
 
-        TextView heading = new TextView(this);
-        heading.setText("USB 파일 전송");
-        heading.setTextSize(25);
-        heading.setTextColor(0xFF142C51);
+    private TextView text(String value, int size, int color) {
+        TextView view = new TextView(this);
+        view.setText(value);
+        view.setTextSize(size);
+        view.setTextColor(color);
+        return view;
+    }
+
+    private void buildUi() {
+        final int bg = 0xFFF6F8FC;
+        final int navy = 0xFF122B51;
+        final int slate = 0xFF53647B;
+        final int teal = 0xFF0D7869;
+        int pad = dp(18);
+
+        LinearLayout column = new LinearLayout(this);
+        column.setPadding(pad, dp(20), pad, dp(30));
+        column.setOrientation(LinearLayout.VERTICAL);
+        column.setBackgroundColor(bg);
+
+        TextView heading = text("USB 파일 전송", 27, navy);
+        heading.setPadding(dp(2), dp(4), 0, dp(8));
         column.addView(heading);
 
-        TextView explanation = new TextView(this);
-        explanation.setText("NTFS 포함 · 외부 저장소 제공자 연결\n\n" +
-                "1. NTFS USB를 OTG Master 등 쓰기를 지원하는 앱에서 읽기·쓰기로 연결합니다.\n" +
-                "2. 복사할 파일을 선택합니다(최대 128개).\n" +
-                "3. Android 폴더 선택기에서 해당 USB의 대상 폴더를 선택합니다.\n\n" +
-                "읽기 전용으로 연결된 USB에는 쓰지 않습니다. " +
-                "이 기능은 NTFS 드라이버가 아닌 Android 파일 제공자 연동입니다.");
-        explanation.setTextSize(14);
-        explanation.setPadding(0, dp(12), 0, dp(16));
-        column.addView(explanation);
+        TextView sub = text("Galaxy Universal I/O · MASTER 0.10", 12, slate);
+        sub.setPadding(dp(2), 0, 0, dp(14));
+        column.addView(sub);
+
+        TextView badge = text("  NTFS 연결 제공자 연동  ·  루팅 불필요  ", 12, teal);
+        badge.setBackground(surface(0xFFE8F6F1, 12, 0xFFC4E8DB));
+        badge.setPadding(dp(10), dp(7), dp(10), dp(7));
+        column.addView(badge);
+
+        TextView section = text("시작하기", 17, navy);
+        section.setPadding(dp(2), dp(20), 0, dp(10));
+        column.addView(section);
+
+        LinearLayout guide = new LinearLayout(this);
+        guide.setOrientation(LinearLayout.VERTICAL);
+        guide.setPadding(dp(15), dp(12), dp(15), dp(12));
+        guide.setBackground(surface(0xFFFFFFFF, 15, 0xFFE1E7EF));
+
+        TextView line1 = text("①  OTG Master 등에서 NTFS를 읽기·쓰기로 연결", 14, navy);
+        line1.setPadding(0, dp(4), 0, dp(8));
+        guide.addView(line1);
+        TextView line2 = text("②  복사할 파일 선택 (최대 128개)", 14, navy);
+        line2.setPadding(0, 0, 0, dp(8));
+        guide.addView(line2);
+        TextView line3 = text("③  USB의 쓰기 가능한 대상 폴더 선택", 14, navy);
+        line3.setPadding(0, 0, 0, dp(4));
+        guide.addView(line3);
+        column.addView(guide);
 
         selectButton = new Button(this);
         selectButton.setAllCaps(false);
-        selectButton.setText("파일 선택하고 복사");
+        selectButton.setText("파일 선택하고 복사 시작");
+        selectButton.setTextSize(16);
+        selectButton.setTextColor(0xFFFFFFFF);
+        selectButton.setPadding(dp(10), dp(13), dp(10), dp(13));
+        selectButton.setBackground(surface(0xFF2459A6, 13, 0));
         selectButton.setOnClickListener(v -> pickSources());
         column.addView(selectButton);
 
         cancelButton = new Button(this);
         cancelButton.setAllCaps(false);
-        cancelButton.setText("현재 작업 취소");
+        cancelButton.setText("전송 중단");
+        cancelButton.setTextSize(14);
+        cancelButton.setTextColor(0xFFB5473F);
+        cancelButton.setBackground(surface(0xFFFFF1F0, 12, 0xFFEEC5C0));
+        cancelButton.setVisibility(View.GONE);
         cancelButton.setEnabled(false);
         cancelButton.setOnClickListener(v -> {
             cancel.set(true);
-            showStatus("취소 요청됨. 현재 USB 입출력 종료 후 정리합니다.");
+            cancelButton.setEnabled(false);
+            showStatus("취소 요청됨. 현재 USB 입출력 종료 후 임시 파일 정리를 시도합니다.");
         });
         column.addView(cancelButton);
 
         recoveryButton = new Button(this);
         recoveryButton.setAllCaps(false);
-        recoveryButton.setText("중단된 임시 전송 파일 정리");
+        recoveryButton.setText("중단된 임시 파일 확인 및 정리");
+        recoveryButton.setTextColor(0xFF7B4C0B);
+        recoveryButton.setBackground(surface(0xFFFFEDD2, 12, 0xFFEFCB87));
         recoveryButton.setOnClickListener(v -> confirmRecovery());
+        recoveryButton.setVisibility(View.GONE);
         column.addView(recoveryButton);
 
         auditButton = new Button(this);
         auditButton.setAllCaps(false);
-        auditButton.setText("검증 보고서(TXT) 저장");
+        auditButton.setText("SHA-256 검증 보고서 내보내기");
+        auditButton.setTextColor(navy);
+        auditButton.setBackground(surface(0xFFE9EEF6, 12, 0xFFCAD6E8));
+        auditButton.setVisibility(View.GONE);
         auditButton.setEnabled(false);
         auditButton.setOnClickListener(v -> exportAudit());
         column.addView(auditButton);
 
+        TextView statusTitle = text("전송 상태", 16, navy);
+        statusTitle.setPadding(dp(2), dp(20), 0, dp(9));
+        column.addView(statusTitle);
+
+        LinearLayout statusPanel = new LinearLayout(this);
+        statusPanel.setOrientation(LinearLayout.VERTICAL);
+        statusPanel.setPadding(dp(14), dp(12), dp(14), dp(13));
+        statusPanel.setBackground(surface(0xFFFFFFFF, 15, 0xFFE1E7EF));
+
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setIndeterminate(true);
         progress.setVisibility(View.GONE);
-        column.addView(progress);
+        statusPanel.addView(progress);
 
-        status = new TextView(this);
-        status.setTextSize(14);
+        status = text("파일을 선택하면 전송 상태가 표시됩니다.\n원본 파일은 삭제하지 않습니다.", 13, slate);
         status.setTextIsSelectable(true);
-        status.setPadding(0, dp(16), 0, dp(16));
-        column.addView(status);
-        showStatus("원본 파일은 삭제하지 않습니다. 파일별 SHA-256 재검증 후 저장합니다.");
+        status.setPadding(dp(2), dp(6), 0, dp(5));
+        statusPanel.addView(status);
+        column.addView(statusPanel);
 
-        TextView caution = new TextView(this);
-        caution.setText("주의: Android 또는 다른 앱이 NTFS를 쓰기 불가로 연결했다면 " +
-                "폴더 선택만으로 쓰기가 활성화되지 않습니다. " +
-                "전송 도중 USB를 빼면 임시 파일이 남거나 데이터가 손상될 수 있습니다.");
-        caution.setTextSize(12);
-        caution.setTextColor(0xFF7B3E14);
-        caution.setPadding(0, dp(20), 0, 0);
+        TextView caution = text("안전 안내\nNTFS를 읽기 전용으로 연결한 경우 이 앱으로 쓰기를 강제할 수 없습니다. " +
+                "파일 검증이 끝나더라도 USB는 안전하게 분리하세요.", 12, 0xFF8A501C);
+        caution.setPadding(dp(13), dp(12), dp(13), dp(12));
+        caution.setBackground(surface(0xFFFFF4E4, 12, 0xFFF6DEB5));
         column.addView(caution);
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
+        scroll.setBackgroundColor(bg);
         scroll.addView(column);
         setContentView(scroll);
         refreshRecoveryUi();
@@ -253,6 +313,7 @@ public final class SafNtfsCopyActivity extends Activity {
         selectButton.setEnabled(false);
         recoveryButton.setEnabled(false);
         cancelButton.setEnabled(true);
+        cancelButton.setVisibility(View.VISIBLE);
         progress.setVisibility(View.VISIBLE);
         progress.setIndeterminate(true);
         ArrayList<Uri> selection = new ArrayList<>(sources);
@@ -309,7 +370,9 @@ public final class SafNtfsCopyActivity extends Activity {
                     progress.setVisibility(View.GONE);
                     selectButton.setEnabled(true);
                     cancelButton.setEnabled(false);
+                    cancelButton.setVisibility(View.GONE);
                     auditButton.setEnabled(lastAudit != null);
+                    auditButton.setVisibility(lastAudit == null ? View.GONE : View.VISIBLE);
                     refreshRecoveryUi();
                 });
             }
