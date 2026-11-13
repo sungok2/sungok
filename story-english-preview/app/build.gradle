@@ -1,4 +1,6 @@
-plugins { id 'com.android.application' }
+plugins {
+    id 'com.android.application'
+}
 android {
     namespace 'com.storyenglish.preview'
     compileSdk 36
@@ -12,7 +14,7 @@ android {
     signingConfigs {
         ephemeral {
             def k = System.getenv('STORY_KEYSTORE')
-            if(k) {
+            if (k) {
                 storeFile file(k)
                 storePassword System.getenv('STORY_KEYPASS')
                 keyAlias 'preview'
@@ -24,18 +26,23 @@ android {
         release {
             debuggable false
             minifyEnabled false
-            if(System.getenv('STORY_KEYSTORE')) signingConfig signingConfigs.ephemeral
+            if (System.getenv('STORY_KEYSTORE')) signingConfig signingConfigs.ephemeral
         }
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
-        testOptions { unitTests.returnDefaultValues = true }
+    }
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
 }
-dependencies { testImplementation 'junit:junit:4.13.2' }
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+}
 tasks.register('verifyPreviewRelease') {
     doLast {
-        if(!System.getenv('STORY_KEYSTORE')) throw new GradleException('Signing key missing')
-        if(android.buildTypes.release.debuggable) throw new GradleException('Release must not be debuggable')
+        if (!System.getenv('STORY_KEYSTORE')) throw new GradleException('Signing key missing')
+        if (android.buildTypes.release.debuggable) throw new GradleException('Release must not be debuggable')
     }
 }
