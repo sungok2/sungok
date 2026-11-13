@@ -26,7 +26,7 @@ public final class NtfsNamePolicyTests {
         }
         List<String> invalid = Arrays.asList("", ".", "..", "bad.", "trail ", "/x",
             "ab\\cd", "why?", "quo\"te", "star*", "pipe|", "col:on",
-            "CON", "con.txt", "AUX.md", "prn", "nul.jpeg", "COM1", "com9.xyz",
+            "CON", "con.txt", "CON   .txt", "AUX.md", "prn", "nul.jpeg", "COM1", "com9.xyz",
             "LPT3", "lpt9.txt", "COM\u00B9.pdf", "LPT\u00B2.txt", "COM\u00B3",
             "one\u0000two", "bell\u0007", "del\u007F", "\uD83D", "\uDE42",
             "z".repeat(256));
