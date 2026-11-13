@@ -1,0 +1,61 @@
+name: GalaxyUSB NTFS Direct M1 Android 13 install and launch smoke
+on:
+  push:
+    branches: [galaxyusb-ntfs-direct-engine-m1-0]
+    paths:
+      - .github/workflows/smoke-ntfs-direct-android13.yml
+permissions:
+  contents: read
+jobs:
+  android-13-launch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: android-actions/setup-android@v4
+      - name: Fetch published signed GPL APK
+        run: |
+          set -euo pipefail
+          curl -fL --retry 4 --retry-delay 3 -o direct-ntfs.apk \
+            https://github.com/sungok2/sungok/releases/download/galaxyusb-ntfs-direct-m1-experimental/GalaxyUSB_NTFS_DIRECT_M1.apk
+          test -s direct-ntfs.apk
+          sha256sum direct-ntfs.apk
+          echo "7d0c4da746ad73f05e60b80b090b7f13856c6a21e25b1188a755630ab1c7f7f5  direct-ntfs.apk" | sha256sum -c -
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Android 13 emulator app launch and crash screening
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: google_apis
+          arch: x86_64
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            set -euo pipefail
+            mkdir -p direct-ui-evidence
+            adb wait-for-device
+            adb install -r direct-ntfs.apk
+            adb logcat -c
+            adb shell am start -W -n com.galaxyuniversalio.ntfsdirect/app.fayaz.otgmaster.MainActivity | tee direct-ui-evidence/launch.txt
+            sleep 6
+            adb shell pidof com.galaxyuniversalio.ntfsdirect | tee direct-ui-evidence/pid.txt
+            adb shell uiautomator dump /sdcard/direct-ntfs-window.xml || true
+            adb pull /sdcard/direct-ntfs-window.xml direct-ui-evidence/window.xml || true
+            adb exec-out screencap -p > direct-ui-evidence/main-screen.png
+            if adb logcat -d -t 6000 | grep -A15 'FATAL EXCEPTION' | grep -F 'com.galaxyuniversalio.ntfsdirect'; then
+              echo 'Fatal process exception found' >&2
+              exit 1
+            fi
+            test -s direct-ui-evidence/main-screen.png
+            echo 'PASS: Android 13 APK installs, launches, process stays live without USB'
+      - name: Upload emulator evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: galaxyusb-native-android13-smoke-evidence
+          path: direct-ui-evidence/
+          if-no-files-found: warn
+          retention-days: 7
