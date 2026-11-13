@@ -27,3 +27,5 @@
 - OCR, auto-straightening, auto-cropping, duplex ADF, automatic service discovery and all-file-format print conversion are not implemented.
 - A failed SAF copy can still produce an incomplete file in the destination provider.
 - S20 Ultra physical device and scanner/printer model-specific compatibility remain to be tested.
+
+- Final UI review correction: disabled USB actions use disabled-state color and do not masquerade as active blue buttons when no USB device is attached.

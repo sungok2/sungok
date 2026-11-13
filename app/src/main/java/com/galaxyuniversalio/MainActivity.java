@@ -248,8 +248,12 @@ public final class MainActivity extends Activity {
         button.setAllCaps(false);
         button.setTextSize(14);
         button.setMinHeight(dp(50));
-        button.setTextColor(important ? WHITE : INK);
-        button.setBackgroundTintList(ColorStateList.valueOf(important ? PRIMARY : 0xFFE7EFFB));
+        // Disabled USB actions must not appear active when no device is present.
+        int[][] states = {new int[] {-android.R.attr.state_enabled}, new int[] {}};
+        button.setTextColor(new ColorStateList(states,
+                new int[] {0xFF64748B, important ? WHITE : INK}));
+        button.setBackgroundTintList(new ColorStateList(states,
+                new int[] {0xFFE3E8F0, important ? PRIMARY : 0xFFE7EFFB}));
     }
 
     private void addButton(LinearLayout parent, Button button) {
@@ -557,7 +561,7 @@ public final class MainActivity extends Activity {
         updateReport(devices);
 
         String status = devices.isEmpty()
-                ? "USB 연결 없음 · 네트워크 문서 스캔 및 시스템 인쇄는 사용 가능"
+                ? "USB 연결 없음 · LAN 스캔과 시스템 인쇄 메뉴를 사용할 수 있습니다"
                 : "USB " + devices.size() + "개 연결 · 장치 정보를 확인했습니다.";
         if (usbHintView != null) usbHintView.setText(devices.isEmpty()
                 ? "연결된 USB 장치가 없습니다. OTG 케이블 및 전원을 확인하세요."
