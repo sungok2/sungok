@@ -148,7 +148,7 @@ public class ProgressBar extends android.view.View {
  public void setMax(int v){}public void setProgress(int v){}
 }""",
 'android/util/Log.java': """package android.util; public class Log {
- public static int w(String tag,String msg,Throwable ex){return 0;}
+ public static int w(String tag,String msg,Throwable ex){return 0;} public static int w(String tag,String msg){return 0;} public static int i(String tag,String msg){return 0;}
 }""",
 'android/provider/DocumentsContract.java': """package android.provider;
 import android.content.ContentResolver;import android.net.Uri;import java.io.FileNotFoundException;
