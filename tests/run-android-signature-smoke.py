@@ -222,6 +222,11 @@ stubs['android/view/View.java'] = stubs['android/view/View.java'].replace(
  'public void setOnClickListener(OnClickListener listener){} public void setContentDescription(CharSequence c){}'
 )
 
+stubs['android/app/AlertDialog.java'] = stubs['android/app/AlertDialog.java'].replace(
+ 'public Builder setNegativeButton(String s, DialogInterface.OnClickListener l){return this;}',
+ 'public Builder setNeutralButton(String s, DialogInterface.OnClickListener l){return this;} public Builder setNegativeButton(String s, DialogInterface.OnClickListener l){return this;}'
+)
+
 with tempfile.TemporaryDirectory() as tmp:
  t=Path(tmp)
  for n,content in stubs.items():
