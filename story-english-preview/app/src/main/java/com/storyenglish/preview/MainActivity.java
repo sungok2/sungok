@@ -17,6 +17,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.ProgressBar;
+import android.widget.ImageView;
 
 /** STORY ENGLISH 3.7.2 LAB: stand-alone offline feature prototype, not 3.7.0 source integration. */
 public final class MainActivity extends Activity implements SpeechLab.Listener {
@@ -64,7 +65,7 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
         render();
     }
     @Override protected void onSaveInstanceState(Bundle out){out.putInt("scene",scene);out.putInt("line",line);out.putInt("tab",tab);super.onSaveInstanceState(out);}
-    @Override protected void onPause(){super.onPause();if(lab!=null)lab.stop();ttsRequested=false;}
+    @Override protected void onPause(){super.onPause();if(lab!=null)lab.pause();ttsRequested=false;}
     @Override protected void onDestroy(){if(lab!=null)lab.shutdown();super.onDestroy();}
     private int dp(int n){return (int)(getResources().getDisplayMetrics().density*n+0.5f);}
     private float font(int s){return prefs.getBoolean("large",false)?s*1.18f:s;}
@@ -97,8 +98,21 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
         add(body,button("저는 19세 이상이며 성인 학습 콘텐츠를 이용하겠습니다",()->{prefs.edit().putBoolean("confirmed19",true).apply();canShowAdult=true;render();},true),18);
         add(body,label("이 검토판은 법적 연령 확인과 권리 승인된 EXPLICIT 영상 제공 기능을 대체하지 않습니다.",13,MUTED,false),12);
     }
+    private View sceneArtwork(){
+        if(scene==0){
+            ImageView image=new ImageView(this);
+            image.setImageResource(R.drawable.romantic_scene);
+            image.setAdjustViewBounds(true);
+            image.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            image.setContentDescription("조명이 따뜻한 실내에서 두 성인이 손을 잡고 가까이 마주 보는 친밀한 장면");
+            return image;
+        }
+        AdultSceneView graphic=new AdultSceneView(this);
+        graphic.setVariant(scene);
+        return graphic;
+    }
     private void home(){heading("영어, 더 가까운 대화로.","성인이 실제로 마주하는 친밀한 상황을 듣고 말해 보세요.");
-        AdultSceneView hero=new AdultSceneView(this);hero.setVariant(scene);add(body,hero,18);
+        add(body,sceneArtwork(),18);
         add(body,label("MATURE · 비노골적 성인 상황 · 교육용",13,ROSE,true),12);
         add(body,card("오늘의 장면 · "+TITLES[scene],DESCRIPTIONS[scene]),10);
         add(body,button("장면 듣고 학습하기  →",()->go(1),true),14);
@@ -109,7 +123,7 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
         add(body,label("성우 음성 대신 기기 TTS로 재생합니다. 성인용 몰입 영상·실제 화자 음성은 이 APK에 포함돼 있지 않습니다.",13,MUTED,false),18);
     }
     private void learning(){heading(TITLES[scene],"상황을 보고, 실제 대화를 듣고, 필요한 문장을 선택하세요.");
-        AdultSceneView illustration=new AdultSceneView(this);illustration.setVariant(scene);add(body,illustration,12);
+        add(body,sceneArtwork(),12);
         add(body,label("MATURE  ·  "+FUNCTIONS[scene],13,ROSE,true),10);
         add(body,button("대화 전체 듣기  ▶",()->lab.playDialogue(EN[scene]),true),12);
         add(body,label("표현을 눌러 쉐도잉·원음 비교로 이동합니다.",14,MUTED,false),16);
@@ -147,7 +161,7 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
         add(body,label("그래프: 가로축 시간, 세로축 주파수 110Hz~6kHz. 음향 유사도는 발음·단어 인식 정확도가 아닙니다.",13,MUTED,false),9);
         if(lastResult!=null)showComparison(lastResult);
         statusText=label(lab.hasReference()?"기준 음성 준비됨":ttsRequested?"기준 음성 합성 중…":"기준 음성 준비 버튼을 누르세요.",14,BLUE,false);add(body,statusText,14);
-        if(!lab.hasReference()&&!ttsRequested) add(body,button("기준 음성 생성",this::prepareReference,false),10);
+        if(!lab.hasReference()) add(body,button("기준 음성 생성 / 다시 시도",this::prepareReference,false),10);
     }
     private void showComparison(SpectralAnalyzer.Result result){if(scoreText!=null){
         if(result.similarity<0)scoreText.setText(result.note);
@@ -156,7 +170,7 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
         requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},micRequest);return;
         }startShadowing();
     }
-    private void startShadowing(){if(!lab.hasReference()){if(!ttsRequested)prepareReference();status("기준 음성 준비 후 녹음할 수 있습니다.");return;}
+    private void startShadowing(){if(!lab.hasReference()){if(!ttsRequested)prepareReference();onStatus("기준 음성 준비 후 녹음할 수 있습니다.");return;}
         onStage=true;lab.beginCountdown();}
     @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] results){super.onRequestPermissionsResult(requestCode,permissions,results);
         if(requestCode==micRequest){if(results.length>0&&results[0]==PackageManager.PERMISSION_GRANTED&&tab==2)startShadowing();
