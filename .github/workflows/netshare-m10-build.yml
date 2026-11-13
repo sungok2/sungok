@@ -1,0 +1,103 @@
+name: NetShare P2P M10 link diagnostics APK
+
+on:
+  push:
+    branches:
+      - netshare-m10-link-diagnostics
+    paths:
+      - '.github/workflows/netshare-m10-build.yml'
+      - 'netshare-p2p/M8_build_source.zip'
+      - 'netshare-p2p/m9_patch.py'
+      - 'netshare-p2p/M10_ProbeActivity.kt.zlib'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-debug:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: true
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+      - name: Install Android SDK 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.14'
+      - name: Expand and patch source (M8 -> M9 -> M10)
+        run: |
+          mkdir -p netshare-p2p/build
+          unzip -q netshare-p2p/M8_build_source.zip -d netshare-p2p/build
+          cd netshare-p2p/build
+          python3 ../m9_patch.py
+          python3 - <<'PY'
+          import zlib, hashlib
+          from pathlib import Path
+          src = zlib.decompress(Path('../M10_ProbeActivity.kt.zlib').read_bytes())
+          expected = 'c91b86bb09c666ebc6c986bb6d6d44bbdfcaa29273fea8a676adcaa4e13d9435'
+          assert hashlib.sha256(src).hexdigest() == expected, 'M10 Kotlin file checksum mismatch'
+          Path('android-app/src/main/java/netshare/app/ProbeActivity.kt').write_bytes(src)
+          p=Path('android-app/build.gradle.kts')
+          s=p.read_text().replace('versionCode = 9','versionCode = 10').replace('versionName = "0.9.0-diagnostic"','versionName = "0.10.0-link-diagnostics"')
+          assert 'versionCode = 10' in s
+          p.write_text(s)
+          p=Path('android-app/src/main/AndroidManifest.xml')
+          s=p.read_text().replace('Diagnostic M9','Link Diagnostic M10')
+          p.write_text(s)
+          print('M10: exact Kotlin source checksum verified')
+          PY
+      - name: Check manifest and forbidden networking APIs
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          root=Path('netshare-p2p/build')
+          manifest=ET.parse(root/'android-app/src/main/AndroidManifest.xml').getroot()
+          ns='{http://schemas.android.com/apk/res/android}'
+          permissions={x.attrib.get(ns+'name') for x in manifest.findall('uses-permission')}
+          for p in ('android.permission.NEARBY_WIFI_DEVICES','android.permission.CHANGE_WIFI_STATE','android.permission.ACCESS_WIFI_STATE','android.permission.INTERNET'):
+              assert p in permissions, p
+          app=(root/'android-app/src/main/java/netshare/app/ProbeActivity.kt').read_text()
+          assert 'requestGroupInfo(channel)' in app and 'requestConnectionInfo(channel)' in app
+          src='\n'.join(p.read_text() for p in root.rglob('*.kt'))
+          bad=('createGroup(', 'manager.connect(channel', 'startTethering(', 'TetheringManager', 'startLocalOnlyHotspot(', 'setWifiApEnabled(')
+          hits=[x for x in bad if x in src]
+          assert not hits, hits
+          print('PASS: no forbidden direct network creation/tethering API patterns')
+          PY
+      - name: Build M10 debug APK
+        working-directory: netshare-p2p/build
+        run: gradle --no-daemon --stacktrace :android-app:assembleDebug
+      - name: Package source and checksums
+        run: |
+          cd netshare-p2p/build
+          zip -qr ../netshare-m10-build-source.zip settings.gradle.kts build.gradle.kts gradle.properties core/src/main/kotlin android-adapter/src/main/java android-app/src/main android-app/build.gradle.kts
+          sha256sum android-app/build/outputs/apk/debug/*.apk ../netshare-m10-build-source.zip | tee ../M10_SHA256.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: netshare-p2p-m10-debug-and-source
+          path: |
+            netshare-p2p/build/android-app/build/outputs/apk/debug/*.apk
+            netshare-p2p/netshare-m10-build-source.zip
+            netshare-p2p/M10_SHA256.txt
+          if-no-files-found: error
+      - name: Publish direct-download release (public test build)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK=$(find netshare-p2p/build/android-app/build/outputs/apk/debug -name '*.apk' -print -quit)
+          cp "$APK" netshare-p2p/NetShareP2P_M10_Link_Diagnostic_Debug.apk
+          TAG=netshare-p2p-m10
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" netshare-p2p/NetShareP2P_M10_Link_Diagnostic_Debug.apk netshare-p2p/netshare-m10-build-source.zip netshare-p2p/M10_SHA256.txt --clobber
+          else
+            gh release create "$TAG" netshare-p2p/NetShareP2P_M10_Link_Diagnostic_Debug.apk netshare-p2p/netshare-m10-build-source.zip netshare-p2p/M10_SHA256.txt --title 'NetShare P2P M10 (conditional link diagnostics)' --notes 'TEST BUILD ONLY. No P2P creation, SoftAP or Tethering. Requires independently verified existing Group Client connection. Internet sharing not established.' --latest=false
+          fi
