@@ -158,7 +158,7 @@ public final class SpectralAnalyzer {
         if(source==null || sourceRate<8000 || sourceRate>192000 || sourceChannels<1 || sourceChannels>2)return new short[0];
         int frames=source.length/sourceChannels;
         if(frames==0)return new short[0];
-        int outFrames=(int)Math.min(10L*SAMPLE_RATE,Math.round(frames*(double)SAMPLE_RATE/sourceRate));
+        int outFrames=(int)Math.min(45L*SAMPLE_RATE,Math.round(frames*(double)SAMPLE_RATE/sourceRate));
         short[] dest=new short[outFrames];
         for(int i=0;i<outFrames;i++){
             double pos=i*sourceRate/(double)SAMPLE_RATE;
