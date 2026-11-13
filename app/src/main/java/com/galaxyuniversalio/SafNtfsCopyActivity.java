@@ -20,6 +20,7 @@ import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -180,6 +181,12 @@ public final class SafNtfsCopyActivity extends Activity {
             }
             final int granted = data.getFlags() &
                     (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            final int required = Intent.FLAG_GRANT_READ_URI_PERMISSION |
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
+            if ((granted & required) != required) {
+                showStatus("대상 폴더에 읽기와 쓰기 권한이 모두 필요합니다. NTFS 마운트 상태를 확인하세요.");
+                return;
+            }
             try {
                 // Persist when the provider allows it. Current activity grants suffice otherwise.
                 getContentResolver().takePersistableUriPermission(targetTree, granted);
@@ -205,9 +212,15 @@ public final class SafNtfsCopyActivity extends Activity {
                 Uri parent = DocumentsContract.buildDocumentUriUsingTree(tree,
                         DocumentsContract.getTreeDocumentId(tree));
                 ensureWritableDirectory(parent);
+                // Validate the entire batch before touching any destination files.
+                List<String> plannedNames = new ArrayList<>();
+                for (Uri source : selection) {
+                    plannedNames.add(NtfsNamePolicy.requireValid(getDisplayName(source)));
+                }
+                NtfsNamePolicy.requireDistinctNames(plannedNames);
                 for (Uri source : selection) {
                     if (cancel.get()) throw new InterruptedIOException("사용자 취소");
-                    String fileName = safeName(getDisplayName(source));
+                    String fileName = plannedNames.get(completed);
                     String mimeType = getContentResolver().getType(source);
                     if (mimeType == null || mimeType.isEmpty()) mimeType = "application/octet-stream";
                     final int index = completed + 1;
@@ -277,18 +290,18 @@ public final class SafNtfsCopyActivity extends Activity {
         if (childNameExists(parent, name)) {
             throw new IOException("덮어쓰기 방지: 같은 이름의 대상 파일이 존재합니다: " + name);
         }
-        // Keep under common 255-character filename limits, including the suffix.
-        String fragment = name.length() > 170 ? name.substring(0, 170) : name;
-        String partialName = "." + fragment + ".partial-" + Long.toHexString(System.nanoTime());
+        // A fixed-size random staging filename supports maximum-length final names.
+        String partialName = NtfsNamePolicy.temporaryName();
         Uri temporary = null;
         boolean renamed = false;
         try {
             temporary = DocumentsContract.createDocument(getContentResolver(),
                     parent, mimeType, partialName);
             if (temporary == null) throw new IOException("임시 대상 파일 생성이 거부되었습니다.");
+            requireRenameAndWriteSupport(temporary);
             VerifiedStreamCopy.Result written;
             try (InputStream in = getContentResolver().openInputStream(source);
-                 OutputStream out = getContentResolver().openOutputStream(temporary, "w")) {
+                 OutputStream out = getContentResolver().openOutputStream(temporary, "wt")) {
                 if (in == null || out == null) throw new IOException("입출력 스트림을 열지 못했습니다.");
                 final long[] lastShownAt = {0L};
                 written = VerifiedStreamCopy.copy(in, out, cancel, bytes -> {
@@ -329,7 +342,8 @@ public final class SafNtfsCopyActivity extends Activity {
             renamed = true;
             String actual = getDisplayName(finished);
             if (!name.equals(actual)) {
-                throw new IOException("복사는 완료되었지만 제공자가 다른 이름으로 저장했습니다: " + actual);
+                throw new IOException("복사 및 검증은 완료했으나 다른 이름으로 저장됨: " +
+                        actual + " (요청: " + name + "). 자동 삭제하지 않습니다.");
             }
         } catch (SecurityException e) {
             throw new IOException("문서 제공자의 쓰기 또는 읽기 권한이 없습니다.", e);
@@ -342,6 +356,21 @@ public final class SafNtfsCopyActivity extends Activity {
                 } catch (Exception cleanupFailure) {
                     android.util.Log.w("NtfsSafCopy", "Temporary file cleanup failed", cleanupFailure);
                 }
+            }
+        }
+    }
+
+    private void requireRenameAndWriteSupport(Uri uri) throws IOException {
+        try (Cursor cursor = getContentResolver().query(uri,
+                new String[] { DocumentsContract.Document.COLUMN_FLAGS }, null, null, null)) {
+            if (cursor == null || !cursor.moveToFirst()) {
+                throw new IOException("생성된 USB 파일의 기능 정보를 확인할 수 없습니다.");
+            }
+            int flags = cursor.getInt(0);
+            int required = DocumentsContract.Document.FLAG_SUPPORTS_WRITE |
+                    DocumentsContract.Document.FLAG_SUPPORTS_RENAME;
+            if ((flags & required) != required) {
+                throw new IOException("USB 파일 제공자가 쓰기 또는 이름 변경을 지원하지 않습니다.");
             }
         }
     }
@@ -363,16 +392,6 @@ public final class SafNtfsCopyActivity extends Activity {
             if (c != null && c.moveToFirst() && !c.isNull(0)) return c.getString(0);
         } catch (Exception ignored) {}
         return uri.getLastPathSegment() == null ? "file" : uri.getLastPathSegment();
-    }
-
-    private static String safeName(String name) throws IOException {
-        if (name == null || name.trim().isEmpty()) throw new IOException("파일명이 없습니다.");
-        String fixed = name.replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]", "_").trim();
-        if (fixed.isEmpty() || ".".equals(fixed) || "..".equals(fixed) ||
-                fixed.length() > 240 || fixed.endsWith(".") || fixed.endsWith(" ")) {
-            throw new IOException("NTFS에서 사용하기 어려운 파일명: " + name);
-        }
-        return fixed;
     }
 
     @Override
