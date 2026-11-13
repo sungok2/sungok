@@ -19,7 +19,7 @@ if grep -q 'FATAL EXCEPTION' <(adb logcat -d -t 4000 | grep -A20 'FATAL EXCEPTIO
   exit 1
 fi
 # Verify that at least the main activity title is present in the accessible hierarchy.
-grep -q 'Galaxy Universal I/O · M0.10' ci-evidence/window.xml
+grep -q 'Galaxy Universal I/O · M0.11' ci-evidence/window.xml
 
 
 # Locate the newly added NTFS/SAF button by accessibility bounds, not hardcoded pixels.
@@ -45,6 +45,7 @@ adb pull /sdcard/ntfs-window.xml ci-evidence/ntfs-window.xml
 adb exec-out screencap -p > ci-evidence/ntfs-copy-screen.png
 grep -q 'USB 파일 전송' ci-evidence/ntfs-window.xml
 grep -q '파일 선택하고 복사' ci-evidence/ntfs-window.xml
+grep -q 'USB 쓰기 가능 여부 진단' ci-evidence/ntfs-window.xml
 adb shell pidof "$PKG" > ci-evidence/ntfs-pid.txt
 if grep -q 'FATAL EXCEPTION' <(adb logcat -d -t 4000 | grep -A20 'FATAL EXCEPTION' || true); then
   echo 'Fatal Android exception detected while opening NTFS transfer' >&2
