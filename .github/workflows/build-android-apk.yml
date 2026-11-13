@@ -41,6 +41,7 @@ jobs:
           bash tests/run-ntfs-audit-tests.sh
           bash tests/run-ntfs-write-probe-tests.sh
           bash tests/run-ntfs-destination-advisor-tests.sh
+          bash tests/run-ntfs-failure-advice-tests.sh
           python3 tests/run-android-signature-smoke.py
       - name: Assemble Android debug APK
         run: gradle --no-daemon :app:assembleDebug --stacktrace
