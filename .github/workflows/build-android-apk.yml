@@ -1,7 +1,7 @@
 name: Galaxy Universal I-O Android debug APK
 on:
   push:
-    branches: [galaxy-universal-io-m0-7, galaxy-universal-io-m0-8, galaxy-universal-io-ntfs-saf-m0-9, galaxy-universal-io-ntfs-m1-0-hardening]
+    branches: [galaxy-universal-io-m0-7, galaxy-universal-io-m0-8, galaxy-universal-io-ntfs-saf-m0-9, galaxy-universal-io-ntfs-m1-0-hardening, galaxy-universal-io-m0-11-master-ntfs-preflight]
   workflow_dispatch:
 permissions:
   contents: read
@@ -39,6 +39,8 @@ jobs:
           bash tests/run-ntfs-name-tests.sh
           bash tests/run-ntfs-transaction-tests.sh
           bash tests/run-ntfs-audit-tests.sh
+          bash tests/run-ntfs-write-probe-tests.sh
+          bash tests/run-ntfs-destination-advisor-tests.sh
           python3 tests/run-android-signature-smoke.py
       - name: Assemble Android debug APK
         run: gradle --no-daemon :app:assembleDebug --stacktrace
@@ -54,7 +56,7 @@ jobs:
       - name: Upload debug APK
         uses: actions/upload-artifact@v7
         with:
-          name: GalaxyUniversalIO-M0.10-MASTER-debug-apk
+          name: GalaxyUniversalIO-M0.11-MASTER-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
@@ -76,7 +78,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: GalaxyUniversalIO-M0.10-MASTER-emulator-evidence
+          name: GalaxyUniversalIO-M0.11-MASTER-emulator-evidence
           path: ci-evidence/
           if-no-files-found: warn
           retention-days: 7
