@@ -112,7 +112,7 @@ public class ContentResolver {
 'android/database/Cursor.java': """package android.database;
 public interface Cursor extends AutoCloseable {
  boolean moveToFirst();boolean moveToNext();int getColumnIndex(String c);
- String getString(int c);int getInt(int c);boolean isNull(int c);
+ String getString(int c);int getInt(int c);long getLong(int c);boolean isNull(int c);
  void close();
 }""",
 'android/net/Uri.java': """package android.net;
