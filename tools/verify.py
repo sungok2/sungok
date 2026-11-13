@@ -37,3 +37,10 @@ with tempfile.TemporaryDirectory() as td:
     subprocess.run(['javac','-encoding','UTF-8','-d',str(dest),str(SRC/'DepthGeometry.java'),str(ROOT/'tests/DepthGeometryTest.java')],check=True)
     depthResult=subprocess.run(['java','-cp',str(dest),'DepthGeometryTest'],capture_output=True,text=True,check=True)
     print(depthResult.stdout.strip())
+
+# Regression: new RAW depth must be integrated even when ARCore camera frame timestamp differs.
+with tempfile.TemporaryDirectory() as td:
+    subprocess.run(['javac','-encoding','UTF-8','-d',td,
+        str(SRC/'RawDepthFrameGate.java'),str(ROOT/'tests/RawDepthFrameGateTest.java')],check=True)
+    out=subprocess.run(['java','-cp',td,'RawDepthFrameGateTest'],capture_output=True,text=True,check=True)
+    print(out.stdout.strip())
