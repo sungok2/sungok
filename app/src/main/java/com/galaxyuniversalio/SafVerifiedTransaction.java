@@ -51,6 +51,7 @@ final class SafVerifiedTransaction {
 
         String temporary = null;
         boolean renamed = false;
+        boolean renameAttempted = false;
         IOException primary = null;
         try {
             temporary = backend.createTemporary(tempName);
@@ -60,6 +61,9 @@ final class SafVerifiedTransaction {
             VerifiedStreamCopy.Result written;
             try (InputStream in = backend.openSource();
                  OutputStream out = backend.openTemporaryForWrite(temporary)) {
+                if (in == null || out == null) {
+                    throw new IOException("USB copy source or temporary output stream was unavailable");
+                }
                 written = VerifiedStreamCopy.copy(in, out, cancel, progress);
             }
             if (expectedSize >= 0 && expectedSize != written.bytes) {
@@ -70,11 +74,13 @@ final class SafVerifiedTransaction {
             backend.beforeReadback();
             VerifiedStreamCopy.Result checked;
             try (InputStream in = backend.openTemporaryForRead(temporary)) {
+                if (in == null) throw new IOException("Temporary USB file cannot be reopened for verification");
                 checked = VerifiedStreamCopy.hash(in, cancel);
             }
             VerifiedStreamCopy.verify(written, checked);
             checkCancel(cancel);
             backend.ensureFinalAbsent(finalName);
+            renameAttempted = true;
             String published = backend.rename(temporary, finalName);
             if (published == null) throw new IOException("Provider could not finalize the file");
             renamed = true;
@@ -87,6 +93,7 @@ final class SafVerifiedTransaction {
             // too, rather than assuming the staging handle and published content match.
             VerifiedStreamCopy.Result finalReadback;
             try (InputStream in = backend.openPublishedForRead(published)) {
+                if (in == null) throw new IOException("Final USB file cannot be reopened for verification");
                 finalReadback = VerifiedStreamCopy.hash(in, cancel);
             }
             VerifiedStreamCopy.verify(written, finalReadback);
@@ -102,6 +109,11 @@ final class SafVerifiedTransaction {
                     if (primary != null) primary.addSuppressed(e);
                     else throw e;
                 }
+            } else if (renameAttempted) {
+                // A provider can finish renaming then fail to return the new URI.
+                // The old URI may now point at the published file; deleting it risks
+                // destroying the user's only completed copy.
+                backend.cleanupError(new IOException("Rename outcome ambiguous; keep recovery journal; no automatic deletion"));
             } else if (temporary != null) {
                 try {
                     if (backend.deleteTemporary(temporary)) {
