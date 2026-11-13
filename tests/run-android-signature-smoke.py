@@ -217,6 +217,11 @@ stubs['android/net/Uri.java'] = stubs['android/net/Uri.java'].replace(
  'public String getLastPathSegment(){return null;}public String getAuthority(){return null;}'
 )
 
+stubs['android/view/View.java'] = stubs['android/view/View.java'].replace(
+ 'public void setContentDescription(CharSequence c){}',
+ 'public void setOnClickListener(OnClickListener listener){} public void setContentDescription(CharSequence c){}'
+)
+
 with tempfile.TemporaryDirectory() as tmp:
  t=Path(tmp)
  for n,content in stubs.items():
