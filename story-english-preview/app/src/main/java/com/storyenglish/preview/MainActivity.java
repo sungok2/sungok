@@ -314,6 +314,11 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
         }else{
             add(body,card("✓ 장면 학습 완료","이야기의 의미를 이해했습니다. 직접 발화해 보면 표현을 더 오래 기억하는 데 도움이 됩니다."),12);
             add(body,button("동의 확인 표현 쉐도잉 연습 →",()->{novelSentence=null;line=1;go(2);prepareReference();},true),10);
+            add(body,button("같은 주제의 오리지널 소설 읽기 →",()->{
+                novelSession.load(NovelReaderPanel.SAMPLE,"After Midnight: An Honest Conversation",true);
+                novelSentence=null;
+                go(5);
+            },false),10);
         }
     }
     private View sceneArtwork(){
