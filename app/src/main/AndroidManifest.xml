@@ -8,7 +8,7 @@
     <application
         android:allowBackup="false"
         android:usesCleartextTraffic="true"
-        android:label="Galaxy Universal I/O MASTER"
+        android:label="Galaxy Universal I/O M0.11"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <receiver
