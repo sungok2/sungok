@@ -19,7 +19,7 @@ public class Activity extends Context { protected void onCreate(Bundle b){} prot
 'android/content/res/Resources.java': '''package android.content.res; import android.util.DisplayMetrics; public class Resources { public DisplayMetrics getDisplayMetrics(){return null;}}''',
 'android/util/DisplayMetrics.java': '''package android.util;public class DisplayMetrics{public float density;}''',
 'android/database/Cursor.java': '''package android.database; public interface Cursor extends AutoCloseable {boolean moveToFirst();int getColumnIndex(String c);String getString(int c);void close();}''',
-'android/provider/OpenableColumns.java': '''package android.provider; public interface OpenableColumns {String DISPLAY_NAME="_display_name";}''',
+'android/provider/OpenableColumns.java': '''package android.provider; public interface OpenableColumns {String DISPLAY_NAME="_display_name", SIZE="_size";}''',
 'android/net/Uri.java': '''package android.net;public class Uri{}''',
 'android/os/Build.java': '''package android.os; public class Build {public static final String MANUFACTURER="",MODEL=""; public static class VERSION{public static final int SDK_INT=35;}}''',
 'android/os/Bundle.java': '''package android.os;import java.util.HashMap;public class Bundle {public String getString(String k){return null;}public int getInt(String k){return 0;}public boolean getBoolean(String k,boolean d){return false;}public void putString(String k,String v){}public void putInt(String k,int v){}public void putBoolean(String k,boolean v){}}''',
@@ -145,6 +145,7 @@ public class Button extends TextView {public Button(Context c){super(c);}
 public class ProgressBar extends android.view.View {
  public ProgressBar(Context c,Object attrs,int style){}
  public void setIndeterminate(boolean b){}
+ public void setMax(int v){}public void setProgress(int v){}
 }""",
 'android/util/Log.java': """package android.util; public class Log {
  public static int w(String tag,String msg,Throwable ex){return 0;}
