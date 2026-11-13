@@ -737,6 +737,7 @@ public final class SafNtfsCopyActivity extends Activity {
                 .setMessage("이전 작업의 임시 파일 [" + old.partialName +
                         "]만 찾아 정리합니다. 실제 저장된 다른 파일과 원본은 삭제하지 않습니다." +
                         "\n대상 폴더를 다시 선택한 다음 삭제 여부를 한 번 더 확인합니다.")
+                .setNeutralButton("기록만 해제", (dialog, which) -> confirmAbandonRecovery())
                 .setNegativeButton("취소", (dialog, which) -> { })
                 .setPositiveButton("대상 폴더 선택", (dialog, which) -> {
                     Intent choose = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
@@ -744,6 +745,27 @@ public final class SafNtfsCopyActivity extends Activity {
                             Intent.FLAG_GRANT_WRITE_URI_PERMISSION |
                             Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
                     startActivityForResult(choose, REQ_RECOVER);
+                }).show();
+    }
+
+    private void confirmAbandonRecovery() {
+        Pending old = readPending();
+        if (copying || PROCESS_TRANSFER_ACTIVE.get() || old == null) return;
+        new AlertDialog.Builder(this)
+                .setTitle("임시 파일을 삭제하지 않고 기록만 해제")
+                .setMessage("USB가 분리됐다가 재연결되면 저장소 제공자의 폴더 주소가 바뀔 수 있습니다.\n\n" +
+                        "이 기능은 USB 안의 파일을 전혀 삭제하지 않고 앱 내부의 복구 기록만 지웁니다." +
+                        " 실제 USB에 임시 파일이나 이미 복사한 파일이 남아 있을 수 있으므로 " +
+                        "PC 또는 연결 앱에서 파일들을 직접 확인해야 합니다.\n\n" +
+                        "확인되지 않은 USB 파일이 있으면 '취소'를 선택하세요.")
+                .setNegativeButton("취소", (dialog, which) -> {})
+                .setPositiveButton("기록만 해제", (dialog, which) -> {
+                    if (clearPending()) {
+                        showStatus("앱의 복구 기록만 해제했습니다. USB에 남은 파일은 삭제·검증하지 않았습니다.");
+                    } else {
+                        showStatus("복구 기록 해제에 실패했습니다.");
+                    }
+                    refreshRecoveryUi();
                 }).show();
     }
 
