@@ -997,7 +997,8 @@ public final class MainActivity extends Activity {
         outState.putInt(STATE_PRINT_VID, pendingPrintVid);
         outState.putInt(STATE_PRINT_PID, pendingPrintPid);
         outState.putString(STATE_PTP_DEVICE_NAME, pendingPtpDeviceName);
-        outState.putInt(STATE_PTP_VID, pendingPtpVid);        outState.putInt(STATE_PTP_PID, pendingPtpPid);
+        outState.putInt(STATE_PTP_VID, pendingPtpVid);
+        outState.putInt(STATE_PTP_PID, pendingPtpPid);
         outState.putString(STATE_SCAN_HOST, pendingScanHost);
         outState.putString(STATE_SCAN_DEVICE, pendingScanDevice);
         outState.putInt(STATE_SCAN_VID, pendingScanVid);
