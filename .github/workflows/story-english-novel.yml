@@ -55,7 +55,7 @@ jobs:
           grep -E 'android:allowBackup.*0x0' /tmp/manifest.txt
           ! grep -Eq 'android:debuggable.*(0x1|0xffffffff)' /tmp/manifest.txt
           # Audio and player wiring checks are source-based; runtime device QA is separate.
-          grep -F 'playOrPrepare(EN[scene][line]' story-english-preview/app/src/main/java/com/storyenglish/preview/MainActivity.java
+          grep -F 'playOrPrepare(novelSentence==null?EN[scene][line]' story-english-preview/app/src/main/java/com/storyenglish/preview/MainActivity.java
           grep -F 'requestAudioFocus(focusRequest)' story-english-preview/app/src/main/java/com/storyenglish/preview/MainActivity.java
           # Novel lesson must be integrated into the native Activity and packaged.
           grep -F 'new NovelReaderPanel(' story-english-preview/app/src/main/java/com/storyenglish/preview/MainActivity.java
