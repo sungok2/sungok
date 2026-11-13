@@ -50,6 +50,8 @@ public final class SpeechLab {
     private int ttsRate=0,ttsEncoding=0,ttsChannels=0;
     private int ttsEpoch=-1;
     private volatile int pendingAutoRepeatEpoch=-1;
+    private String queuedPhrase=null;
+    private int queuedVariant=0,queuedCount=1,queuedGap=0,queuedEpoch=-1;
     private int pendingRepeatCount=1, pendingGapSeconds=0;
     public SpeechLab(Context c,Listener l){
         context=c.getApplicationContext();listener=l;
@@ -58,6 +60,14 @@ public final class SpeechLab {
                 int lang=tts.setLanguage(Locale.US);
                 ready=(lang!=TextToSpeech.LANG_NOT_SUPPORTED&&lang!=TextToSpeech.LANG_MISSING_DATA);
                 postStatus(ready?"영어 기준 음성을 준비할 수 있습니다.":"기기에 영어 TTS 음성이 설치되지 않았습니다.");
+                if(ready)main.post(()->{
+                    if(queuedPhrase!=null && epoch==queuedEpoch){
+                        String phrase=queuedPhrase;int variant=queuedVariant,count=queuedCount,gap=queuedGap;
+                        queuedPhrase=null;
+                        playOrPrepare(phrase,variant,count,gap);
+                    }
+                });
+                else main.post(()->listener.playbackFinished());
             }else postStatus("TTS 엔진을 초기화하지 못했습니다.");
         });
         tts.setOnUtteranceProgressListener(new UtteranceProgressListener(){
@@ -173,8 +183,12 @@ public final class SpeechLab {
     /** A single tap starts playback, even when the TTS reference still needs synthesis. */
     public void playOrPrepare(String phrase,int variant,int repetitions,int gapSeconds){
         if(hasReference()){playRepeats(repetitions,gapSeconds);return;}
+        if(!ready){
+            queuedPhrase=phrase;queuedVariant=variant;queuedCount=repetitions;queuedGap=gapSeconds;queuedEpoch=epoch;
+            postStatus("기기 영어 TTS 초기화가 완료되면 자동 재생합니다.");
+            return;
+        }
         setPhrase(phrase,variant);
-        if(!ready){main.post(()->listener.playbackFinished());return;}
         pendingRepeatCount=Math.max(1,Math.min(10,repetitions));
         pendingGapSeconds=Math.max(0,Math.min(10,gapSeconds));
         pendingAutoRepeatEpoch=epoch;
@@ -289,10 +303,11 @@ public final class SpeechLab {
         AudioTrack a=playing;if(a!=null){try{a.pause();a.flush();}catch(Exception ignored){}}
         AudioRecord r=recorder;if(r!=null){try{r.stop();}catch(Exception ignored){}}
     }
-    public void pause(){stopPlaybackAndRecording();pendingAutoRepeatEpoch=-1;lastDialogueId=null;if(tts!=null)tts.stop();}
+    public void pause(){stopPlaybackAndRecording();pendingAutoRepeatEpoch=-1;queuedPhrase=null;lastDialogueId=null;if(tts!=null)tts.stop();}
     public void stop(){
         stopPlaybackAndRecording();
         pendingAutoRepeatEpoch=-1;
+        queuedPhrase=null;
         lastDialogueId=null;
         referencePcm=null;
         if(tts!=null)tts.stop();
