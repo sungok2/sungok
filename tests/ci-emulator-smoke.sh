@@ -19,7 +19,7 @@ if grep -q 'FATAL EXCEPTION' <(adb logcat -d -t 4000 | grep -A20 'FATAL EXCEPTIO
   exit 1
 fi
 # Verify that at least the main activity title is present in the accessible hierarchy.
-grep -q 'Galaxy Universal I/O · M0.9' ci-evidence/window.xml
+grep -q 'Galaxy Universal I/O · M0.10' ci-evidence/window.xml
 
 
 # Locate the newly added NTFS/SAF button by accessibility bounds, not hardcoded pixels.
