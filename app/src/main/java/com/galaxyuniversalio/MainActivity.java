@@ -186,6 +186,13 @@ public final class MainActivity extends Activity {
         subtitle.setPadding(0, dp(4), 0, dp(8));
         root.addView(subtitle);
 
+        Button ntfsCopy = new Button(this);
+        ntfsCopy.setText("USB 저장장치 복사 (NTFS / 외부 제공자)");
+        ntfsCopy.setAllCaps(false);
+        ntfsCopy.setOnClickListener(v ->
+                startActivity(new Intent(this, SafNtfsCopyActivity.class)));
+        root.addView(ntfsCopy);
+
         statusView = new TextView(this);
         statusView.setTextSize(14);
         statusView.setPadding(0, dp(8), 0, dp(8));
