@@ -34,7 +34,7 @@ final class NtfsNamePolicy {
             }
         }
         String stem = name.substring(0, name.indexOf('.') < 0 ? name.length() : name.indexOf('.'));
-        String upper = stem.toUpperCase(Locale.ROOT);
+        String upper = stem.trim().toUpperCase(Locale.ROOT);
         if (upper.equals("CON") || upper.equals("PRN") || upper.equals("AUX") ||
                 upper.equals("NUL") || upper.matches("(COM|LPT)([1-9¹²³])")) {
             throw new IOException("Reserved Windows device filename: " + stem);
