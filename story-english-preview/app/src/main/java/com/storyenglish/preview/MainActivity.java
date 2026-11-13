@@ -18,6 +18,9 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.ProgressBar;
 import android.widget.ImageView;
+import android.widget.VideoView;
+import android.widget.MediaController;
+import android.net.Uri;
 
 /** STORY ENGLISH 3.7.2 LAB: stand-alone offline feature prototype, not 3.7.0 source integration. */
 public final class MainActivity extends Activity implements SpeechLab.Listener {
@@ -28,20 +31,23 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
     private static final String[][] EN={
         {"I really enjoy being close to you.","I feel the same way.","May I kiss you?","Yes, I'd like that.","If anything feels uncomfortable, please tell me.","I will. Thank you for asking."},
         {"I want to be honest about intimacy.","I'm listening. What feels comfortable for you?","I'd prefer to take things slowly.","That works for me. There's no pressure.","We can stop or change our minds at any time.","Exactly. Consent matters every time."},
-        {"Can we talk about sexual health before we become intimate?","Of course. I think that's important.","I'd like us to discuss contraception and STI testing.","I appreciate you bringing it up.","We should make decisions we both feel good about.","Agreed. Let's talk openly and respectfully."}
+        {"Can we talk about sexual health before we become intimate?","Of course. I think that's important.","I'd like us to discuss contraception and STI testing.","I appreciate you bringing it up.","We should make decisions we both feel good about.","Agreed. Let's talk openly and respectfully."},
+        {"I want to be closer to you.","I feel the same. Is this okay?","Yes, but let us take our time.","Of course. We can stop whenever you want."}
     };
     private static final String[][] KO={
         {"당신과 가까이 있는 시간이 정말 좋아요.","저도 같은 마음이에요.","키스해도 될까요?","네, 저도 좋아요.","불편한 점이 생기면 꼭 말해 주세요.","그럴게요. 물어봐 줘서 고마워요."},
         {"친밀한 관계에 대해 솔직하게 이야기하고 싶어요.","듣고 있어요. 어떤 것이 편안한가요?","저는 서두르지 않고 천천히 진행하고 싶어요.","좋아요. 부담 갖지 않아도 돼요.","우리는 언제든 멈추거나 생각을 바꿀 수 있어요.","맞아요. 동의는 매번 중요하죠."},
-        {"친밀한 관계를 갖기 전에 성 건강에 대해 이야기할까요?","물론이죠. 중요하다고 생각해요.","피임과 성매개감염병 검사에 대해 이야기하고 싶어요.","이야기를 꺼내 줘서 고마워요.","두 사람 모두 마음 편한 결정을 해야 해요.","동의해요. 솔직하고 서로 존중하며 이야기해요."}
+        {"친밀한 관계를 갖기 전에 성 건강에 대해 이야기할까요?","물론이죠. 중요하다고 생각해요.","피임과 성매개감염병 검사에 대해 이야기하고 싶어요.","이야기를 꺼내 줘서 고마워요.","두 사람 모두 마음 편한 결정을 해야 해요.","동의해요. 솔직하고 서로 존중하며 이야기해요."},
+        {"난 너와 좀 더 가까워지고 싶어.","나도 그래. 이렇게 해도 괜찮아?","응. 하지만 서두르지 말자.","물론이지. 원하면 언제든 멈출 수 있어."}
     };
-    private static final String[] TITLES={"The First Kiss","An Intimate Conversation","Sexual Health & Boundaries"};
+    private static final String[] TITLES={"The First Kiss","An Intimate Conversation","Sexual Health & Boundaries","A Quiet Evening"};
     private static final String[] DESCRIPTIONS={
         "친밀한 감정 표현 · 키스 전 동의 요청 · 상대방 반응 존중",
         "친밀감에 대한 대화 · 속도 조절 · 언제든 동의 철회",
-        "성 건강 · 피임 · STI 검사에 대한 자연스러운 영어 표현"
+        "성 건강 · 피임 · STI 검사에 대한 자연스러운 영어 표현",
+        "서로의 친밀감과 선택을 확인한 뒤 장면이 어두워지는 시네마틱 영상 학습"
     };
-    private static final String[] FUNCTIONS={"데이트와 동의 표현","친밀감·경계 표현","성 건강·책임 있는 대화"};
+    private static final String[] FUNCTIONS={"데이트와 동의 표현","친밀감·경계 표현","성 건강·책임 있는 대화","친밀감과 동의 · 장면 이해"};
     private SharedPreferences prefs;
     private SpeechLab lab;
     private LinearLayout root,body;
@@ -50,9 +56,11 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
     private SpectrogramView spectra;
     private float[][] refImage;
     private SpectralAnalyzer.Result lastResult;
-    private int scene=0,line=2,tab=0,repeatIndex=2,gapIndex=2;
+    private int scene=3,line=2,tab=0,repeatIndex=2,gapIndex=2;
     private boolean onStage=false;
     private boolean ttsRequested=false;
+    private boolean cinemaOpen=false;
+    private VideoView cinematicVideo;
     private boolean canShowAdult=false;
     private final int micRequest=108;
     @Override public void onCreate(Bundle saved){super.onCreate(saved);
@@ -65,8 +73,8 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
         render();
     }
     @Override protected void onSaveInstanceState(Bundle out){out.putInt("scene",scene);out.putInt("line",line);out.putInt("tab",tab);super.onSaveInstanceState(out);}
-    @Override protected void onPause(){super.onPause();if(lab!=null)lab.pause();ttsRequested=false;}
-    @Override protected void onDestroy(){if(lab!=null)lab.shutdown();super.onDestroy();}
+    @Override protected void onPause(){super.onPause();if(cinematicVideo!=null)cinematicVideo.pause();if(lab!=null)lab.pause();ttsRequested=false;}
+    @Override protected void onDestroy(){stopCinema();if(lab!=null)lab.shutdown();super.onDestroy();}
     private int dp(int n){return (int)(getResources().getDisplayMetrics().density*n+0.5f);}
     private float font(int s){return prefs.getBoolean("large",false)?s*1.18f:s;}
     private GradientDrawable surface(int color){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(16));return d;}
@@ -78,11 +86,11 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
     private Button button(String title,Runnable task,boolean primary){Button b=new Button(this);b.setAllCaps(false);b.setText(title);b.setTextColor(primary?BG:WHITE);b.setTextSize(font(15));b.setMinHeight(dp(52));b.setPadding(dp(12),dp(8),dp(12),dp(8));b.setBackground(surface(primary?GOLD:SURFACE));b.setOnClickListener(v->task.run());b.setContentDescription(title);return b;}
     private LinearLayout card(String title,String detail){LinearLayout c=column();c.setPadding(dp(17),dp(16),dp(17),dp(16));c.setBackground(surface(SURFACE));add(c,label(title,19,WHITE,true),0);if(detail!=null&&!detail.isEmpty())add(c,label(detail,14,MUTED,false),8);return c;}
     private void heading(String title,String subtitle){add(body,label(title,27,WHITE,true),12);add(body,label(subtitle,15,MUTED,false),7);}
-    private void go(int screen){tab=screen;onStage=false;if(lab!=null)lab.stop();ttsRequested=false;refImage=null;lastResult=null;render();}
+    private void go(int screen){stopCinema();cinemaOpen=false;tab=screen;onStage=false;if(lab!=null)lab.stop();ttsRequested=false;refImage=null;lastResult=null;render();}
     private void changeScene(int index){scene=index;line=2;go(1);}
     private void selectLine(int index){line=index;refImage=null;lastResult=null;tab=2;render();prepareReference();}
-    private void prepareReference(){if(lab!=null){ttsRequested=true;lab.setPhrase(EN[scene][line],line);}}
-    private void render(){root=column();root.setBackgroundColor(BG);setContentView(root);
+    private void prepareReference(){pauseCinema();if(lab!=null){ttsRequested=true;lab.setPhrase(EN[scene][line],line);}}
+    private void render(){stopCinema();root=column();root.setBackgroundColor(BG);setContentView(root);
         LinearLayout title=column();title.setPadding(dp(18),dp(12),dp(18),dp(10));add(title,label("STORY ENGLISH",15,GOLD,true),0);add(title,label("ADULT LANGUAGE LAB  ·  3.7.2  ·  OFFLINE PREVIEW",11,MUTED,false),5);root.addView(title);
         ScrollView scroll=new ScrollView(this);body=column();body.setPadding(dp(18),0,dp(18),dp(32));scroll.addView(body);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         if(!canShowAdult){ageGate();return;}
@@ -98,8 +106,61 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
         add(body,button("저는 19세 이상이며 성인 학습 콘텐츠를 이용하겠습니다",()->{prefs.edit().putBoolean("confirmed19",true).apply();canShowAdult=true;render();},true),18);
         add(body,label("이 검토판은 법적 연령 확인과 권리 승인된 EXPLICIT 영상 제공 기능을 대체하지 않습니다.",13,MUTED,false),12);
     }
+
+    /** Offline cinematic learning clip: original synthetic dialogue, original ambient pad,
+     * animated-still editing, burned-in Korean/English captions; not filmed actors or erotica.
+     * Never starts automatically and pauses on Activity backgrounding. */
+    private void stopCinema(){
+        if(cinematicVideo!=null){
+            try{cinematicVideo.stopPlayback();}catch(Exception ignored){}
+            cinematicVideo=null;
+        }
+    }
+    private void pauseCinema(){
+        if(cinematicVideo!=null){
+            try{if(cinematicVideo.isPlaying())cinematicVideo.pause();}catch(Exception ignored){}
+        }
+    }
+    private void cinematicLesson(){
+        if(scene!=3)return;
+        add(body,label("CINEMATIC LISTENING  ·  A Quiet Evening",15,ROSE,true),14);
+        add(body,label("25초 · 영어/한국어 자막 · 합성 영어 대사 · 직접 제작한 배경음",13,MUTED,false),6);
+        if(!cinemaOpen){
+            add(body,button("▶ 영상 학습 열기",()->{
+                if(lab!=null)lab.stop();
+                cinemaOpen=true;render();
+            },true),10);
+            return;
+        }
+        VideoView video=new VideoView(this);
+        cinematicVideo=video;
+        video.setBackgroundColor(BG);
+        video.setContentDescription("합의된 성인 간 친밀감을 키스 직전 장면과 페이드아웃으로 암시한 시네마틱 학습 영상. 영어 및 한국어 자막 포함.");
+        LinearLayout.LayoutParams vp=new LinearLayout.LayoutParams(-1,dp(222));vp.topMargin=dp(12);
+        body.addView(video,vp);
+        video.setVideoURI(Uri.parse("android.resource://"+getPackageName()+"/"+R.raw.scene_quiet_evening));
+        MediaController controller=new MediaController(this);
+        controller.setAnchorView(video);
+        video.setMediaController(controller);
+        video.setOnPreparedListener(mp->{mp.setLooping(false);});
+        video.setOnErrorListener((mp,what,extra)->{
+            new AlertDialog.Builder(this).setMessage("영상을 재생할 수 없습니다. 저장 공간 또는 미디어 코덱을 확인해 주세요.")
+                .setPositiveButton("확인",null).show();
+            return true;
+        });
+        add(body,button("▶ 재생 / 일시정지",()->{
+            if(video.isPlaying())video.pause();
+            else {if(lab!=null)lab.stop();video.start();}
+        },true),10);
+        add(body,button("↻ 처음부터 다시 보기",()->{
+            if(lab!=null)lab.stop();video.seekTo(0);video.start();
+        },false),9);
+        add(body,button("영상 닫기",()->{stopCinema();cinemaOpen=false;render();},false),8);
+        add(body,label("학습 표현: I want to be closer to you. / Is this okay? / Let's take our time. / We can stop whenever you want.",14,MUTED,false),12);
+        add(body,label("이 영상은 정지 이미지에 화면 이동과 장면 전환을 더한 교육용 편집물입니다. 실제 성우·배우 촬영 영상이 아닙니다.",12,MUTED,false),8);
+    }
     private View sceneArtwork(){
-        if(scene==0){
+        if(scene==0 || scene==3){
             ImageView image=new ImageView(this);
             image.setImageResource(R.drawable.romantic_scene);
             image.setAdjustViewBounds(true);
@@ -113,10 +174,11 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
     }
     private void home(){heading("영어, 더 가까운 대화로.","성인이 실제로 마주하는 친밀한 상황을 듣고 말해 보세요.");
         add(body,sceneArtwork(),18);
+        cinematicLesson();
         add(body,label("MATURE · 비노골적 성인 상황 · 교육용",13,ROSE,true),12);
         add(body,card("오늘의 장면 · "+TITLES[scene],DESCRIPTIONS[scene]),10);
         add(body,button("장면 듣고 학습하기  →",()->go(1),true),14);
-        add(body,label("성인 영어 주제 3개",20,WHITE,true),22);
+        add(body,label("성인 영어 주제 "+TITLES.length+"개",20,WHITE,true),22);
         for(int i=0;i<TITLES.length;i++){final int idx=i;
             add(body,button((i+1)+"  "+TITLES[i]+"  ·  "+FUNCTIONS[i],()->changeScene(idx),false),10);
         }
@@ -124,8 +186,9 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
     }
     private void learning(){heading(TITLES[scene],"상황을 보고, 실제 대화를 듣고, 필요한 문장을 선택하세요.");
         add(body,sceneArtwork(),12);
+        cinematicLesson();
         add(body,label("MATURE  ·  "+FUNCTIONS[scene],13,ROSE,true),10);
-        add(body,button("대화 전체 듣기  ▶",()->lab.playDialogue(EN[scene]),true),12);
+        add(body,button("대화 전체 듣기  ▶",()->{pauseCinema();lab.playDialogue(EN[scene]);},true),12);
         add(body,label("표현을 눌러 쉐도잉·원음 비교로 이동합니다.",14,MUTED,false),16);
         for(int i=0;i<EN[scene].length;i++){
             final int n=i;LinearLayout c=card((i%2==0?"A:  ":"B:  ")+EN[scene][i],prefs.getBoolean("translation",true)?KO[scene][i]:"");
@@ -170,7 +233,7 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
         requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},micRequest);return;
         }startShadowing();
     }
-    private void startShadowing(){if(!lab.hasReference()){if(!ttsRequested)prepareReference();status("기준 음성 준비 후 녹음할 수 있습니다.");return;}
+    private void startShadowing(){pauseCinema();if(!lab.hasReference()){if(!ttsRequested)prepareReference();status("기준 음성 준비 후 녹음할 수 있습니다.");return;}
         onStage=true;lab.beginCountdown();}
     @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] results){super.onRequestPermissionsResult(requestCode,permissions,results);
         if(requestCode==micRequest){if(results.length>0&&results[0]==PackageManager.PERMISSION_GRANTED&&tab==2)startShadowing();
