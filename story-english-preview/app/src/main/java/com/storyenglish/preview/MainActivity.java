@@ -170,7 +170,7 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
         requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},micRequest);return;
         }startShadowing();
     }
-    private void startShadowing(){if(!lab.hasReference()){if(!ttsRequested)prepareReference();onStatus("기준 음성 준비 후 녹음할 수 있습니다.");return;}
+    private void startShadowing(){if(!lab.hasReference()){if(!ttsRequested)prepareReference();status("기준 음성 준비 후 녹음할 수 있습니다.");return;}
         onStage=true;lab.beginCountdown();}
     @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] results){super.onRequestPermissionsResult(requestCode,permissions,results);
         if(requestCode==micRequest){if(results.length>0&&results[0]==PackageManager.PERMISSION_GRANTED&&tab==2)startShadowing();
