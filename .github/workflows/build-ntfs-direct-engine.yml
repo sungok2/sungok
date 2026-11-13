@@ -1,0 +1,178 @@
+name: Build GalaxyUSB NTFS Direct (rootless native NTFS-3G)
+on:
+  push:
+    branches: [galaxyusb-ntfs-direct-engine-m1-0]
+    paths:
+      - .github/workflows/build-ntfs-direct-engine.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compile-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+      - name: Install upstream NDK and CMake
+        run: |
+          sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "ndk;26.1.10909125" "cmake;3.22.1"
+          yes | sdkmanager --licenses > /dev/null || true
+      - name: Fetch immutable GPL-3.0 source of native NTFS driver
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v0.5.2 https://github.com/moylali/OTGMaster.git otg-source
+          ACTUAL="$(git -C otg-source rev-parse HEAD)"
+          EXPECTED="2ddc5d8a4de728044322661439d68b2f1540bed3"
+          test "$ACTUAL" = "$EXPECTED"
+          test -f otg-source/LICENSE
+          test -f otg-source/app/src/main/cpp/ntfs/NtfsNative.cpp
+          test -f otg-source/app/src/main/cpp/ntfs-3g/libntfs-3g/volume.c
+          test -f otg-source/app/src/main/java/app/fayaz/otgmaster/ntfs/NtfsFileSystem.kt
+          grep -q "GPL-3.0" otg-source/README.md
+          echo "UPSTREAM_COMMIT=$ACTUAL" >> "$GITHUB_ENV"
+      - name: Isolate Android package and brand with prominent attribution
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          project=Path("otg-source")
+          gradle=project/"app/build.gradle.kts"
+          source=gradle.read_text(encoding="utf-8")
+          old='applicationId = "app.fayaz.otgmaster"'
+          assert source.count(old)==1
+          source=source.replace(old,'applicationId = "com.galaxyuniversalio.ntfsdirect"')
+          gradle.write_text(source,encoding="utf-8")
+          strings=project/"app/src/main/res/values/strings.xml"
+          values=strings.read_text(encoding="utf-8")
+          name='<string name="app_name">OTG Master</string>'
+          assert values.count(name)==1
+          values=values.replace(name,'<string name="app_name">GalaxyUSB NTFS Direct (GPL)</string>')
+          strings.write_text(values,encoding="utf-8")
+          notice="""GalaxyUSB NTFS Direct — source attribution and notices
+
+          This APK is a separate, experimental derivative of OTG Master v0.5.2.
+          Copyright and GPL-3.0-or-later: OTG Master contributors and their respective
+          third-party upstream copyright holders. The native NTFS driver is libntfs-3g,
+          GPL-2.0-or-later. See LICENSE, README.md, docs/VENDOR_FIXES.md and
+          docs/PROVENANCE.md in the complete corresponding source archive.
+          Original project: https://github.com/moylali/OTGMaster
+          Source commit: 2ddc5d8a4de728044322661439d68b2f1540bed3
+
+          Differences from upstream source:
+          - Android applicationId changed to com.galaxyuniversalio.ntfsdirect
+          - App launcher label changed to GalaxyUSB NTFS Direct (GPL)
+          - No USB driver or NTFS library logic is modified.
+          - The build uses the upstream debug profile for reproducible CI signing.
+
+          Warnings:
+          - This build is NOT an update to Galaxy Universal I/O M0.11.
+          - USB NTFS writing requires a supported USB MSC/BOT controller and
+            Android USB Host permission. Only FAT32/exFAT/NTFS/ext4 drivers are
+            described as read-write by the upstream project.
+          - Dirty/hibernated/problematic NTFS filesystems must not be force-written.
+          - Back up files and test a disposable USB before trusting this build.
+          - Real Galaxy hardware has not been tested in this build environment.
+          - The APK is signed using an ephemeral Android CI debug key; upgrading
+            across rebuilt APKs may require uninstalling first and loses app data.
+          """
+          (project/"GALAXYUSB_SOURCE_AND_SAFETY.txt").write_text(notice,encoding="utf-8")
+          PY
+          grep -q 'applicationId = "com.galaxyuniversalio.ntfsdirect"' otg-source/app/build.gradle.kts
+      - name: Set up upstream Gradle wrapper
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.7'
+      - name: Build and run Kotlin/NTFS unit tests
+        working-directory: otg-source
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon :app:testDebugUnitTest --stacktrace
+      - name: Build native NTFS-3G Android debug APK
+        working-directory: otg-source
+        run: ./gradlew --no-daemon :app:assembleDebug --stacktrace
+      - name: Verify signed APK, native library, package name
+        run: |
+          set -euo pipefail
+          APK=otg-source/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee direct-badging.txt
+          grep -F "package: name='com.galaxyuniversalio.ntfsdirect'" direct-badging.txt
+          unzip -Z1 "$APK" | grep -F 'lib/arm64-v8a/libveracrypt-native.so'
+          unzip -Z1 "$APK" | grep -F 'lib/x86_64/libveracrypt-native.so'
+          mkdir -p release-files
+          cp "$APK" release-files/GalaxyUSB_NTFS_DIRECT_M1.apk
+          cd release-files
+          sha256sum GalaxyUSB_NTFS_DIRECT_M1.apk > SHA256SUMS.txt
+      - name: Prepare corresponding GPL source archive
+        run: |
+          set -euo pipefail
+          tar -C otg-source -cJf release-files/GalaxyUSB_NTFS_DIRECT_M1_SOURCE.tar.xz \
+            --exclude='./.git' --exclude='./.gradle' \
+            --exclude='*/build' --exclude='*/.cxx' \
+            --exclude='*.apk' --exclude='*.aab' .
+          tar -tJf release-files/GalaxyUSB_NTFS_DIRECT_M1_SOURCE.tar.xz | grep -F './LICENSE'
+          tar -tJf release-files/GalaxyUSB_NTFS_DIRECT_M1_SOURCE.tar.xz | grep -F './app/src/main/cpp/ntfs/NtfsNative.cpp'
+          ( cd release-files && sha256sum GalaxyUSB_NTFS_DIRECT_M1_SOURCE.tar.xz >> SHA256SUMS.txt )
+          ls -lh release-files/
+      - uses: actions/upload-artifact@v7
+        with:
+          name: galaxyusb-ntfs-direct-verified-assets
+          path: release-files/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-public-prerelease:
+    needs: compile-and-verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: galaxyusb-ntfs-direct-verified-assets
+          path: release-files
+      - name: Publish direct APK and GPL source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          TAG="galaxyusb-ntfs-direct-m1-experimental"
+          cat > release-notes.txt <<'EOF'
+          GalaxyUSB NTFS Direct M1 — EXPERIMENTAL GPL derivative of OTG Master v0.5.2.
+
+          Self-contained Android application with USB Mass Storage user-space transport
+          and a native GPL-2.0-or-later libntfs-3g implementation.
+          NO separate OTG Master app is needed for the app's own file management.
+          It does not kernel-mount NTFS into Samsung My Files; use this app's own
+          browsing/copy functionality or its DocumentsProvider.
+
+          You must grant Android USB Host permission for the connected USB device.
+          Dirty/hibernated NTFS volumes should NOT be force-written. No change
+          to formatting/erasing functionality from upstream; avoid it unless
+          a full backup exists. Physical Galaxy NTFS write validation is pending.
+
+          Derivative APK package com.galaxyuniversalio.ntfsdirect.
+          Full corresponding GPL-3.0-or-later source and SHA256SUMS attached.
+          OTG Master original: https://github.com/moylali/OTGMaster
+          Pinned source commit 2ddc5d8a4de728044322661439d68b2f1540bed3.
+          ONLY applicationId and app label changed; filesystem code untouched.
+          Uses an ephemeral Android debug signing key. Uninstalling loses app data.
+          This is NOT a binary or in-place update to Galaxy Universal I/O.
+          EOF
+          gh release create "$TAG" \
+            release-files/GalaxyUSB_NTFS_DIRECT_M1.apk \
+            release-files/SHA256SUMS.txt \
+            release-files/GalaxyUSB_NTFS_DIRECT_M1_SOURCE.tar.xz \
+            --title "GalaxyUSB NTFS Direct M1 — rootless NTFS-3G (experimental, GPL)" \
+            --notes-file release-notes.txt --prerelease --latest=false
+          gh release view "$TAG" --json url,assets
+          echo "https://github.com/$GH_REPO/releases/download/$TAG/GalaxyUSB_NTFS_DIRECT_M1.apk" >> "$GITHUB_STEP_SUMMARY"
