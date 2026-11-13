@@ -1,3 +1,21 @@
+# Galaxy Universal I/O — M0.9 NTFS USB 파일 전송 (SAF 호환)
+
+**작동 범위:** 본 앱에서 파일 선택 → 외부 DocumentsProvider의 대상 폴더 선택 → USB에 임시 파일 생성 → SHA-256 읽기 재검증 → 원래 이름으로 변경. 루팅은 필요하지 않습니다.
+
+**필수 조건:** OTG Master처럼 **NTFS를 읽기·쓰기로 연결하고 Android DocumentsProvider로 노출하는 별도 앱**이 필요합니다. 삼성 기본 저장소가 NTFS를 읽기 전용으로만 노출하는 경우 이 기능만으로 권한을 우회하거나 쓰기가 활성화되지는 않습니다. 이는 직접 NTFS 드라이버를 통합한 버전이 아닙니다.
+
+- 앱 상단의 **USB 저장장치 복사 (NTFS / 외부 제공자)** 선택
+- 복사할 파일(최대 128개) 선택
+- Android 폴더 선택기에서 NTFS 공급자의 쓰기 가능한 대상 폴더 선택
+- 같은 이름의 기존 파일이 있으면 중단; 원본을 삭제하거나 덮어쓰지 않음
+- 취소·분리·쓰기 오류 시 임시 파일 삭제 시도; 실패하면 흔적이 남을 수 있음
+- 파일별 복사 후 대상 읽기 재검증 및 SHA-256/크기 확인
+- **디버그 APK 빌드 및 실기기 검증 여부는 GitHub Actions 결과와 별도로 확인해야 함**
+
+개발 참고와 제한: [docs/M0_9_NTFS_SAF.md](docs/M0_9_NTFS_SAF.md).
+
+---
+
 # Galaxy Universal I/O — M0.8 Android runtime QA build
 
 - Target: Galaxy S20 Ultra / Android 13; developer: Windows 11 / JDK 21 / Gradle 9.8.0.

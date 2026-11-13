@@ -48,7 +48,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/** M0.8: USB inventory, eSCL scan lifecycle controls, printer/PTP diagnostics. */
+/** M0.9: USB inventory, eSCL scan lifecycle controls, printer/PTP diagnostics. */
 public final class MainActivity extends Activity {
     private static final int REQUEST_CREATE_REPORT = 1001;
     private static final int REQUEST_OPEN_RAW_JOB = 1002;
@@ -174,17 +174,24 @@ public final class MainActivity extends Activity {
         root.setPadding(pad, pad, pad, pad);
 
         TextView title = new TextView(this);
-        title.setText("Galaxy Universal I/O · M0.8");
+        title.setText("Galaxy Universal I/O · M0.9");
         title.setTextSize(22);
         title.setTextColor(0xFF172554);
         root.addView(title);
 
         TextView subtitle = new TextView(this);
-        subtitle.setText("USB 진단 · LAN/HTTPS/USB eSCL 스캔 → PDF · USB IPP/RAW/시스템 인쇄 · PTP");
+        subtitle.setText("USB 진단 · NTFS 파일 전송(SAF) · LAN/USB 스캔 · PDF/IPP/RAW 인쇄 · PTP");
         subtitle.setTextSize(13);
         subtitle.setTextColor(0xFF475569);
         subtitle.setPadding(0, dp(4), 0, dp(8));
         root.addView(subtitle);
+
+        Button ntfsCopy = new Button(this);
+        ntfsCopy.setText("USB 저장장치 복사 (NTFS / 외부 제공자)");
+        ntfsCopy.setAllCaps(false);
+        ntfsCopy.setOnClickListener(v ->
+                startActivity(new Intent(this, SafNtfsCopyActivity.class)));
+        root.addView(ntfsCopy);
 
         statusView = new TextView(this);
         statusView.setTextSize(14);
@@ -446,7 +453,7 @@ public final class MainActivity extends Activity {
 
     private void updateReport(List<UsbDevice> devices) {
         StringBuilder report = new StringBuilder(4096);
-        report.append("Galaxy Universal I/O M0.8 진단 보고서\n");
+        report.append("Galaxy Universal I/O M0.9 진단 보고서\n");
         report.append("생성 시각: ").append(timestamp()).append('\n');
         report.append("단말: ").append(Build.MANUFACTURER).append(' ').append(Build.MODEL).append('\n');
         report.append("Android API: ").append(Build.VERSION.SDK_INT).append('\n');
@@ -559,7 +566,7 @@ public final class MainActivity extends Activity {
         Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("text/plain");
-        intent.putExtra(Intent.EXTRA_TITLE, "GalaxyUniversalIO-M0.8-report.txt");
+        intent.putExtra(Intent.EXTRA_TITLE, "GalaxyUniversalIO-M0.9-report.txt");
         try { startActivityForResult(intent, REQUEST_CREATE_REPORT); }
         catch (RuntimeException e) {
             pendingExportReport = null;

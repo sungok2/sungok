@@ -19,7 +19,7 @@ public class Activity extends Context { protected void onCreate(Bundle b){} prot
 'android/content/res/Resources.java': '''package android.content.res; import android.util.DisplayMetrics; public class Resources { public DisplayMetrics getDisplayMetrics(){return null;}}''',
 'android/util/DisplayMetrics.java': '''package android.util;public class DisplayMetrics{public float density;}''',
 'android/database/Cursor.java': '''package android.database; public interface Cursor extends AutoCloseable {boolean moveToFirst();int getColumnIndex(String c);String getString(int c);void close();}''',
-'android/provider/OpenableColumns.java': '''package android.provider; public interface OpenableColumns {String DISPLAY_NAME="_display_name";}''',
+'android/provider/OpenableColumns.java': '''package android.provider; public interface OpenableColumns {String DISPLAY_NAME="_display_name", SIZE="_size";}''',
 'android/net/Uri.java': '''package android.net;public class Uri{}''',
 'android/os/Build.java': '''package android.os; public class Build {public static final String MANUFACTURER="",MODEL=""; public static class VERSION{public static final int SDK_INT=35;}}''',
 'android/os/Bundle.java': '''package android.os;import java.util.HashMap;public class Bundle {public String getString(String k){return null;}public int getInt(String k){return 0;}public boolean getBoolean(String k,boolean d){return false;}public void putString(String k,String v){}public void putInt(String k,int v){}public void putBoolean(String k,boolean v){}}''',
@@ -59,6 +59,114 @@ stubs.update({
 'android/print/PrintDocumentAdapter.java': '''package android.print;import android.os.*;public abstract class PrintDocumentAdapter{public abstract void onLayout(PrintAttributes a,PrintAttributes b,CancellationSignal c,LayoutResultCallback d,Bundle e);public abstract void onWrite(PageRange[] p,ParcelFileDescriptor d,CancellationSignal s,WriteResultCallback c);public void onFinish(){}public static abstract class LayoutResultCallback{public void onLayoutCancelled(){}public void onLayoutFinished(PrintDocumentInfo d,boolean changed){}}public static abstract class WriteResultCallback{public void onWriteCancelled(){}public void onWriteFinished(PageRange[] p){}public void onWriteFailed(CharSequence s){}}}''',
 'android/print/PrintManager.java': '''package android.print;public class PrintManager{public void print(String name,PrintDocumentAdapter adapter,PrintAttributes attrs){}}''',
 })
+
+# M0.9 SAF URI/Document provider signatures. This is a mock, not android.jar.
+stubs.update({
+'android/R.java': """package android; public final class R {
+ public static final class layout {public static final int simple_spinner_item=1,simple_spinner_dropdown_item=2;}
+ public static final class attr {public static final int progressBarStyleHorizontal=1;}
+}""",
+'android/app/Activity.java': """package android.app;
+import android.content.*;import android.os.*;import android.view.View;import android.content.pm.PackageManager;import android.content.res.*;
+public class Activity extends Context {
+ protected void onCreate(Bundle b){} protected void onStart(){} protected void onResume(){}
+ protected void onStop(){} protected void onDestroy(){} protected void onSaveInstanceState(Bundle b){}
+ protected void onActivityResult(int r,int c,Intent i){}public void onBackPressed(){}
+ public static final int RESULT_OK=-1;public void setContentView(View v){}
+ public void startActivityForResult(Intent i,int n){}public void startActivity(Intent i){}
+ public void runOnUiThread(Runnable r){}public boolean isDestroyed(){return false;}
+ public PackageManager getPackageManager(){return null;}public Resources getResources(){return null;}
+ public android.content.res.AssetManager getAssets(){return null;}
+ public ContentResolver getContentResolver(){return null;}
+}""",
+'android/content/Intent.java': """package android.content;import android.net.Uri;
+public class Intent {
+ public static final String ACTION_CREATE_DOCUMENT="",ACTION_OPEN_DOCUMENT="",ACTION_OPEN_DOCUMENT_TREE="",CATEGORY_OPENABLE="",EXTRA_TITLE="",EXTRA_ALLOW_MULTIPLE="";
+ public static final int FLAG_GRANT_READ_URI_PERMISSION=1,FLAG_GRANT_WRITE_URI_PERMISSION=2,
+ FLAG_GRANT_PERSISTABLE_URI_PERMISSION=64,FLAG_GRANT_PREFIX_URI_PERMISSION=128;
+ public Intent(String s){}public Intent(Context c,Class<?> cl){}
+ public String getAction(){return null;}public String getStringExtra(String s){return null;}
+ public boolean getBooleanExtra(String s,boolean fallback){return false;}
+ public <T> T getParcelableExtra(String s,Class<T> cl){return null;}
+ public <T> T getParcelableExtra(String s){return null;}
+ public Intent setAction(String s){return this;}public Intent setPackage(String s){return this;}
+ public Intent putExtra(String s,boolean b){return this;}public Intent putExtra(String s,String v){return this;}
+ public Intent addCategory(String s){return this;}public Intent setType(String s){return this;}
+ public Intent addFlags(int flags){return this;}public int getFlags(){return 0;}
+ public Uri getData(){return null;}public ClipData getClipData(){return null;}
+}""",
+'android/content/ClipData.java': """package android.content;import android.net.Uri;
+public class ClipData {public int getItemCount(){return 0;}
+ public Item getItemAt(int i){return null;}
+ public static class Item {public Uri getUri(){return null;}}
+}""",
+'android/content/ContentResolver.java': """package android.content;
+import android.net.Uri;import android.database.Cursor;import java.io.*;
+public class ContentResolver {
+ public OutputStream openOutputStream(Uri u,String mode)throws FileNotFoundException{return null;}
+ public InputStream openInputStream(Uri u)throws FileNotFoundException{return null;}
+ public Cursor query(Uri u,String[] p,String s,String[] a,String so){return null;}
+ public String getType(Uri u){return null;}
+ public void takePersistableUriPermission(Uri u,int flags){}
+}""",
+'android/database/Cursor.java': """package android.database;
+public interface Cursor extends AutoCloseable {
+ boolean moveToFirst();boolean moveToNext();int getColumnIndex(String c);
+ String getString(int c);int getInt(int c);long getLong(int c);boolean isNull(int c);
+ void close();
+}""",
+'android/net/Uri.java': """package android.net;
+public class Uri {public static Uri parse(String s){return null;}
+ public String getLastPathSegment(){return null;}
+ public String toString(){return "";}
+}""",
+'android/os/Bundle.java': """package android.os;import java.util.*;
+public class Bundle {
+ public String getString(String k){return null;}public int getInt(String k){return 0;}
+ public boolean getBoolean(String k,boolean d){return false;}
+ public void putString(String k,String v){}public void putInt(String k,int v){}
+ public void putBoolean(String k,boolean v){}
+ public ArrayList<String> getStringArrayList(String k){return null;}
+ public void putStringArrayList(String k,ArrayList<String> a){}
+}""",
+'android/view/View.java': """package android.view;
+public class View {public static final int GONE=8,VISIBLE=0;
+ public interface OnClickListener{void onClick(View v);}
+ public void setPadding(int a,int b,int c,int d){}
+ public void setContentDescription(CharSequence c){}
+ public void setVisibility(int v){}
+}""",
+'android/widget/Button.java': """package android.widget;import android.content.*;
+public class Button extends TextView {public Button(Context c){super(c);}
+ public void setOnClickListener(android.view.View.OnClickListener l){}
+ public void setEnabled(boolean b){}public void setAllCaps(boolean b){}
+}""",
+'android/widget/ProgressBar.java': """package android.widget;import android.content.*;
+public class ProgressBar extends android.view.View {
+ public ProgressBar(Context c,Object attrs,int style){}
+ public void setIndeterminate(boolean b){}
+ public void setMax(int v){}public void setProgress(int v){}
+}""",
+'android/util/Log.java': """package android.util; public class Log {
+ public static int w(String tag,String msg,Throwable ex){return 0;}
+}""",
+'android/provider/DocumentsContract.java': """package android.provider;
+import android.content.ContentResolver;import android.net.Uri;import java.io.FileNotFoundException;
+public class DocumentsContract {
+ public static String getTreeDocumentId(Uri u){return "";}
+ public static String getDocumentId(Uri u){return "";}
+ public static Uri buildDocumentUriUsingTree(Uri u,String id){return null;}
+ public static Uri buildChildDocumentsUriUsingTree(Uri u,String id){return null;}
+ public static Uri createDocument(ContentResolver r,Uri p,String mime,String name)throws FileNotFoundException{return null;}
+ public static Uri renameDocument(ContentResolver r,Uri p,String name)throws FileNotFoundException{return null;}
+ public static boolean deleteDocument(ContentResolver r,Uri p)throws FileNotFoundException{return false;}
+ public static final class Document {
+  public static final String COLUMN_MIME_TYPE="",COLUMN_FLAGS="",COLUMN_DISPLAY_NAME="",MIME_TYPE_DIR="";
+  public static final int FLAG_DIR_SUPPORTS_CREATE=8;
+ }
+}"""
+})
+
 with tempfile.TemporaryDirectory() as tmp:
  t=Path(tmp)
  for n,content in stubs.items():
