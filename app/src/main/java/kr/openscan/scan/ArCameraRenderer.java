@@ -33,8 +33,10 @@ public final class ArCameraRenderer implements GLSurfaceView.Renderer {
     private int width=1,height=1;
     private long lastCaptureMillis,lastReportMillis;
     private long lastPoseMillis;
-    private long lastRawDepthTimestamp=-1;
-    private int rejectedFrames;
+    private final RawDepthFrameGate depthGate = new RawDepthFrameGate();
+    private int rejectedFrames, rawAccepted, rawAvailable, rawReused, rawUnavailable;
+    private volatile String captureHelp="카메라를 천천히 이동해 깊이를 수집해 주세요";
+    public String getCaptureHelp() { return captureHelp; }
     private float[] lastPosePosition,lastPoseRotation;
     private final float[] corners={-1,-1,1,-1,-1,1,1,1};
     private final float[] textureUV=new float[8];
@@ -43,7 +45,11 @@ public final class ArCameraRenderer implements GLSurfaceView.Renderer {
     public ArCameraRenderer(Reporter reporter){this.reporter=reporter;cornerBuffer.put(corners).position(0);}
     public void configure(Session s,boolean depth){this.session=s;this.depthSupported=depth;}
     public void scan(ScanModel next,ScanModel.Mode target,boolean enabled){
-        if(this.model!=next){lastCaptureMillis=0;lastPoseMillis=0;lastPosePosition=null;lastPoseRotation=null;lastRawDepthTimestamp=-1;rejectedFrames=0;}
+        if(this.model!=next){
+            lastCaptureMillis=0;lastPoseMillis=0;lastPosePosition=null;lastPoseRotation=null;
+            depthGate.reset();rejectedFrames=0;rawAccepted=0;rawAvailable=0;rawReused=0;rawUnavailable=0;
+            captureHelp="카메라를 천천히 움직여 표면 깊이를 측정하세요";
+        }
         this.model=next;this.mode=target;this.recording=enabled;
     }
     public void stop(){recording=false;}
@@ -104,29 +110,29 @@ public final class ArCameraRenderer implements GLSurfaceView.Renderer {
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP,0,4);
             GLES20.glDisableVertexAttribArray(positionSlot);GLES20.glDisableVertexAttribArray(uvSlot);
             long now=SystemClock.elapsedRealtime();
-            if(recording && f.getCamera().getTrackingState()==TrackingState.TRACKING && model!=null && now-lastCaptureMillis>360 && movedEnough(f,now)) {
+            if(recording && f.getCamera().getTrackingState()==TrackingState.TRACKING && model!=null && now-lastCaptureMillis>240 && movedEnough(f,now)) {
                 lastCaptureMillis=now;
                 if(depthSupported){
                     Image depth=null, confidence=null, rgb=null;
                     try {
                         depth=f.acquireRawDepthImage16Bits();
                         confidence=f.acquireRawDepthConfidenceImage();
-                        // RAW depth may be a reprojection of a previous exposure. Only
-                        // integrate novel data to avoid repeatedly copying the same noise.
-                        long ts=depth.getTimestamp();
-                        if(ts!=lastRawDepthTimestamp && ts==f.getTimestamp()){
-                            lastRawDepthTimestamp=ts;
+                        // Compare each raw depth frame only with the preceding raw depth timestamp.
+                        // ARCore camera Frame timestamps need not equal raw depth timestamps.
+                        rawAvailable++;
+                        if(depthGate.shouldIntegrate(depth.getTimestamp())){
                             try {rgb=f.acquireCameraImage();}catch(NotYetAvailableException ignored){}
                             if(DepthSampler.capture(f,depth,confidence,rgb,model,mode)){
+                                rawAccepted++;
                                 com.google.ar.core.Pose pose=f.getCamera().getPose();
                                 lastPosePosition=pose.getTranslation();lastPoseRotation=pose.getRotationQuaternion();lastPoseMillis=now;
                             }else rejectedFrames++;
-                        }
+                        }else rawReused++;
                         PhotoDataset photo=photos;
                         if(photo!=null && rgb!=null && now-lastPhotoTime>3000){
                             lastPhotoTime=now; photo.enqueue(f,rgb);
                         }
-                    }catch(NotYetAvailableException ignored){}
+                    }catch(NotYetAvailableException ignored){rawUnavailable++;}
                     finally {if(rgb!=null)rgb.close();if(confidence!=null)confidence.close();if(depth!=null)depth.close();}
                 }else{
                     // Accurate sparse feature points are already in ARCore world coordinates.
@@ -151,10 +157,19 @@ public final class ArCameraRenderer implements GLSurfaceView.Renderer {
             if(now-lastReportMillis>800){
                 lastReportMillis=now;
                 ScanModel m=model;
+                if(!depthSupported)captureHelp="기기가 깊이를 지원하지 않아 희소 특징점만 기록됩니다";
+                else if(f.getCamera().getTrackingState()!=TrackingState.TRACKING)captureHelp="AR 추적 대기: 주변의 질감 있는 물체를 천천히 비춰주세요";
+                else if(rawAccepted>0)captureHelp="깊이 프레임 "+rawAccepted+"개 수집 · 계속 천천히 이동하세요";
+                else if(rawUnavailable>0 && rawAvailable==0)captureHelp="깊이 생성 대기: 빛을 밝게 하고 천천히 이동하세요 (대기 "+rawUnavailable+")";
+                else if(rejectedFrames>0)captureHelp="깊이 샘플이 필터에 걸렸습니다: 사물과 0.5~2m 거리, 밝은 조명을 확인하세요";
+                else if(rawReused>0)captureHelp="새 깊이 업데이트 대기 중: 다른 각도로 천천히 이동하세요";
+                else captureHelp="포인트 수집 대기 중: 사물을 향해 0.5~2m에서 천천히 이동하세요";
                 String tracking=f.getCamera().getTrackingState()==TrackingState.TRACKING?"추적 중":"추적 대기";
                 String counts=m==null?"":String.format(java.util.Locale.KOREAN," · 점 %,d · 면 %,d · 프레임 %d",m.vertices(),m.triangles(),m.frames());
                 String type=depthSupported?"정밀 Raw Depth":"희소 포인트";
-                String msg=tracking+" · "+type+counts+(depthSupported && rejectedFrames>0?" · 제외 "+rejectedFrames+"프레임":"")+(m!=null && m.limitReached()?" · 용량 제한 도달":"");
+                String msg=tracking+" · "+type+counts
+                    +(depthSupported && m!=null?" · 깊이 수집 "+rawAccepted+"/대기 "+rawUnavailable+"/제외 "+rejectedFrames:"")
+                    +(m!=null && m.limitReached()?" · 용량 제한 도달":"");
                 reporter.report(msg);
             }
         }catch(Exception ex){
