@@ -42,6 +42,7 @@ public final class SafNtfsCopyActivity extends Activity {
     private static final int REQ_TARGET = 3102;
     private static final int REQ_RECOVER = 3103;
     private static final String RECOVERY_PREFS = "ntfs_transfer_journal_v1";
+    private static final AtomicBoolean PROCESS_TRANSFER_ACTIVE = new AtomicBoolean(false);
     private static final int MAX_FILES = 128;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final AtomicBoolean cancel = new AtomicBoolean();
@@ -143,7 +144,10 @@ public final class SafNtfsCopyActivity extends Activity {
     }
 
     private void pickSources() {
-        if (copying) return;
+        if (copying || PROCESS_TRANSFER_ACTIVE.get()) {
+            showStatus("다른 전송 작업이 아직 종료되지 않았습니다.");
+            return;
+        }
         if (readPending() != null) {
             showStatus("지난 전송의 임시 파일 기록이 남아 있습니다. 먼저 복구 메뉴를 확인하세요.");
             refreshRecoveryUi();
@@ -218,8 +222,12 @@ public final class SafNtfsCopyActivity extends Activity {
     }
 
     private void beginCopy(Uri tree) {
-        if (copying) return;
+        if (copying || !PROCESS_TRANSFER_ACTIVE.compareAndSet(false, true)) {
+            showStatus("현재 다른 USB 전송이 실행 중입니다. 완료 또는 취소 후 다시 시도하세요.");
+            return;
+        }
         if (readPending() != null) {
+            PROCESS_TRANSFER_ACTIVE.set(false);
             showStatus("이전 임시 전송 기록을 먼저 확인해야 새 전송을 시작할 수 있습니다.");
             refreshRecoveryUi();
             return;
@@ -272,6 +280,7 @@ public final class SafNtfsCopyActivity extends Activity {
                         "개 완료. " + details + "\n미완료 파일의 임시 데이터 정리를 시도했습니다."));
             } finally {
                 copying = false;
+                PROCESS_TRANSFER_ACTIVE.set(false);
                 runOnUiThread(() -> {
                     progress.setVisibility(View.GONE);
                     selectButton.setEnabled(true);
@@ -429,12 +438,12 @@ public final class SafNtfsCopyActivity extends Activity {
         if (recoveryButton == null) return;
         Pending old = readPending();
         recoveryButton.setVisibility(old == null ? View.GONE : View.VISIBLE);
-        recoveryButton.setEnabled(!copying && old != null);
+        recoveryButton.setEnabled(!copying && !PROCESS_TRANSFER_ACTIVE.get() && old != null);
     }
 
     private void confirmRecovery() {
         Pending old = readPending();
-        if (copying || old == null) return;
+        if (copying || PROCESS_TRANSFER_ACTIVE.get() || old == null) return;
         new AlertDialog.Builder(this)
                 .setTitle("중단된 전송 파일 정리")
                 .setMessage("이전 작업의 임시 파일 [" + old.partialName +
@@ -451,6 +460,10 @@ public final class SafNtfsCopyActivity extends Activity {
     }
 
     private void handleRecoverySelection(Intent data) {
+        if (PROCESS_TRANSFER_ACTIVE.get()) {
+            showStatus("전송이 진행 중이므로 임시 파일 복구를 실행할 수 없습니다.");
+            return;
+        }
         Pending old = readPending();
         Uri chosen = data.getData();
         if (old == null || chosen == null) return;
@@ -517,7 +530,7 @@ public final class SafNtfsCopyActivity extends Activity {
     }
 
     private void deleteStagedRecoveryFile(Uri item) {
-        if (copying) return;
+        if (copying || !PROCESS_TRANSFER_ACTIVE.compareAndSet(false, true)) return;
         copying = true;
         selectButton.setEnabled(false);
         recoveryButton.setEnabled(false);
@@ -536,6 +549,7 @@ public final class SafNtfsCopyActivity extends Activity {
                         "\n기록이 남아 있으므로 연결 상태를 확인하고 다시 시도하세요.";
             } finally {
                 copying = false;
+                PROCESS_TRANSFER_ACTIVE.set(false);
             }
             final String resultMessage = message;
             runOnUiThread(() -> {
