@@ -238,6 +238,7 @@ public final class SpeechLab {
         AudioTrack a=playing;if(a!=null){try{a.pause();a.flush();}catch(Exception ignored){}}
         AudioRecord r=recorder;if(r!=null){try{r.stop();}catch(Exception ignored){}}
     }
+    public void pause(){stopPlaybackAndRecording();}
     public void stop(){stopPlaybackAndRecording();referencePcm=null;}
     public void shutdown(){stop();if(tts!=null){tts.stop();tts.shutdown();tts=null;}if(referenceFile!=null)referenceFile.delete();}
 }
