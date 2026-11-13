@@ -528,7 +528,7 @@ public final class SafNtfsCopyActivity extends Activity {
         progress.setIndeterminate(true);
         progress.setVisibility(View.VISIBLE);
         worker.execute(() -> {
-            final String message;
+            String message;
             try {
                 boolean removed = DocumentsContract.deleteDocument(getContentResolver(), item);
                 if (!removed) throw new IOException("USB 제공자가 임시 파일 삭제에 실패했습니다.");
@@ -540,8 +540,9 @@ public final class SafNtfsCopyActivity extends Activity {
             } finally {
                 copying = false;
             }
+            final String resultMessage = message;
             runOnUiThread(() -> {
-                showStatus(message);
+                showStatus(resultMessage);
                 progress.setVisibility(View.GONE);
                 selectButton.setEnabled(true);
                 refreshRecoveryUi();
