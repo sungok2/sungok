@@ -1,6 +1,7 @@
 package kr.openscan.scan;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.graphics.Color;
 import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
@@ -35,7 +36,9 @@ public final class CloudViewerActivity extends Activity {
         String path=getIntent().getStringExtra("scan_path");
         File scanDir=path==null?getFilesDir():new File(path);
         try{
-            PointSet points=load(new File(scanDir,"model.ply"));
+            boolean canCompare=new File(scanDir,"model_stable.ply").isFile();
+            boolean stable=canCompare && getIntent().getBooleanExtra("show_stable",true);
+            PointSet points=load(new File(scanDir,stable?"model_stable.ply":"model.ply"));
             if(points.size==0)throw new IOException("3D 포인트가 없습니다");
             ViewerRenderer renderer=new ViewerRenderer(points);
             surface=new GLSurfaceView(this);surface.setEGLContextClientVersion(2);
@@ -76,7 +79,8 @@ public final class CloudViewerActivity extends Activity {
             head.addView(back,new LinearLayout.LayoutParams(UiKit.dp(this,48),UiKit.dp(this,48)));
             LinearLayout titles=new LinearLayout(this);titles.setOrientation(LinearLayout.VERTICAL);
             TextView title=UiKit.text(this,"3D 미리보기",19,UiKit.TEXT,true);
-            TextView subtitle=UiKit.text(this,String.format(Locale.KOREAN,"포인트 %,d개 · 삼각면 %,d개",points.size,points.meshVertexCount/3),12,UiKit.MUTED,false);
+            TextView subtitle=UiKit.text(this,String.format(Locale.KOREAN,"%s · 점 %,d · 면 %,d",
+                stable?"반복 관측 필터":"원본 모델",points.size,points.meshVertexCount/3),12,UiKit.MUTED,false);
             titles.addView(title);titles.addView(subtitle);
             LinearLayout.LayoutParams tp=new LinearLayout.LayoutParams(0,-2,1);tp.leftMargin=UiKit.dp(this,12);
             head.addView(titles,tp);
@@ -87,6 +91,16 @@ public final class CloudViewerActivity extends Activity {
             LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);
             panel.setPadding(UiKit.dp(this,16),UiKit.dp(this,14),UiKit.dp(this,16),UiKit.dp(this,15));
             panel.setBackground(UiKit.fill(this,UiKit.PANEL,22));
+            if(canCompare){
+                Button compare=UiKit.button(this,stable?"원본과 비교하기":"반복 관측 필터 보기",UiKit.SURFACE,UiKit.TEXT,13);
+                panel.addView(compare,new LinearLayout.LayoutParams(-1,UiKit.dp(this,44)));
+                compare.setOnClickListener(w->{
+                    Intent next=new Intent(this,CloudViewerActivity.class);
+                    next.putExtra("scan_path",scanDir.getAbsolutePath());
+                    next.putExtra("show_stable",!stable);
+                    startActivity(next);finish();
+                });
+            }
             Button viewMode=UiKit.button(this,points.meshVertexCount>=600?"점군 보기 (표면 표시 중)":"점군 보기 (생성된 표면 부족)",UiKit.SURFACE,UiKit.TEXT,13);
             panel.addView(viewMode,new LinearLayout.LayoutParams(-1,UiKit.dp(this,44)));
             Button pointSize=UiKit.button(this,"점 크기 4",UiKit.SURFACE,UiKit.TEXT,13);

@@ -46,11 +46,22 @@ public final class ScanRepository {
         try {
             ScanFileFormats.writePly(new File(folder,"model.ply"),data);
             ScanFileFormats.writeObj(new File(folder,"model.obj"),data);
+            TemporalSurfaceFilter.Result temporal=TemporalSurfaceFilter.process(data);
+            // Preserve originals for comparison. Export a conservative variant only
+            // when it has sufficient independently observed points and triangles.
+            if(temporal.suitableForPreview()) {
+                ScanFileFormats.writePly(new File(folder,"model_stable.ply"),temporal.filtered);
+                ScanFileFormats.writeObj(new File(folder,"model_stable.obj"),temporal.filtered);
+            }
             JSONObject meta=new JSONObject();
             meta.put("name",name); meta.put("format_version",1);
             meta.put("created_at_epoch_ms",System.currentTimeMillis());
             meta.put("mode",data.mode.name()); meta.put("frames",data.frameCount);
             meta.put("points",data.vertices.size());meta.put("triangles",data.triangles.size());
+            meta.put("repeat_observed_points",temporal.stablePoints);
+            meta.put("repeat_observed_triangles",temporal.stableFaces);
+            meta.put("stable_export_available",temporal.suitableForPreview());
+            meta.put("stable_export_note",">=2 distinct accepted capture frames per vertex; denoising only, not accuracy verification");
             ScanQuality.Report quality=ScanQuality.from(data);
             meta.put("quality_note","Capture coverage only: NOT verified geometric accuracy");
             meta.put("connected_vertex_ratio",(double)quality.meshCoverage);

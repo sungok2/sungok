@@ -29,15 +29,19 @@ public final class ScanModel {
 
     public static final class Vertex {
         public float x, y, z;
-        public int r, g, b, observations;
-        Vertex(float x, float y, float z, int r, int g, int b) {
+        public int r, g, b, observations, framesSeen, lastSeenFrame;
+        Vertex(float x, float y, float z, int r, int g, int b, int frameId) {
             this.x=x; this.y=y; this.z=z; this.r=r; this.g=g; this.b=b; this.observations=1;
+            this.framesSeen=1;this.lastSeenFrame=frameId;
         }
         Vertex(Vertex other) {
             this.x=other.x; this.y=other.y; this.z=other.z;
             this.r=other.r; this.g=other.g; this.b=other.b; this.observations=other.observations;
+            this.framesSeen=other.framesSeen;this.lastSeenFrame=other.lastSeenFrame;
         }
-        void merge(float x,float y,float z,int r,int g,int b) {
+        void merge(float x,float y,float z,int r,int g,int b,int frameId) {
+            // Repeated pixels in the same frame must not count as independent observations.
+            if(lastSeenFrame!=frameId){framesSeen++;lastSeenFrame=frameId;}
             // Weighted averaging dampens noise but caps old-observation influence.
             int n = Math.min(12, observations);
             this.x=(this.x*n+x)/(n+1); this.y=(this.y*n+y)/(n+1); this.z=(this.z*n+z)/(n+1);
@@ -70,16 +74,16 @@ public final class ScanModel {
         if (ix<0 || iy<0 || iz<0 || ix>MASK || iy>MASK || iz>MASK) return -1;
         return (ix<<42)|(iy<<21)|iz;
     }
-    private int put(float x,float y,float z,int rgb) {
+    private int put(float x,float y,float z,int rgb,int frameId) {
         if(!Float.isFinite(x)||!Float.isFinite(y)||!Float.isFinite(z))return -1;
         long k = key(x,y,z);
         if(k<0) return -1;
         Integer prior=voxelIndex.get(k);
         int r=(rgb>>16)&255,g=(rgb>>8)&255,b=rgb&255;
-        if(prior!=null) { vertices.get(prior).merge(x,y,z,r,g,b); return prior; }
+        if(prior!=null) { vertices.get(prior).merge(x,y,z,r,g,b,frameId); return prior; }
         if(vertices.size()>=MAX_VERTICES) return -1;
         int i=vertices.size();
-        voxelIndex.put(k,i); vertices.add(new Vertex(x,y,z,r,g,b)); return i;
+        voxelIndex.put(k,i); vertices.add(new Vertex(x,y,z,r,g,b,frameId)); return i;
     }
     /** Inputs are row-major, invalid samples use valid=false; 3D in world meters. */
     public synchronized void addGrid(int width,int height,float[] xyz,int[] colors,boolean[] valid) {
@@ -92,7 +96,7 @@ public final class ScanModel {
             throw new IllegalArgumentException("Invalid depth grid dimensions");
         int[] ids=new int[width*height];
         for(int k=0;k<ids.length;k++) {
-            ids[k]=valid[k]?put(xyz[k*3],xyz[k*3+1],xyz[k*3+2],colors[k]):-1;
+            ids[k]=valid[k]?put(xyz[k*3],xyz[k*3+1],xyz[k*3+2],colors[k],frames+1):-1;
         }
         for(int y=0;y<height-1 && faces.size()<MAX_FACES;y++) for(int x=0;x<width-1 && faces.size()<MAX_FACES;x++) {
             int a=ids[y*width+x],b=ids[y*width+x+1];
@@ -108,7 +112,7 @@ public final class ScanModel {
         frames++;
     }
     /** Fallback for devices with ARCore but without Depth API: sparse points, no triangles. */
-    public synchronized void addPoint(float x,float y,float z,int rgb) { put(x,y,z,rgb); }
+    public synchronized void addPoint(float x,float y,float z,int rgb) { put(x,y,z,rgb,frames+1); }
     public synchronized void markFrame() { frames++; }
     private void addDepthTriangle(int a,int b,int c,float[] depth,int ia,int ib,int ic) {
         if(depth!=null && a>=0 && b>=0 && c>=0){

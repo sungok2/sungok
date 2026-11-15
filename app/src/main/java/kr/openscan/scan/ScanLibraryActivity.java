@@ -198,21 +198,23 @@ public final class ScanLibraryActivity extends Activity {
     }
     private void showActions(File folder){
         new AlertDialog.Builder(this).setTitle("스캔 파일 관리")
-            .setItems(new String[]{"다운로드 폴더 등에 ZIP 저장","PLY 파일로 저장","OBJ 파일로 저장", "PLY 점군 공유","OBJ 메시 공유","전체 ZIP 프로젝트 공유","GPS 메타데이터 공유","스캔 삭제"},(d,which)->{
+            .setItems(new String[]{"다운로드 폴더 등에 ZIP 저장","PLY 파일로 저장","OBJ 파일로 저장", "반복 관측 PLY 저장","반복 관측 OBJ 저장","PLY 점군 공유","OBJ 메시 공유","전체 ZIP 프로젝트 공유","GPS 메타데이터 공유","스캔 삭제"},(d,which)->{
                 if(which==0)exportArchive(folder);
                 if(which==1)startDocumentExport(new File(folder,"model.ply"),"application/octet-stream");
                 if(which==2)startDocumentExport(new File(folder,"model.obj"),"text/plain");
-                if(which==3)ScanShare.share(this,new File(folder,"model.ply"));
-                if(which==4)ScanShare.share(this,new File(folder,"model.obj"));
-                if(which==6)ScanShare.share(this,new File(folder,"metadata.json"));
-                if(which==5){
+                if(which==3)startDocumentExport(new File(folder,"model_stable.ply"),"application/octet-stream");
+                if(which==4)startDocumentExport(new File(folder,"model_stable.obj"),"text/plain");
+                if(which==5)ScanShare.share(this,new File(folder,"model.ply"));
+                if(which==6)ScanShare.share(this,new File(folder,"model.obj"));
+                if(which==8)ScanShare.share(this,new File(folder,"metadata.json"));
+                if(which==7){
                     Toast.makeText(this,"ZIP 파일 준비 중…",Toast.LENGTH_SHORT).show();
                     io.execute(()->{
                         try{File zip=ScanRepository.archive(folder);runOnUiThread(()->ScanShare.share(this,zip));}
                         catch(Exception e){runOnUiThread(()->Toast.makeText(this,"ZIP 생성 실패: "+e.getMessage(),Toast.LENGTH_LONG).show());}
                     });
                 }
-                if(which==7)confirmDelete(folder);
+                if(which==9)confirmDelete(folder);
             }).setNegativeButton("닫기",null).show();
     }
     private void confirmDelete(File folder){

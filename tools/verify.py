@@ -60,3 +60,11 @@ with tempfile.TemporaryDirectory() as td:
     for test in ('ScanQualityTest','SubjectVolumeTest'):
         out=subprocess.run(['java','-cp',td,test],capture_output=True,text=True,check=True)
         print(out.stdout.strip())
+
+# v1.7: Temporal support counts DISTINCT frames, not duplicate pixels in one frame.
+with tempfile.TemporaryDirectory() as td:
+    subprocess.run(['javac','-encoding','UTF-8','-d',td,
+        str(SRC/'ScanModel.java'),str(SRC/'TemporalSurfaceFilter.java'),
+        str(ROOT/'tests/TemporalSurfaceFilterTest.java')],check=True)
+    out=subprocess.run(['java','-cp',td,'TemporalSurfaceFilterTest'],check=True,capture_output=True,text=True)
+    print(out.stdout.strip())
