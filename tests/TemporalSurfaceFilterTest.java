@@ -26,6 +26,20 @@ public final class TemporalSurfaceFilterTest {
         test(r.rawPoints==5 && r.stablePoints==4,"one-frame isolated noise filtered");
         test(r.stableFaces==2,"surface retained");
         test(!r.suitableForPreview(),"tiny mock data must not trigger stable preview");
+        // A repeated textured-looking grid should qualify for a separate stable export.
+        ScanModel large=new ScanModel(ScanModel.Mode.OBJECT);
+        int side=11;float[] grid=new float[side*side*3];int[] colors=new int[side*side];
+        boolean[] present=new boolean[side*side];
+        for(int y=0;y<side;y++)for(int x=0;x<side;x++) {
+            int k=y*side+x;grid[k*3]=x*0.03f;grid[k*3+1]=y*0.03f;grid[k*3+2]=1;
+            present[k]=true;colors[k]=0x99CCAA;
+        }
+        large.addGrid(side,side,grid,colors,present);
+        large.addGrid(side,side,grid,colors,present);
+        TemporalSurfaceFilter.Result qualifies=TemporalSurfaceFilter.process(large.snapshot());
+        test(qualifies.stablePoints==121,"distinct frames must retain 121 points");
+        test(qualifies.stableFaces>=190,"repeated mesh faces retained");
+        test(qualifies.suitableForPreview(),"repeat-observed mesh can be separately exported");
         System.out.println("PASS multi-frame stability: retain repeat surfaces, reject single-frame noise");
     }
 }
