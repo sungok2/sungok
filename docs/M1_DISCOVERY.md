@@ -1,7 +1,7 @@
 # M1 LAN eSCL 자동 탐색 — 구현 범위와 검증 기준
 
-**기준 커밋:** `b3557585d766d096014a7e4706f161709ed9a447`  
-**상태:** Android 13 에뮬레이터 검증 대기 중(2026-11-16)
+**범위:** M1 LAN eSCL discovery + selected-device capability validation (2026-11-16)  
+**기준선:** M0.9 commit `686776f9959ac792be804d990c340a32e0f6054f`
 
 ## 구현 범위
 
@@ -15,7 +15,7 @@
 
 - 현재 자동 탐색은 명시적으로 평문 `_uscan._tcp` 서비스만 대상으로 합니다. TLS `_uscans._tcp`는 서비스 호스트 이름과 인증서 신원을 전송 계층까지 보존할 수 있을 때까지 탐색하거나 HTTP로 강등하지 않습니다.
 - 탐색은 IPv4 전용입니다. private LAN 또는 link-local 주소와 서비스 포트만 허용하는 기존 `LanEsclTransport` 검사를 그대로 적용합니다.
-- 탐색 단계에서는 ScannerCapabilities를 미리 질의하지 않습니다. 사용자가 선택한 뒤 스캔 시작 시 capability 협상을 수행합니다.
+- 후보 발견만으로 호환 가능하다고 표시하지 않습니다. 사용자가 후보를 고른 뒤 읽기 전용 `GET /eSCL/ScannerCapabilities`를 보냅니다. HTTP 200과 유효한 platen 또는 simplex ADF 프로파일이 확인되고 나서 주소를 입력란에 적용합니다. 이 요청은 6초 읽기 제한을 두며 ScanJobs를 만들지 않습니다.
 - 멀티캐스트 차단 VLAN, 게스트 Wi-Fi 격리, VPN/핫스팟 조합, 제조사별 장치, Galaxy S20 Ultra 실물 연결은 이 CI로 입증되지 않습니다.
 - 서비스가 `rs`를 누락한 경우의 기본 루트는 편의용 추정값이며, 해당 장치에서 동작한다는 보증이 아닙니다. 실패 시 수동 경로 입력이 필요합니다.
 
@@ -26,7 +26,7 @@
 3. Android 13 에뮬레이터에서 앱 실행, 자동 탐색 버튼 실행, 결과 또는 가시적 NSD 오류 상태, 탭 이동, fatal exception 부재 확인.
 4. 실기기 검증은 Samsung Galaxy S20 Ultra와 실제 eSCL 장치가 제공되어야 별도 완료 처리.
 
-검증 결과는 GitHub Actions 실행 결과와 산출물 기준으로 이 문서의 상태를 갱신합니다.
+GitHub Actions에서는 host regression suite, mock eSCL capability/scan integration, APK build/signature/package checks, Android 13 emulator launch/navigation smoke를 실행합니다. 에뮬레이터와 mock server 결과는 물리 Galaxy/스캐너 호환성 증거가 아닙니다.
 
 ## 근거 자료
 
