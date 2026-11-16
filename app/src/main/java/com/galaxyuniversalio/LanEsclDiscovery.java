@@ -13,10 +13,10 @@ import java.util.*;
 /** Short-lived DNS-SD discovery for cleartext eSCL (_uscan._tcp). */
 public final class LanEsclDiscovery {
     public static final class Scanner {
-        public final String name, host;
+        public final String name, host, resourcePath;
         public final int port;
-        Scanner(String n,String h,int p){name=n;host=h;port=p;}
-        public String address(){return host+":"+port;}
+        Scanner(String n,String h,int p,String r){name=n;host=h;port=p;resourcePath=r;}
+        public String address(){return host+":"+port+resourcePath;}
         @Override public String toString(){return name+" — "+address();}
     }
     public interface Callback { void onFinished(List<Scanner> scanners, String error); }
@@ -46,7 +46,7 @@ public final class LanEsclDiscovery {
     private void discover(String type) {
         NsdManager.DiscoveryListener l=new NsdManager.DiscoveryListener(){
             public void onDiscoveryStarted(String t){}
-            public void onServiceFound(NsdServiceInfo s){if(s.getServiceType().startsWith("_uscan"))try{nsd.resolveService(s,new NsdManager.ResolveListener(){public void onResolveFailed(NsdServiceInfo i,int e){} public void onServiceResolved(NsdServiceInfo i){if(i.getHost() instanceof Inet4Address){String h=i.getHost().getHostAddress(); if(h!=null) synchronized(found){found.put(i.getServiceName(),new Scanner(i.getServiceName(),h,i.getPort()));}}}});}catch(RuntimeException ignored){}}
+            public void onServiceFound(NsdServiceInfo s){if(s.getServiceType().startsWith("_uscan"))try{nsd.resolveService(s,new NsdManager.ResolveListener(){public void onResolveFailed(NsdServiceInfo i,int e){} public void onServiceResolved(NsdServiceInfo i){if(i.getHost() instanceof Inet4Address){String h=i.getHost().getHostAddress(); if(h!=null) try {byte[] raw=i.getAttributes().get("rs"); String advertised=raw==null?"eSCL":new String(raw,java.nio.charset.StandardCharsets.UTF_8); String root=LanEsclTransport.normalizeResourceRoot(advertised); Scanner scanner=new Scanner(i.getServiceName(),h,i.getPort(),root); new LanEsclTransport(scanner.address()); synchronized(found){if(!finished)found.put(i.getServiceName(),scanner);}}catch(java.io.IOException|RuntimeException ignored){}}}});}catch(RuntimeException ignored){}}
             public void onServiceLost(NsdServiceInfo s){synchronized(found){found.remove(s.getServiceName());}}
             public void onDiscoveryStopped(String t){}
             public void onStartDiscoveryFailed(String t,int e){finish("mDNS 탐색 실패 ("+e+")");}

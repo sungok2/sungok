@@ -12,6 +12,7 @@ import java.util.Locale;
 /** Explicit user-selected, IPv4 private-LAN eSCL HTTP or verified HTTPS; no redirects. */
 public final class LanEsclTransport implements EsclScanClient.Transport {
     private final String origin;
+    private final String resourceRoot;
     private volatile HttpURLConnection activeConnection;
     private volatile boolean closed;
 
@@ -27,9 +28,12 @@ public final class LanEsclTransport implements EsclScanClient.Transport {
         } else if (hostAndPort.startsWith("http://")) {
             hostAndPort = hostAndPort.substring(7);
         }
-        if (!hostAndPort.matches("[0-9.]{7,15}(:[0-9]{1,5})?"))
-            throw new IOException("Use a private IPv4 address with optional http(s):// and :port");
-        String[] parts = hostAndPort.split(":", -1);
+        String[] addressParts = hostAndPort.split("/", 2);
+        String authority = addressParts[0];
+        resourceRoot = normalizeResourceRoot(addressParts.length == 2 ? addressParts[1] : "eSCL");
+        if (!authority.matches("[0-9.]{7,15}(:[0-9]{1,5})?"))
+            throw new IOException("Use a private IPv4 address with optional http(s)://, :port and eSCL path");
+        String[] parts = authority.split(":", -1);
         String[] octets = parts[0].split("\\.", -1);
         if (octets.length != 4) throw new IOException("Invalid IPv4 address");
         int[] b = new int[4];
@@ -54,6 +58,7 @@ public final class LanEsclTransport implements EsclScanClient.Transport {
     }
 
     @Override public String origin() { return origin; }
+    String resourceRoot() { return resourceRoot; }
     @Override public void close() {
         closed = true;
         HttpURLConnection connection = activeConnection;
@@ -62,11 +67,9 @@ public final class LanEsclTransport implements EsclScanClient.Transport {
 
     @Override public EsclScanClient.Reply exchange(String method, String path,
             String contentType, byte[] body, int maxBytes) throws IOException {
-        if (!path.startsWith("/eSCL/") || path.contains("..") || path.contains("?")
-                || path.contains("#") || path.contains("\\"))
-            throw new IOException("Unsafe eSCL endpoint");
+        String servicePath = endpointPath(path);
         if (closed) throw new IOException("Scanner connection was cancelled");
-        HttpURLConnection conn = (HttpURLConnection) new URL(origin + path).openConnection();
+        HttpURLConnection conn = (HttpURLConnection) new URL(origin + servicePath).openConnection();
         activeConnection = conn;
         if (closed) {
             activeConnection = null;
@@ -92,11 +95,65 @@ public final class LanEsclTransport implements EsclScanClient.Transport {
             InputStream input = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
             byte[] bytes = new byte[0];
             if (input != null) try (InputStream in = input) { bytes = bounded(in, maxBytes); }
-            return new EsclScanClient.Reply(status, location, type, bytes);
+            return new EsclScanClient.Reply(status, normalizeJobLocation(location), type, bytes);
         } finally {
             activeConnection = null;
             conn.disconnect();
         }
+    }
+
+    String endpointPath(String path) throws IOException {
+        if (path == null || !path.startsWith("/eSCL/") || path.contains("..") || path.contains("?")
+                || path.contains("#") || path.contains("\\"))
+            throw new IOException("Unsafe eSCL endpoint");
+        return resourceRoot + path.substring("/eSCL".length());
+    }
+
+    String normalizeJobLocation(String location) throws IOException {
+        if (location == null || location.isEmpty()) return location;
+        try {
+            java.net.URI u = new java.net.URI(location.trim());
+            if (u.getRawQuery() != null || u.getRawFragment() != null || u.getRawUserInfo() != null)
+                return location;
+            String path = u.getRawPath();
+            if (path == null || !path.startsWith(resourceRoot + "/ScanJobs/")) return location;
+            String canonicalPath = "/eSCL" + path.substring(resourceRoot.length());
+            if (u.isAbsolute()) {
+                java.net.URI expected = new java.net.URI(origin);
+                if (!u.getScheme().equalsIgnoreCase(expected.getScheme())
+                        || !u.getHost().equalsIgnoreCase(expected.getHost())
+                        || effectivePort(u) != effectivePort(expected)) return location;
+                return new java.net.URI(u.getScheme(), null, u.getHost(), u.getPort(),
+                        canonicalPath, null, null).toString();
+            }
+            if (u.getRawAuthority() != null) return location;
+            return canonicalPath;
+        } catch (java.net.URISyntaxException e) {
+            return location;
+        }
+    }
+
+    private static int effectivePort(java.net.URI uri) {
+        if (uri.getPort() != -1) return uri.getPort();
+        return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
+    }
+
+    static String normalizeResourceRoot(String value) throws IOException {
+        if (value == null || value.trim().isEmpty()) value = "eSCL";
+        String path = value.trim();
+        while (path.startsWith("/")) path = path.substring(1);
+        while (path.endsWith("/")) path = path.substring(0, path.length() - 1);
+        if (path.isEmpty() || path.length() > 128 || path.contains("\\") || path.contains("?")
+                || path.contains("#") || path.contains("%") || path.contains(":"))
+            throw new IOException("Invalid eSCL resource path");
+        String[] segments = path.split("/", -1);
+        if (segments.length > 8) throw new IOException("Invalid eSCL resource path");
+        for (String segment : segments) {
+            if (segment.isEmpty() || segment.equals(".") || segment.equals("..")
+                    || !segment.matches("[A-Za-z0-9._~-]{1,64}"))
+                throw new IOException("Invalid eSCL resource path");
+        }
+        return "/" + path;
     }
 
     static byte[] bounded(InputStream input, int limit) throws IOException {

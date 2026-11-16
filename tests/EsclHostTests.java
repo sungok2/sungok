@@ -199,9 +199,22 @@ public final class EsclHostTests {
                 .equals("https://10.0.0.8:8443"), "HTTPS custom port");
         check(new LanEsclTransport("http://10.0.0.8:8080").origin()
                 .equals("http://10.0.0.8:8080"), "Explicit HTTP supported");
+        LanEsclTransport nested = new LanEsclTransport("192.168.1.12:8090/vendor/eSCL");
+        check(nested.resourceRoot().equals("/vendor/eSCL"), "Advertised eSCL resource root");
+        check(nested.endpointPath("/eSCL/ScannerCapabilities").equals("/vendor/eSCL/ScannerCapabilities"),
+                "eSCL endpoint maps to advertised resource root");
+        check(nested.normalizeJobLocation("/vendor/eSCL/ScanJobs/job123")
+                .equals("/eSCL/ScanJobs/job123"), "nested job Location maps to canonical job path");
+        check(nested.normalizeJobLocation("http://192.168.1.12/vendor/eSCL/ScanJobs/job123")
+                .equals("http://192.168.1.12/eSCL/ScanJobs/job123"), "absolute default-port job Location maps safely");
+        check(nested.normalizeJobLocation("http://attacker.invalid/vendor/eSCL/ScanJobs/job123")
+                .contains("attacker.invalid"), "foreign absolute job Location is not rewritten");
+        fails(() -> LanEsclTransport.normalizeResourceRoot("../eSCL"), "resource path traversal rejected");
+        fails(() -> LanEsclTransport.normalizeResourceRoot("eSCL/%2e%2e"), "encoded resource traversal rejected");
+        fails(() -> nested.endpointPath("/eSCL/../ScanJobs"), "endpoint traversal rejected");
         fails(() -> EsclProtocol.jobPath("http://10.0.0.8/eSCL/ScanJobs/a",
                 "https://10.0.0.8"), "HTTPS downgrade Location rejected");
-        for (String blocked : new String[]{"8.8.8.8", "127.0.0.1", "172.32.1.2", "192.168.1.5:0", "192.168.1.5:99999", "192.168.999.3", "example.org", "192.168.1.5/eSCL", "192.168.1.5@bad.org", "192.168.1.5:80#frag", "https://8.8.8.8", "https://192.168.1.5/evil", "ftp://10.1.1.1"})
+        for (String blocked : new String[]{"8.8.8.8", "127.0.0.1", "172.32.1.2", "192.168.1.5:0", "192.168.1.5:99999", "192.168.999.3", "example.org", "192.168.1.5@bad.org", "192.168.1.5:80#frag", "https://8.8.8.8", "192.168.1.5/../evil", "ftp://10.1.1.1"})
             fails(() -> new LanEsclTransport(blocked),"LAN address rejection: " + blocked);
         fails(() -> LanEsclTransport.bounded(new ByteArrayInputStream(new byte[]{1,2,3}),2),"LAN byte limit");
         check(LanEsclTransport.bounded(new ByteArrayInputStream(JPEG),JPEG.length).length==JPEG.length,"LAN bounded read");
