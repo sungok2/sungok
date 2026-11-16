@@ -13,8 +13,9 @@ public final class EsclNetworkIntegrationTests {
         for (boolean feeder : new boolean[]{false,true}) {
             try (LanEsclTransport client = new LanEsclTransport(args[0])) {
                 EsclProtocol.Capabilities capabilities = client.probeCapabilities();
-                if (!capabilities.platen || !capabilities.feeder)
-                    throw new AssertionError("Expected both platen and ADF capabilities");
+                if (!capabilities.platen || !capabilities.feeder || capabilities.dpi < 1)
+                    throw new AssertionError("Expected valid platen/ADF capabilities and resolution");
+                System.out.println("PASS: capability probe parsed supported platen/ADF profiles at " + capabilities.dpi + " dpi");
                 List<byte[]> scan = EsclScanClient.scan(client, feeder, null);
                 int expected = feeder ? 2 : 1;
                 if (scan.size() != expected) throw new AssertionError("Expected " + expected + " pages");
