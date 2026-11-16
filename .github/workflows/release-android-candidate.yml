@@ -36,17 +36,6 @@ jobs:
         run: |
           sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
           yes | sdkmanager --licenses > /dev/null || true
-      - name: Package Android release verification tools
-        run: |
-          mkdir -p .ci-apksigner-tools
-          tar -czf .ci-apksigner-tools/android-build-tools-36.0.0.tgz -C "$ANDROID_HOME/build-tools" 36.0.0
-      - name: Upload Android release verification tools
-        uses: actions/upload-artifact@v7
-        with:
-          name: GalaxyUniversalIO-Android-build-tools-36.0.0
-          path: .ci-apksigner-tools/android-build-tools-36.0.0.tgz
-          if-no-files-found: error
-          retention-days: 1
       - name: Assemble release variant
         run: gradle --no-daemon :app:assembleRelease --stacktrace
       - name: Validate release package and signing state
