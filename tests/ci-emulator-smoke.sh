@@ -28,7 +28,22 @@ tap_text() {
 capture "scan"
 python3 tests/ui_nav_assert.py assert ci-evidence/scan-window.xml "문서 스캔"
 python3 tests/ui_nav_assert.py assert ci-evidence/scan-window.xml "네트워크 스캔 → PDF 저장"
-tap_text "인쇄" "scan"
+python3 tests/ui_nav_assert.py assert ci-evidence/scan-window.xml "같은 Wi-Fi에서 스캐너 찾기"
+tap_text "같은 Wi-Fi에서 스캐너 찾기" "scan"
+sleep 9
+capture "scan-discovery"
+if grep -Fq "사용 가능한 IPv4 eSCL 스캐너를 찾지 못했습니다." ci-evidence/scan-discovery-window.xml; then
+  echo 'PASS: LAN scanner discovery completed with no scanner present'
+elif grep -Fq "발견한 eSCL 스캐너 선택" ci-evidence/scan-discovery-window.xml; then
+  echo 'PASS: LAN scanner discovery returned selectable scanner results'
+elif grep -Fq "mDNS 탐색 실패" ci-evidence/scan-discovery-window.xml; then
+  echo 'PASS: LAN scanner discovery reported a visible platform error'
+else
+  echo 'LAN scanner discovery did not reach a visible terminal state' >&2
+  exit 1
+fi
+
+tap_text "인쇄" "scan-discovery"
 capture "print"
 python3 tests/ui_nav_assert.py assert ci-evidence/print-window.xml "PDF 인쇄"
 python3 tests/ui_nav_assert.py assert ci-evidence/print-window.xml "PDF 파일 선택 후 인쇄"
@@ -44,4 +59,4 @@ if adb logcat -d -t 5000 | grep -A15 'FATAL EXCEPTION' | grep -q "$PKG"; then
   echo 'Fatal exception detected in app process' >&2
   exit 1
 fi
-echo 'PASS: Android 13 app launch + scan/print/devices tab navigation and screenshots'
+echo 'PASS: Android 13 app launch + LAN discovery + scan/print/devices navigation'
