@@ -21,17 +21,25 @@ def url_for(n):
     return HOST+'/'+h[:1]+'/'+h[:2]+'/'+urllib.parse.quote(u,safe='-_.')
 
 def download(url,max_size=12*1024*1024):
-    request=urllib.request.Request(url,headers={'User-Agent':'StoryEnglishOfflineEducation/1.0 (educational reuse; contact via Commons file page)'})
-    with urllib.request.urlopen(request,timeout=35) as r:
-        length=int(r.headers.get('Content-Length','0') or 0)
-        if length>max_size: raise ValueError('Too large: '+str(length))
-        output=bytearray()
-        while True:
-            b=r.read(65536)
-            if not b:break
-            output+=b
-            if len(output)>max_size: raise ValueError('Too large')
-    return bytes(output)
+    # Commons is a community service: space requests and respect 429 throttling.
+    for retry in range(3):
+        try:
+            request=urllib.request.Request(url,headers={'User-Agent':'StoryEnglishOfflineEducation/1.0 (educational reuse; https://commons.wikimedia.org/wiki/Commons:Reusing_content_outside_Wikimedia)'})
+            with urllib.request.urlopen(request,timeout=45) as r:
+                length=int(r.headers.get('Content-Length','0') or 0)
+                if length>max_size: raise ValueError('Too large: '+str(length))
+                output=bytearray()
+                while True:
+                    b=r.read(65536)
+                    if not b:break
+                    output+=b
+                    if len(output)>max_size: raise ValueError('Too large')
+            return bytes(output)
+        except urllib.error.HTTPError as exc:
+            if exc.code!=429 or retry==2:raise
+            wait=[20,45][retry]
+            print('Wikimedia 429: respecting server rate limit; sleeping',wait,'seconds',flush=True)
+            time.sleep(wait)
 
 def png(b,filename):
     ext=Path(filename).suffix.lower()
@@ -61,6 +69,7 @@ for num,entry in enumerate(SOURCES,1):
     source=url_for(e['filename']);e['url']=source
     e['commons_page']='https://commons.wikimedia.org/wiki/File:'+urllib.parse.quote(e['filename'].replace(' ','_'))
     try:
+        if num>1: time.sleep(9)
         raw=download(source)
         digest=hashlib.sha256(raw).hexdigest()
         if digest in hashes:
