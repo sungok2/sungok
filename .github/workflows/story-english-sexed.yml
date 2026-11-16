@@ -1,0 +1,42 @@
+name: STORY ENGLISH Adult Sex Education Open Assets
+on:
+  push:
+    branches: [story-english-4.9.2-open-media-assets]
+    paths:
+      - '.github/workflows/story-english-sexed.yml'
+      - 'story-english-sexed/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  acquire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install renderer dependencies
+        run: pip install --disable-pip-version-check pillow cairosvg
+      - name: Validate curated catalog
+        run: python -m unittest discover -s story-english-sexed/scripts -p 'test_*.py' -v
+      - name: Download public educational graphics and create provenance manifest
+        run: python story-english-sexed/scripts/acquire.py
+      - name: Validate retained files and SHA-256 evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd story-english-sexed/dist
+          sha256sum --check SHA256SUMS.txt
+          python -c 'import json; m=json.load(open("LICENSE_AND_ASSET_MANIFEST.json")); assert m["counts"].get("included",0)>=8; print(m["counts"])'
+          zip -q -r STORY_ENGLISH_SEX_ED_MEDIA.zip upstream images LICENSE_AND_ASSET_MANIFEST.json SHA256SUMS.txt ATTRIBUTION.md
+          unzip -t STORY_ENGLISH_SEX_ED_MEDIA.zip | tail -1
+          sha256sum STORY_ENGLISH_SEX_ED_MEDIA.zip > PACKAGE_SHA256.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: STORY-ENGLISH-SEX-ED-OPEN-ASSETS
+          path: story-english-sexed/dist/
+          retention-days: 30
+          if-no-files-found: warn
