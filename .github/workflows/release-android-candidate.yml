@@ -60,6 +60,7 @@ jobs:
           "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -v 4 "$APK"
           sha256sum release-artifact/app-release-unsigned.apk | tee release-artifact/app-release-unsigned.apk.sha256
       - name: Sign with release key when configured
+        id: signing
         shell: bash
         run: |
           set -euo pipefail
@@ -77,10 +78,12 @@ jobs:
             rm -f release-signing.p12
             echo 'RELEASE_APK=release-artifact/app-release.apk' >> "$GITHUB_ENV"
             echo 'RELEASE_SIGNED=true' >> "$GITHUB_ENV"
+            echo 'signed=true' >> "$GITHUB_OUTPUT"
           else
             echo 'No persistent release signing secrets configured; only unsigned artifact will be distributed.'
             echo 'RELEASE_APK=release-artifact/app-release-unsigned.apk' >> "$GITHUB_ENV"
             echo 'RELEASE_SIGNED=false' >> "$GITHUB_ENV"
+            echo 'signed=false' >> "$GITHUB_OUTPUT"
           fi
       - name: Prepare isolated emulator smoke APK
         shell: bash
@@ -117,7 +120,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: bash tests/ci-emulator-smoke.sh
       - name: Upload unsigned release candidate
-        if: env.RELEASE_SIGNED != 'true'
+        if: steps.signing.outputs.signed != 'true'
         uses: actions/upload-artifact@v7
         with:
           name: GalaxyUniversalIO-M1-release-unsigned
@@ -125,7 +128,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - name: Upload signed release candidate
-        if: env.RELEASE_SIGNED == 'true'
+        if: steps.signing.outputs.signed == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: GalaxyUniversalIO-M1-release-signed
