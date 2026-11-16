@@ -1008,23 +1008,44 @@ public final class MainActivity extends Activity {
         current.start((scanners, error) -> {
             if (isDestroyed() || lanDiscovery != current) return;
             if (error != null) { statusView.setText(error); return; }
-            List<LanEsclDiscovery.Scanner> usable = new ArrayList<>();
+            List<LanEsclDiscovery.Scanner> candidates = new ArrayList<>();
             for (LanEsclDiscovery.Scanner s : scanners) {
-                try { new LanEsclTransport(s.address()); usable.add(s); }
+                try { new LanEsclTransport(s.address()); candidates.add(s); }
                 catch (IOException ignored) { }
             }
-            if (usable.isEmpty()) {
-                statusView.setText("사용 가능한 IPv4 eSCL 스캐너를 찾지 못했습니다. 수동 주소 입력을 사용할 수 있습니다.");
+            if (candidates.isEmpty()) {
+                statusView.setText("eSCL 탐색 후보가 없습니다. 수동 주소 입력을 사용할 수 있습니다.");
                 return;
             }
-            CharSequence[] labels = new CharSequence[usable.size()];
-            for (int i=0;i<usable.size();i++) labels[i]=usable.get(i).toString();
-            new AlertDialog.Builder(this).setTitle("발견한 eSCL 스캐너 선택")
-                    .setItems(labels,(dialog,which)->{
-                        LanEsclDiscovery.Scanner selected=usable.get(which);
-                        lanHostInput.setText(selected.address());
-                        statusView.setText("주소를 입력란에 채웠습니다. 스캔 전에 장치 선택을 확인하세요.");
-                    }).setNegativeButton("닫기",null).show();
+            CharSequence[] labels = new CharSequence[candidates.size()];
+            for (int i=0;i<candidates.size();i++) labels[i]=candidates.get(i).toString();
+            new AlertDialog.Builder(this).setTitle("발견한 eSCL 후보 선택")
+                    .setItems(labels,(dialog,which)->validateDiscoveredScanner(candidates.get(which)))
+                    .setNegativeButton("닫기",null).show();
+        });
+    }
+
+    private void validateDiscoveredScanner(LanEsclDiscovery.Scanner scanner) {
+        statusView.setText("선택한 장치의 eSCL 기능을 확인합니다.");
+        writer.execute(() -> {
+            String result;
+            boolean accepted = false;
+            try (LanEsclTransport transport = new LanEsclTransport(scanner.address())) {
+                EsclProtocol.Capabilities caps = transport.probeCapabilities();
+                accepted = true;
+                result = "eSCL 스캐너 확인 완료 — "
+                        + (caps.platen ? "평판 " : "") + (caps.feeder ? "ADF " : "")
+                        + "지원. 주소를 입력란에 채웠습니다.";
+            } catch (IOException | RuntimeException e) {
+                result = "eSCL 기능 확인 실패. 이 장치는 스캐너로 확인되지 않았습니다.";
+            }
+            boolean useAddress = accepted;
+            String finalResult = result;
+            runOnUiThread(() -> {
+                if (isDestroyed()) return;
+                if (useAddress) lanHostInput.setText(scanner.address());
+                statusView.setText(finalResult);
+            });
         });
     }
 
