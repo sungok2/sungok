@@ -1,0 +1,30 @@
+name: STORY ENGLISH Sex Education License-Verified Media
+on:
+  push:
+    branches: [story-english-4.9.2-open-media-assets]
+    paths:
+      - '.github/workflows/story-english-sex-ed-media.yml'
+      - 'story-english-sex-ed/scripts/acquire_commons.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  acquire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install image and video processing dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          python -m pip install --user pillow
+      - name: Fetch license-verified adult sexual health education media
+        run: |
+          python story-english-sex-ed/scripts/acquire_commons.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: STORY-ENGLISH-SEX-ED-VERIFIED-MEDIA
+          path: assets/sex_ed/
+          retention-days: 30
+          if-no-files-found: error
