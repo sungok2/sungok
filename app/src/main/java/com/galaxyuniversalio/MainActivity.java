@@ -999,11 +999,14 @@ public final class MainActivity extends Activity {
     }
 
     private void discoverLanScanners() {
-        if (lanDiscovery != null) lanDiscovery.cancel();
+        LanEsclDiscovery previous = lanDiscovery;
+        lanDiscovery = null;
+        if (previous != null) previous.cancel();
         statusView.setText("같은 Wi-Fi의 eSCL 스캐너를 8초 동안 찾습니다.");
-        lanDiscovery = new LanEsclDiscovery(this);
-        lanDiscovery.start((scanners, error) -> {
-            if (isDestroyed()) return;
+        LanEsclDiscovery current = new LanEsclDiscovery(this);
+        lanDiscovery = current;
+        current.start((scanners, error) -> {
+            if (isDestroyed() || lanDiscovery != current) return;
             if (error != null) { statusView.setText(error); return; }
             List<LanEsclDiscovery.Scanner> usable = new ArrayList<>();
             for (LanEsclDiscovery.Scanner s : scanners) {
