@@ -205,8 +205,8 @@ public final class EsclHostTests {
                 "eSCL endpoint maps to advertised resource root");
         check(nested.normalizeJobLocation("/vendor/eSCL/ScanJobs/job123")
                 .equals("/eSCL/ScanJobs/job123"), "nested job Location maps to canonical job path");
-        check(nested.normalizeJobLocation("http://192.168.1.12/vendor/eSCL/ScanJobs/job123")
-                .equals("http://192.168.1.12/eSCL/ScanJobs/job123"), "absolute default-port job Location maps safely");
+        check(nested.normalizeJobLocation("http://192.168.1.12:8090/vendor/eSCL/ScanJobs/job123")
+                .equals("http://192.168.1.12:8090/eSCL/ScanJobs/job123"), "absolute job Location maps safely");
         check(nested.normalizeJobLocation("http://attacker.invalid/vendor/eSCL/ScanJobs/job123")
                 .contains("attacker.invalid"), "foreign absolute job Location is not rewritten");
         fails(() -> LanEsclTransport.normalizeResourceRoot("../eSCL"), "resource path traversal rejected");
