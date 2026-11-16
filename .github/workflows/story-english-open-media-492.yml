@@ -1,0 +1,83 @@
+name: STORY ENGLISH 4.9.2 Verified Public Domain Media Assets
+on:
+  push:
+    branches: [story-english-4.9.2-open-media-assets]
+    paths:
+      - '.github/workflows/story-english-open-media-492.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  fetch_and_package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Acquire documented public-domain and CC0 sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p source assets
+          fetch() {
+            curl --fail --location --retry 3 --retry-delay 2 --connect-timeout 20 --max-time 120 \
+              --user-agent 'StoryEnglishEducationMediaAudit/1.0 (not a bulk scraper)' "$1" -o "$2"
+            test -s "$2"
+          }
+          fetch "https://upload.wikimedia.org/wikipedia/commons/1/1e/May_Irwin_Kiss.webm" source/kiss_1896.webm
+          fetch "https://upload.wikimedia.org/wikipedia/commons/4/4a/The_Kiss_%281900%29.webm" source/kiss_1900.webm
+          fetch "https://upload.wikimedia.org/wikipedia/commons/2/2e/Kiss_from_Glamorous_Romances_41.png" source/vintage_romance_cc0.png
+          file source/*
+          ffprobe -v error -show_entries format=duration:stream=codec_name,codec_type -of json source/kiss_1896.webm
+          ffprobe -v error -show_entries format=duration:stream=codec_name,codec_type -of json source/kiss_1900.webm
+          ffmpeg -hide_banner -loglevel error -y -i source/kiss_1896.webm -an \
+            -vf 'scale=640:-2:flags=lanczos,fps=24,format=yuv420p' \
+            -c:v libx264 -preset fast -crf 23 -movflags +faststart assets/historic_kiss_1896.mp4
+          ffmpeg -hide_banner -loglevel error -y -i source/kiss_1900.webm -an \
+            -vf 'scale=640:-2:flags=lanczos,fps=24,format=yuv420p' \
+            -c:v libx264 -preset fast -crf 24 -movflags +faststart assets/historic_kiss_1900.mp4
+          cp source/vintage_romance_cc0.png assets/vintage_romance_panel.png
+          for f in assets/*.mp4; do
+            ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,width,height,pix_fmt -of csv=p=0 "$f" | grep -E '^h264,'
+          done
+          sha256sum source/* > assets/SOURCE_SHA256.txt
+          sha256sum assets/*.mp4 assets/*.png > assets/ASSETS_SHA256.txt
+          cat > assets/LICENSE_MANIFEST.json <<'JSON'
+          {
+            "items": [
+              {
+                "asset": "historic_kiss_1896.mp4",
+                "original": "May Irwin Kiss.webm",
+                "source": "https://commons.wikimedia.org/wiki/File:May_Irwin_Kiss.webm",
+                "publisher": "Wikimedia Commons",
+                "license": "Public Domain Mark (US and stated original jurisdiction)",
+                "original_author": "William Heise",
+                "modification": "H.264 conversion; silent film; no authored dialogue"
+              },
+              {
+                "asset": "historic_kiss_1900.mp4",
+                "original": "The Kiss (1900).webm",
+                "source": "https://commons.wikimedia.org/wiki/File:The_Kiss_(1900).webm",
+                "publisher": "Wikimedia Commons",
+                "license": "Public Domain Mark (US and stated original jurisdiction)",
+                "original_author": "Edwin S. Porter",
+                "modification": "H.264 conversion; silent film; no authored dialogue"
+              },
+              {
+                "asset": "vintage_romance_panel.png",
+                "original": "Kiss from Glamorous Romances 41.png",
+                "source": "https://commons.wikimedia.org/wiki/File:Kiss_from_Glamorous_Romances_41.png",
+                "publisher": "Wikimedia Commons",
+                "license": "CC0 1.0",
+                "original_author": "Open Clip Art Library / liftarn tracing from 1949 romance comic",
+                "modification": "No modification"
+              }
+            ],
+            "usage_note": "All clips are non-explicit and provided for historical English-learning analysis. Local jurisdiction, personality and moral rights review may still be required for distribution."
+          }
+          JSON
+      - uses: actions/upload-artifact@v4
+        with:
+          name: STORY-ENGLISH-492-VERIFIED-OPEN-MEDIA
+          path: assets/
+          retention-days: 30
+          if-no-files-found: error
