@@ -1,0 +1,142 @@
+name: Galaxy Universal I-O Android release candidate
+on:
+  push:
+    branches: [galaxy-universal-io-m1-escl-discovery]
+    paths:
+      - 'app/**'
+      - 'docs/RELEASE.md'
+      - 'tests/ci-emulator-smoke.sh'
+      - '.github/workflows/release-android-candidate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  release-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ANDROID_RELEASE_KEYSTORE_B64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_B64 }}
+      ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+      ANDROID_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
+      ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Set up Gradle 9.8.0
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '9.8.0'
+      - name: Set up Android SDK command-line tools
+        uses: android-actions/setup-android@v4
+      - name: Install Android SDK components
+        run: |
+          sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+          yes | sdkmanager --licenses > /dev/null || true
+      - name: Assemble release variant
+        run: gradle --no-daemon :app:assembleRelease --stacktrace
+      - name: Validate release package and signing state
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*-unsigned.apk' -print -quit)"
+          if [[ -z "$APK" ]]; then
+            APK="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          fi
+          test -n "$APK" && test -s "$APK"
+          mkdir -p release-artifact
+          cp "$APK" release-artifact/app-release-unsigned.apk
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee release-badging.txt
+          grep -F "package: name='com.galaxyuniversalio'" release-badging.txt
+          grep -F "versionCode='11'" release-badging.txt
+          grep -F "versionName='0.10.0'" release-badging.txt
+          if grep -Fq 'application-debuggable' release-badging.txt; then
+            echo 'Release manifest must not be debuggable' >&2
+            exit 1
+          fi
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -v 4 "$APK"
+          sha256sum release-artifact/app-release-unsigned.apk | tee release-artifact/app-release-unsigned.apk.sha256
+      - name: Sign with release key when configured
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${ANDROID_RELEASE_KEYSTORE_B64:-}" || -n "${ANDROID_RELEASE_KEY_ALIAS:-}" || -n "${ANDROID_RELEASE_STORE_PASSWORD:-}" || -n "${ANDROID_RELEASE_KEY_PASSWORD:-}" ]]; then
+            test -n "${ANDROID_RELEASE_KEYSTORE_B64:-}" && test -n "${ANDROID_RELEASE_KEY_ALIAS:-}" \
+              && test -n "${ANDROID_RELEASE_STORE_PASSWORD:-}" && test -n "${ANDROID_RELEASE_KEY_PASSWORD:-}"
+            printf '%s' "$ANDROID_RELEASE_KEYSTORE_B64" | base64 --decode > release-signing.p12
+            APK="release-artifact/app-release-unsigned.apk"
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign \
+              --ks release-signing.p12 --ks-type PKCS12 --ks-key-alias "$ANDROID_RELEASE_KEY_ALIAS" \
+              --ks-pass env:ANDROID_RELEASE_STORE_PASSWORD --key-pass env:ANDROID_RELEASE_KEY_PASSWORD \
+              --out release-artifact/app-release.apk "$APK"
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose release-artifact/app-release.apk
+            sha256sum release-artifact/app-release.apk | tee release-artifact/app-release.apk.sha256
+            rm -f release-signing.p12
+            echo 'RELEASE_APK=release-artifact/app-release.apk' >> "$GITHUB_ENV"
+            echo 'RELEASE_SIGNED=true' >> "$GITHUB_ENV"
+          else
+            echo 'No persistent release signing secrets configured; only unsigned artifact will be distributed.'
+            echo 'RELEASE_APK=release-artifact/app-release-unsigned.apk' >> "$GITHUB_ENV"
+            echo 'RELEASE_SIGNED=false' >> "$GITHUB_ENV"
+          fi
+      - name: Prepare isolated emulator smoke APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$RELEASE_SIGNED" == 'true' ]]; then
+            cp "$RELEASE_APK" ci-release-smoke.apk
+          else
+            SMOKE_PASS="$(openssl rand -hex 24)"
+            keytool -genkeypair -noprompt -alias ci-release-smoke -keyalg RSA -keysize 3072 -validity 3650 \
+              -dname 'CN=Galaxy Universal I-O CI Smoke Only' -storetype PKCS12 \
+              -keystore ci-release-smoke.p12 -storepass "$SMOKE_PASS" -keypass "$SMOKE_PASS"
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign --ks ci-release-smoke.p12 --ks-type PKCS12 \
+              --ks-key-alias ci-release-smoke --ks-pass "pass:$SMOKE_PASS" --key-pass "pass:$SMOKE_PASS" \
+              --out ci-release-smoke.apk release-artifact/app-release-unsigned.apk
+            rm -f ci-release-smoke.p12
+          fi
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose ci-release-smoke.apk
+      - name: Enable KVM for Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Install and smoke test release variant on Android 13
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          APK_PATH: ${{ github.workspace }}/ci-release-smoke.apk
+          APP_PACKAGE: com.galaxyuniversalio
+          EVIDENCE_DIR: ci-evidence-release
+        with:
+          api-level: 33
+          target: google_apis
+          arch: x86_64
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash tests/ci-emulator-smoke.sh
+      - name: Upload unsigned release candidate
+        if: env.RELEASE_SIGNED != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: GalaxyUniversalIO-M1-release-unsigned
+          path: release-artifact/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload signed release candidate
+        if: env.RELEASE_SIGNED == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: GalaxyUniversalIO-M1-release-signed
+          path: release-artifact/app-release.apk*
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload release emulator evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: GalaxyUniversalIO-M1-release-emulator-evidence
+          path: ci-evidence-release/
+          if-no-files-found: warn
+          retention-days: 14
