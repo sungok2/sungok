@@ -12,6 +12,9 @@ public final class EsclNetworkIntegrationTests {
             throw new IllegalArgumentException("Unsupported test image format");
         for (boolean feeder : new boolean[]{false,true}) {
             try (LanEsclTransport client = new LanEsclTransport(args[0])) {
+                EsclProtocol.Capabilities capabilities = client.probeCapabilities();
+                if (!capabilities.platen || !capabilities.feeder)
+                    throw new AssertionError("Expected both platen and ADF capabilities");
                 List<byte[]> scan = EsclScanClient.scan(client, feeder, null);
                 int expected = feeder ? 2 : 1;
                 if (scan.size() != expected) throw new AssertionError("Expected " + expected + " pages");
