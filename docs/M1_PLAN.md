@@ -33,3 +33,11 @@ The above tests cannot be marked passed without actual APK and hardware evidence
 - Android Print Framework PDF 전달 소스 구현은 USB 직접 인쇄용 드라이버와 구분.
 - IPP-over-USB Printer Class 프로토콜 4는 분류만 구현, HTTP/IPP는 미구현.
 - 장치별 확증 없는 호환성 선언은 금지.
+
+
+## M1 LAN discovery implementation (2026-11-16)
+
+- Implemented Android NSD discovery for cleartext eSCL `_uscan._tcp.` services, an 8-second discovery window, and short-lived Wi-Fi multicast lock cleanup.
+- Preserves the resolved IPv4 address, port, and validated DNS-SD `rs` resource path. TLS service discovery remains disabled until hostname-based certificate verification can be preserved end to end.
+- Presents discovered devices as candidates. After a user selects one, a bounded read-only capabilities request must return a valid supported platen/ADF profile before the app applies the endpoint.
+- CI covers host regressions, a mock eSCL capability/scan integration, APK build and signing/package checks, and Android 13 emulator launch/navigation. Physical Galaxy and scanner interoperability remain unverified.
