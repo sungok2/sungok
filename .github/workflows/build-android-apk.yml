@@ -1,7 +1,7 @@
 name: Galaxy Universal I-O Android debug APK
 on:
   push:
-    branches: [galaxy-universal-io-m0-7, galaxy-universal-io-m0-8, galaxy-universal-io-m0-9, galaxy-universal-io-m1-escl-discovery]
+    branches: [galaxy-universal-io-m0-7, galaxy-universal-io-m0-8, galaxy-universal-io-m0-9]
   workflow_dispatch:
 permissions:
   contents: read
@@ -36,6 +36,18 @@ jobs:
           bash tests/run-reliability-tests.sh
           bash tests/run-usb-http-policy-tests.sh
           python3 tests/run-android-signature-smoke.py
+      - name: Run LAN eSCL capability and scan integration
+        run: |
+          SCANNER_IP="$(hostname -I | awk '{print $1}')"
+          python3 tests/mock-escl-scanner.py --bind "$SCANNER_IP" --port 8765 > mock-escl.log 2>&1 &
+          MOCK_PID=$!
+          trap 'kill "$MOCK_PID" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail "http://$SCANNER_IP:8765/eSCL/ScannerCapabilities" > /dev/null; then break; fi
+            sleep 1
+          done
+          curl --silent --show-error --fail "http://$SCANNER_IP:8765/eSCL/ScannerCapabilities" > /dev/null
+          bash tests/run-escl-network-integration.sh "$SCANNER_IP:8765" jpeg
       - name: Assemble Android debug APK
         run: gradle --no-daemon :app:assembleDebug --stacktrace
       - name: Validate APK output
@@ -50,7 +62,7 @@ jobs:
       - name: Upload debug APK
         uses: actions/upload-artifact@v7
         with:
-          name: GalaxyUniversalIO-M1-discovery-debug-apk
+          name: GalaxyUniversalIO-M0.9-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
@@ -72,7 +84,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: GalaxyUniversalIO-M1-discovery-emulator-evidence
+          name: GalaxyUniversalIO-M0.9-emulator-evidence
           path: ci-evidence/
           if-no-files-found: warn
           retention-days: 7
