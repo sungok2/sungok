@@ -1,7 +1,7 @@
 name: Galaxy Universal I-O Android debug APK
 on:
   push:
-    branches: [galaxy-universal-io-m0-7, galaxy-universal-io-m0-8, galaxy-universal-io-m0-9]
+    branches: [galaxy-universal-io-m0-7, galaxy-universal-io-m0-8, galaxy-universal-io-m0-9, galaxy-universal-io-m1-escl-discovery]
   workflow_dispatch:
 permissions:
   contents: read
@@ -62,7 +62,7 @@ jobs:
       - name: Upload debug APK
         uses: actions/upload-artifact@v7
         with:
-          name: GalaxyUniversalIO-M0.9-debug-apk
+          name: GalaxyUniversalIO-M1-discovery-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
@@ -84,7 +84,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: GalaxyUniversalIO-M0.9-emulator-evidence
+          name: GalaxyUniversalIO-M1-discovery-emulator-evidence
           path: ci-evidence/
           if-no-files-found: warn
           retention-days: 7
