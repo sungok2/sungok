@@ -12,7 +12,7 @@
 
 릴리스 담당자가 소유·백업하는 PKCS#12 영구 키스토어와 별칭을 준비합니다. Windows PowerShell에서 `keytool`을 이용해 키를 만들 때 암호를 명령행 인수로 넣지 말고 대화형 프롬프트를 사용합니다. 생성한 `.p12` 파일은 저장소에 커밋하지 않습니다. GitHub 저장소의 Actions secrets에 다음 값을 등록하면 릴리스 workflow가 서명 APK를 만들도록 설계합니다.
 
-- `ANDROID_RELEASE_KEYSTORE_B64`: PKCS#12/JKS 키스토어의 base64
+- `ANDROID_RELEASE_KEYSTORE_B64`: PKCS#12 키스토어의 base64
 - `ANDROID_RELEASE_KEY_ALIAS`: 키 별칭
 - `ANDROID_RELEASE_STORE_PASSWORD`: 키스토어 암호
 - `ANDROID_RELEASE_KEY_PASSWORD`: 개인키 암호 (PKCS#12는 키스토어 암호와 동일하게 설정합니다.)
