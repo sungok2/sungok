@@ -1,14 +1,14 @@
-> **M0.9 (2026-11-13)** Current update: task-first scan/print/device UI, cancellation recovery, Android 13 multi-tab smoke workflow. See [M0.9 changelog](docs/M0_9_CHANGELOG.md). Physical scanner/printer compatibility is unverified.
+> **M1 / v0.10.0 (2026-11-16)** Current update: same-Wi-Fi DNS-SD discovery for cleartext eSCL `_uscan._tcp.`, validated service resource path, short-lived multicast lock, and a selected-device read-only capabilities check before applying an endpoint. See [M1 discovery scope and verification limits](docs/M1_DISCOVERY.md). The app labels discovery results as candidates until the eSCL profile is verified.
 
-# Galaxy Universal I/O — M0.9 Android runtime QA build
+# Galaxy Universal I/O — M1 LAN eSCL discovery build
 
-- Target: Galaxy S20 Ultra / Android 13; developer: Windows 11 / JDK 21 / Gradle 9.8.0.
-- M0.9 adds a visible scan cancellation request, guards against concurrent scan requests, makes scan and printer controls full-width on portrait screens, corrects stale report versions, and adds an Android 13 emulator launch/screenshot CI smoke test.
-- Cancellation is **not guaranteed immediate** during an Android USB `bulkTransfer()` or HTTP read timeout. The app requests interruption and prevents partial PDF export when interrupted before the final copy. Android's document picker may create a blank destination even when a scan fails or is cancelled.
-- APK build success and emulator activity launch are separate from real hardware interoperability.
-- **Not supported universally:** vendor-specific USB scanner protocols, TWAIN/WIA-only scanners, all printer drivers, OCR, duplex ADF, mDNS, and every printer document language.
-- Existing eSCL scan limits remain 12 ADF pages / 32 MiB per job and 8 MiB per image. PDFs may downsample to approximately 3 megapixels per page. A large document should be split into multiple scans.
-- The CI workflow is implemented in `.github/workflows/build-android-apk.yml`; `tests/ci-emulator-smoke.sh` checks installation, Activity startup, process survival and captures UI screenshots. Only actual workflow results demonstrate runtime success.
+- Target: Galaxy S20 Ultra / Android 13; Java app, minSdk 26, targetSdk 35; developer build uses Windows 11 / JDK 21 / Gradle 9.8.0 / Android SDK 36.
+- Discovery searches cleartext `_uscan._tcp.` services for 8 seconds and releases its Wi-Fi multicast lock on completion, cancellation, or failure. The resolved IPv4 address, port, and validated DNS-SD `rs` resource path are preserved.
+- A user must select a candidate before a bounded, read-only eSCL ScannerCapabilities request. The address is applied only after a valid platen or simplex ADF profile is parsed. This request does not start a scan.
+- TLS `_uscans._tcp` discovery remains disabled until the transport can preserve hostname-based certificate verification. No TLS-to-HTTP downgrade is performed.
+- **Physical Galaxy S20 Ultra, scanner and printer interoperability remains unverified.** A CI emulator and mock eSCL service do not establish real hardware support.
+- Existing scan limits remain 12 ADF pages / 32 MiB per job and 8 MiB per image. PDFs may downsample to approximately 3 megapixels per page.
+- GitHub Actions is configured to run host regression tests, LAN mock integration, Android APK build/signature/package checks, and Android 13 emulator navigation/discovery smoke checks.
 
 ---
 
