@@ -65,8 +65,26 @@ public final class LanEsclTransport implements EsclScanClient.Transport {
         if (connection != null) connection.disconnect();
     }
 
+    /**
+     * Performs the bounded, read-only handshake used before an automatically
+     * discovered endpoint is accepted as a scanner. This is deliberately
+     * separate from scan(), so discovery never creates a scan job.
+     */
+    public EsclProtocol.Capabilities probeCapabilities() throws IOException {
+        EsclScanClient.Reply reply = exchange("GET", "/eSCL/ScannerCapabilities",
+                null, null, EsclProtocol.MAX_XML_BYTES, 6000);
+        if (reply.status != 200)
+            throw new IOException("eSCL capabilities HTTP " + reply.status);
+        return EsclProtocol.parseCapabilities(reply.body);
+    }
+
     @Override public EsclScanClient.Reply exchange(String method, String path,
             String contentType, byte[] body, int maxBytes) throws IOException {
+        return exchange(method, path, contentType, body, maxBytes, 90000);
+    }
+
+    private EsclScanClient.Reply exchange(String method, String path,
+            String contentType, byte[] body, int maxBytes, int readTimeoutMillis) throws IOException {
         String servicePath = endpointPath(path);
         if (closed) throw new IOException("Scanner connection was cancelled");
         HttpURLConnection conn = (HttpURLConnection) new URL(origin + servicePath).openConnection();
@@ -78,7 +96,7 @@ public final class LanEsclTransport implements EsclScanClient.Transport {
         }
         conn.setInstanceFollowRedirects(false);
         conn.setConnectTimeout(5000);
-        conn.setReadTimeout(90000);
+        conn.setReadTimeout(readTimeoutMillis);
         conn.setUseCaches(false);
         conn.setRequestProperty("Accept", "image/jpeg, text/xml, application/xml");
         conn.setRequestMethod(method);
