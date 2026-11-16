@@ -21,6 +21,7 @@ import android.hardware.usb.UsbEndpoint;
 import android.hardware.usb.UsbInterface;
 import android.hardware.usb.UsbManager;
 import android.net.Uri;
+import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.print.PrintManager;
@@ -114,6 +115,7 @@ public final class MainActivity extends Activity {
     private String pendingIppDeviceName;
     private int pendingIppVid, pendingIppPid;
     private EditText lanHostInput;
+    private LanEsclDiscovery lanDiscovery;
     private CheckBox feederCheck;
     private String pendingScanHost;
     private String pendingScanDevice;
@@ -318,6 +320,11 @@ public final class MainActivity extends Activity {
         lanHostInput.setContentDescription("네트워크 eSCL 스캐너의 사설 IPv4 주소");
         lanHostInput.setMinHeight(dp(54));
         scanCard.addView(lanHostInput, new LinearLayout.LayoutParams(-1, -2));
+        Button discoverLan = new Button(this);
+        discoverLan.setText("같은 Wi-Fi에서 스캐너 찾기");
+        styleButton(discoverLan, false);
+        discoverLan.setOnClickListener(v -> discoverLanScanners());
+        addButton(scanCard, discoverLan);
         feederCheck = new CheckBox(this);
         feederCheck.setText("자동 급지(ADF)로 여러 장 스캔");
         feederCheck.setTextSize(14);
@@ -991,6 +998,33 @@ public final class MainActivity extends Activity {
         });
     }
 
+    private void discoverLanScanners() {
+        if (lanDiscovery != null) lanDiscovery.cancel();
+        statusView.setText("같은 Wi-Fi의 eSCL 스캐너를 8초 동안 찾습니다.");
+        lanDiscovery = new LanEsclDiscovery(this);
+        lanDiscovery.start((scanners, error) -> {
+            if (isDestroyed()) return;
+            if (error != null) { statusView.setText(error); return; }
+            List<LanEsclDiscovery.Scanner> usable = new ArrayList<>();
+            for (LanEsclDiscovery.Scanner s : scanners) {
+                try { new LanEsclTransport(s.address()); usable.add(s); }
+                catch (IOException ignored) { }
+            }
+            if (usable.isEmpty()) {
+                statusView.setText("사용 가능한 IPv4 eSCL 스캐너를 찾지 못했습니다. 수동 주소 입력을 사용할 수 있습니다.");
+                return;
+            }
+            CharSequence[] labels = new CharSequence[usable.size()];
+            for (int i=0;i<usable.size();i++) labels[i]=usable.get(i).toString();
+            new AlertDialog.Builder(this).setTitle("발견한 eSCL 스캐너 선택")
+                    .setItems(labels,(dialog,which)->{
+                        LanEsclDiscovery.Scanner selected=usable.get(which);
+                        lanHostInput.setText(selected.address());
+                        statusView.setText("주소를 입력란에 채웠습니다. 스캔 전에 장치 선택을 확인하세요.");
+                    }).setNegativeButton("닫기",null).show();
+        });
+    }
+
     private void chooseEsclPdfDestination(boolean usb) {
         if (scanInProgress.get()) {
             statusView.setText("스캔이 진행 중입니다. 완료 또는 취소 후 다시 실행하세요.");
@@ -1228,6 +1262,7 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (lanDiscovery != null) lanDiscovery.cancel();
         scanCancellationRequested = true;
         Thread active = scanWorker;
         if (active != null) active.interrupt();
