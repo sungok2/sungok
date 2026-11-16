@@ -32,9 +32,9 @@ python3 tests/ui_nav_assert.py assert ci-evidence/scan-window.xml "같은 Wi-Fi�
 tap_text "같은 Wi-Fi에서 스캐너 찾기" "scan"
 sleep 9
 capture "scan-discovery"
-if grep -Fq "사용 가능한 IPv4 eSCL 스캐너를 찾지 못했습니다." ci-evidence/scan-discovery-window.xml; then
+if grep -Fq "eSCL 탐색 후보가 없습니다." ci-evidence/scan-discovery-window.xml; then
   echo 'PASS: LAN scanner discovery completed with no scanner present'
-elif grep -Fq "발견한 eSCL 스캐너 선택" ci-evidence/scan-discovery-window.xml; then
+elif grep -Fq "발견한 eSCL 후보 선택" ci-evidence/scan-discovery-window.xml; then
   echo 'PASS: LAN scanner discovery returned selectable scanner results'
 elif grep -Fq "mDNS 탐색 실패" ci-evidence/scan-discovery-window.xml; then
   echo 'PASS: LAN scanner discovery reported a visible platform error'
