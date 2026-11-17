@@ -394,6 +394,25 @@ public final class MainActivity extends Activity {
         styleButton(printSettings, false);
         printSettings.setOnClickListener(v -> openPrintSettings());
         addButton(systemPrintCard, printSettings);
+        Button vendorHelp = new Button(this);
+        vendorHelp.setText("제조사별 연결 방법");
+        styleButton(vendorHelp, false);
+        vendorHelp.setOnClickListener(v -> new AlertDialog.Builder(this)
+                .setTitle("제조사별 Android 인쇄")
+                .setItems(new String[]{"Epson", "HP", "Canon", "Samsung"}, (dialog, index) -> {
+                    String[] guidance = {
+                            "WF-C5390의 Epson Print Enabler와 Smart Panel은 같은 Wi-Fi에서 사용합니다. USB 직접 인쇄는 아래 WF-C5390 메뉴에서 연결 상태를 확인하세요.",
+                            "HP Print Service Plugin은 프린터가 PCL3 또는 PCL5를 지원하고 휴대전화가 USB OTG를 지원할 때 USB 인쇄를 안내합니다.",
+                            "Canon Print Service는 스마트폰과 프린터를 같은 Wi-Fi 네트워크에 연결합니다.",
+                            "Samsung Print Service Plugin은 같은 무선 네트워크를 사용합니다. HP 지원 문서에 따르면 이 플러그인은 USB 인쇄를 지원하지 않습니다."
+                    };
+                    new AlertDialog.Builder(this).setTitle("연결 안내")
+                            .setMessage(guidance[index])
+                            .setNegativeButton("닫기", null)
+                            .setPositiveButton("Android 인쇄 설정", (d, w) -> openPrintSettings())
+                            .show();
+                }).show());
+        addButton(systemPrintCard, vendorHelp);
         addCard(printPanel, systemPrintCard);
         LinearLayout directPrintCard = card();
         addText(directPrintCard, "고급 USB 직접 인쇄", 17, INK, true, 5);
@@ -414,6 +433,11 @@ public final class MainActivity extends Activity {
         styleButton(ippPdfButton, false);
         ippPdfButton.setOnClickListener(v -> chooseUsbIppPdf());
         addButton(directPrintCard, ippPdfButton);
+        Button checkUsb = new Button(this);
+        checkUsb.setText("USB 연결 확인");
+        styleButton(checkUsb, true);
+        checkUsb.setOnClickListener(v -> checkUsbPrinter());
+        addButton(directPrintCard, checkUsb);
         wfProfileButton = new Button(this);
         wfProfileButton.setText("Epson WF-C5390 프로파일 내려받기");
         styleButton(wfProfileButton, false);
@@ -914,6 +938,33 @@ public final class MainActivity extends Activity {
         catch (RuntimeException e) {
             pendingPrintDeviceName = null;
             statusView.setText("RAW 파일 선택기를 실행할 수 없습니다.");
+        }
+    }
+
+    private void checkUsbPrinter() {
+        refreshInventory();
+        if (usbManager == null) return;
+        if (displayedDevices.isEmpty()) {
+            statusView.setText("Android USB 목록에 장치가 없습니다. 프린터 전원과 PC 연결용 USB 포트, 데이터용 OTG 어댑터를 확인하세요.");
+            return;
+        }
+        UsbDevice selected = selectedDevice();
+        for (int i = 0; UsbPrinterTransport.select(selected) == null && i < displayedDevices.size(); i++) {
+            UsbDevice candidate = displayedDevices.get(i);
+            if (UsbPrinterTransport.select(candidate) != null) {
+                deviceSpinner.setSelection(i);
+                selected = candidate;
+            }
+        }
+        UsbPrinterTransport.Selection printer = UsbPrinterTransport.select(selected);
+        if (printer == null) {
+            statusView.setText("USB 장치는 감지됐지만 표준 프린터 인터페이스가 없습니다. 장치 · 진단에서 연결 장치를 확인하세요.");
+        } else if (!usbManager.hasPermission(selected)) {
+            requestSelectedDevicePermission();
+        } else if (!printer.rawCapable) {
+            statusView.setText("USB 프린터 감지 및 권한 확인 완료. 이 인터페이스에서는 WF-C5390 PS3 직접 전송을 사용할 수 없습니다.");
+        } else {
+            probeSelectedPrinter();
         }
     }
 

@@ -51,12 +51,12 @@ public final class PdfToPostScript3 {
                         if (width > MAX_RENDER_DIMENSION || height > MAX_RENDER_DIMENSION) {
                             throw new IOException("PDF 페이지 크기가 변환 한도를 초과합니다.");
                         }
-                        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565);
+                        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
                         try {
                             new Canvas(bitmap).drawColor(Color.WHITE);
                             page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT);
                             emitPage(bounded, bitmap, i + 1, width, height,
-                                    page.getWidth(), page.getHeight(), profile.dpi);
+                                    page.getWidth(), page.getHeight());
                         } finally {
                             bitmap.recycle();
                         }
@@ -79,14 +79,14 @@ public final class PdfToPostScript3 {
 
     private static void emitPage(OutputStream out, Bitmap bitmap, int pageNumber,
                                  int width, int height, int pageWidthPoints,
-                                 int pageHeightPoints, int dpi) throws IOException {
+                                 int pageHeightPoints) throws IOException {
         ascii(out, String.format(Locale.US,
                 "%%%%Page: %d %d\n<< /PageSize [%d %d] >> setpagedevice\n"
-                        + "gsave %.6f %.6f scale\n/picstr %d string def\n"
+                        + "gsave %d %d scale\n/picstr %d string def\n"
                         + "/src currentfile /ASCIIHexDecode filter /FlateDecode filter def\n"
                         + "%d %d 8 [%d 0 0 -%d 0 %d] { src picstr readstring pop } false 3 colorimage\n",
                 pageNumber, pageNumber, pageWidthPoints, pageHeightPoints,
-                72.0 / dpi, 72.0 / dpi, width * 3, width, height, width, height, height));
+                pageWidthPoints, pageHeightPoints, width * 3, width, height, width, height, height));
         HexOutputStream hex = new HexOutputStream(out);
         Deflater deflater = new Deflater(Deflater.BEST_SPEED);
         DeflaterOutputStream compressed = new DeflaterOutputStream(hex, deflater, 16 * 1024);
