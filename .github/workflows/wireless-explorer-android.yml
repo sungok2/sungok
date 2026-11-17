@@ -31,11 +31,11 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install SDK platform
-        run: sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
+      - name: Install SDK platform from hosted runner
+        run: |
+          SDKMGR="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)"
+          test -n "$SDKMGR"
+          "$SDKMGR" --install "platforms;android-35" "build-tools;35.0.0"
 
       - name: Gradle 8.11.1
         uses: gradle/actions/setup-gradle@v4
