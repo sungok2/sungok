@@ -10,6 +10,8 @@ public final class DeviceRecord {
     public long firstSeen, lastSeen;
     public int observations;
     public boolean live;
+    /** True only after direct scan evidence, not merely a cached Wi-Fi result. */
+    public boolean confirmed;
 
     public DeviceRecord(String key, String protocol, String name, String address,
                         String details, int rssi, long timestamp, boolean live) {
@@ -23,6 +25,7 @@ public final class DeviceRecord {
         this.lastSeen = timestamp;
         this.observations = 1;
         this.live = live;
+        this.confirmed = live;
     }
 
     public JSONObject toJson() throws JSONException {
@@ -37,6 +40,7 @@ public final class DeviceRecord {
         j.put("lastSeen", lastSeen);
         j.put("observations", observations);
         j.put("live", live);
+        j.put("confirmed", confirmed);
         return j;
     }
 
@@ -48,6 +52,7 @@ public final class DeviceRecord {
                 j.optLong("firstSeen", System.currentTimeMillis()), false);
         d.lastSeen = j.optLong("lastSeen", d.firstSeen);
         d.observations = Math.max(1, j.optInt("observations", 1));
+        d.confirmed = j.optBoolean("confirmed", j.optBoolean("live", false));
         return d;
     }
 }
