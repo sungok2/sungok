@@ -140,7 +140,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
 
         page.addView(space(12));
         lanToggle = new CheckBox(this);
-        lanToggle.setText("UPnP 로컬 네트워크 확장 탐색 (요청 전송)");
+        lanToggle.setText(R.string.lan_opt_in);
         lanToggle.setTextColor(SUBTLE);
         lanToggle.setTextSize(13);
         lanToggle.setButtonTintList(ColorStateList.valueOf(ACCENT));
@@ -211,7 +211,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         page.addView(space(8));
         unknownButton = action("미확인 기기·미분류만 보기: 끔", false, () -> {
             unknownOnly = !unknownOnly;
-            unknownButton.setText("미확인 기기·미분류만 보기: " + (unknownOnly ? "켬" : "끔"));
+            unknownButton.setText(unknownOnly ? R.string.unknown_on : R.string.unknown_off);
             visibleLimit = 60;
             render();
         });
@@ -357,8 +357,8 @@ public final class MainActivity extends Activity implements WirelessScanner.List
 
     private void render() {
         if (counter == null || list == null) return;
-        counter.setText("무선 " + store.countLiveRadioEndpoints() + "건  ·  로컬서비스 "
-                + store.countLiveNetworkServices() + "건  ·  누적 " + store.total() + "건");
+        counter.setText(getString(R.string.counter_summary, store.countLiveRadioEndpoints(),
+                store.countLiveNetworkServices(), store.total()));
         renderCoverage();
         list.removeAllViews();
         int shown = 0;
@@ -419,7 +419,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         titleStack.addView(title);
         TextView signal = text(d.rssi < 0 ? d.rssi + " dBm\n" + SignalRules.strength(d.rssi) : "신호 미제공",
                 12, d.rssi < 0 ? ACCENT : SUBTLE, true);
-        signal.setGravity(Gravity.RIGHT);
+        signal.setGravity(Gravity.END);
         top.addView(signal);
         container.addView(space(10));
         TextView address = text(d.address, 12, SUBTLE, false);
@@ -494,7 +494,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         }
         long elapsed = Math.max(0L, SystemClock.elapsedRealtime() - sessionStartElapsed);
         long secondsLeft = Math.max(0L, (ScanPlan.SESSION_MS - elapsed) / 1000L);
-        progress.setText("탐색 진행 · 남은 시간 " + secondsLeft + "초  /  총 180초");
+        progress.setText(getString(R.string.progress_remaining, secondsLeft));
         main.postDelayed(this::updateProgress, 1000L);
     }
 
