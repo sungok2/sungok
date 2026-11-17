@@ -78,7 +78,7 @@ public final class DeviceStore {
         for (DeviceRecord item : all()) {
             try { array.put(item.toJson()); } catch (Exception ignored) { }
         }
-        return array.toString(2);
+        return array.toString();
     }
 
     public String asCsv() {
