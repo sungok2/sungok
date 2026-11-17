@@ -280,7 +280,7 @@ public final class WirelessScanner {
         try {
             p2p.discoverPeers(p2pChannel, new WifiP2pManager.ActionListener() {
                 @Override public void onSuccess() {
-                    if (running) { radio("P2P", "검색 중"); readP2pPeers(); }
+                    if (running) radio("P2P", "검색 중 · 피어 목록 변경 이벤트 대기");
                 }
                 @Override public void onFailure(int reason) {
                     if (running) radio("P2P", "검색 실패 / 코드 " + reason);
@@ -431,7 +431,7 @@ public final class WirelessScanner {
                 if (!running || peers == null) return;
                 for (WifiP2pDevice d : peers.getDeviceList()) {
                     publish("P2P", d.deviceName, d.deviceAddress,
-                            "Wi-Fi Direct 응답 기기 · 연결 시도 없음", 0, true);
+                            "Wi-Fi Direct 피어 목록 업데이트 · 현재 존재 확인에는 한계 · 연결 없음", 0, true);
                 }
             });
         } catch (SecurityException | IllegalStateException ignored) {
