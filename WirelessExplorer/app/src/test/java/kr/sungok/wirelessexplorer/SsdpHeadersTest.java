@@ -15,6 +15,13 @@ public class SsdpHeadersTest {
         assertTrue(parsed.get("location").contains("192.168.1.2"));
     }
 
+    @Test public void acceptsHttp10ButNotFailureResponses() {
+        assertEquals("uuid:legacy", SsdpHeaders.parse(
+                "HTTP/1.0 200 OK\r\nUSN: uuid:legacy\r\n").get("usn"));
+        assertTrue(SsdpHeaders.parse(
+                "HTTP/1.1 403 Forbidden\r\nUSN: uuid:fake\r\n").isEmpty());
+    }
+
     @Test public void ignoresRequestsAndOverlongPackets() {
         assertTrue(SsdpHeaders.parse("M-SEARCH * HTTP/1.1\r\nST:ssdp:all\r\n").isEmpty());
         assertTrue(SsdpHeaders.parse("x".repeat(8200)).isEmpty());
