@@ -1,4 +1,4 @@
-> **M1 / v0.11.0 (2026-11-17)** Primary workflow: connect a supported wired printer or scanner to a Galaxy USB-host/OTG port. PDF printing is handed to Android Print Framework so installed, enabled manufacturer Print Services can provide their own drivers. The app does not bundle PC drivers or claim every model is compatible. See [manufacturer-driver integration limits](docs/VENDOR_DRIVER_INTEGRATION.md). M1 LAN eSCL discovery remains an optional network feature; see [M1 discovery scope](docs/M1_DISCOVERY.md).
+> **M1 / v0.12.0 (2026-11-18)** USB-first Galaxy printing and scanning. Android Print Framework can use installed manufacturer PrintServices where their supported transport allows it. For Epson WF-C5390, the app can fetch a constrained model profile and convert PDF to PostScript 3 for USB Printer Class protocol 1/2. The profile is protocol-reviewed, not hardware-tested; a real Galaxy + WF-C5390 print is still required before claiming compatibility. See [manufacturer-driver integration and model limits](docs/VENDOR_DRIVER_INTEGRATION.md). LAN eSCL discovery remains optional.
 
 # Galaxy Universal I/O — Galaxy USB wired print and scan
 

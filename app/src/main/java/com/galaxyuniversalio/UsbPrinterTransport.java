@@ -7,6 +7,9 @@ import android.hardware.usb.UsbInterface;
 import android.hardware.usb.UsbManager;
 import android.hardware.usb.UsbConstants;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStream;
 import java.io.IOException;
 
 /** USB Printer Class 1.1 adapter. Does not convert PDF, HWP or images into a printer PDL. */
@@ -125,6 +128,44 @@ public final class UsbPrinterTransport {
         } finally {
             releaseClose(conn, sel.intf);
         }
+    }
+
+    /** Streams a fully rendered, bounded printer-language spool without holding it in RAM. */
+    public static long sendRawFile(UsbManager manager, UsbDevice device, File job, long maximumBytes)
+            throws IOException {
+        if (job == null || !job.isFile() || job.length() <= 0 || job.length() > maximumBytes
+                || maximumBytes <= 0) {
+            throw new IOException("RAW 인쇄 작업 크기가 허용 범위를 벗어났습니다.");
+        }
+        Selection sel = select(device);
+        if (sel == null || !sel.rawCapable || sel.bulkOut == null) {
+            throw new IOException("지원되는 USB Printer Class 1/2 Bulk OUT이 없습니다.");
+        }
+        UsbDeviceConnection conn = openClaimed(manager, device, sel.intf);
+        long total = 0;
+        try (InputStream input = new FileInputStream(job)) {
+            byte[] buffer = new byte[UsbPrinterProtocol.CHUNK_BYTES];
+            int count;
+            while ((count = input.read(buffer)) != -1) {
+                if (Thread.currentThread().isInterrupted()) throw new IOException("전송이 중단되었습니다.");
+                if (count == 0) continue;
+                if (total > maximumBytes - count) throw new IOException("RAW 작업 크기 제한 초과");
+                int offset = 0;
+                while (offset < count) {
+                    int length = count - offset;
+                    int sent = conn.bulkTransfer(sel.bulkOut, buffer, offset, length, TIMEOUT_MS);
+                    if (sent <= 0 || sent > length) {
+                        throw new IOException("USB Bulk OUT 전송 실패 (offset=" + total + ")");
+                    }
+                    offset += sent;
+                    total += sent;
+                }
+            }
+        } finally {
+            releaseClose(conn, sel.intf);
+        }
+        if (total != job.length()) throw new IOException("RAW 파일 전송 길이가 일치하지 않습니다.");
+        return total;
     }
 
     private static UsbDeviceConnection openClaimed(UsbManager manager, UsbDevice device,

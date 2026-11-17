@@ -1,6 +1,6 @@
 # Manufacturer driver integration over Galaxy USB OTG
 
-Research date: 2026-11-17. This document distinguishes Android print-service reuse from the app's own USB transports. Brand alone is not a compatibility profile; exact model, firmware, interface descriptors, driver version, and a physical test are required.
+Research date: 2026-11-18. This document distinguishes Android print-service reuse from the app's own USB transports. Brand alone is not a compatibility profile; exact model, firmware, interface descriptors, driver version, and a physical test are required.
 
 ## Integration design
 
@@ -15,6 +15,12 @@ The app's direct USB actions remain protocol-gated:
 - printer status and pre-encoded PDL RAW transfer for compatible USB Printer Class interfaces;
 - direct PDF only for qualifying IPP-over-USB devices that advertise `application/pdf`;
 - no conversion of arbitrary PDF/HWP/HWPX/JPEG into each manufacturer's proprietary printer language.
+
+### Epson WorkForce Pro WF-C5390 profile (v0.12.0)
+
+The model profile is fetched on user request from this repository as constrained text data. The app accepts only allowlisted model/PDL/resolution/page/job-size values and contains no downloaded executable driver. Its built-in Android `PdfRenderer` converts PDF pages to RGB raster and PostScript 3 Level 3 `colorimage` streams; compressed raster data is streamed to USB Printer Class protocol 1/2 Bulk OUT. The profile is protocol-reviewed against Epson's published PDL support but remains **not hardware-tested** until a Galaxy and WF-C5390 print a known test sheet over the intended OTG cable. If the printer uses another USB interface protocol, the direct route stops before sending.
+
+This direct path uses Epson's published PostScript support, not Epson's private driver. It does not configure the Epson Print Enabler for USB: Epson's guide documents that service for devices on the same wireless network. The current app limits this renderer to 150 dpi, 20 PDF pages, and a 64 MiB generated job; it reports USB transfer completion, not paper output success.
 
 ### Scanning
 

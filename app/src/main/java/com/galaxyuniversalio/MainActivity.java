@@ -39,6 +39,7 @@ import android.widget.Spinner;
 import android.widget.TextView;
 
 import java.io.IOException;
+import java.io.File;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -63,6 +64,7 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_SAVE_PTP_JPEG = 1004;
     private static final int REQUEST_SAVE_ESCL_PDF = 1005;
     private static final int REQUEST_OPEN_IPP_PDF = 1006;
+    private static final int REQUEST_OPEN_WF_PS3_PDF = 1007;
     private static final String STATE_IPP_DEVICE_NAME = "pending_ipp_device_name";
     private static final String STATE_IPP_VID = "pending_ipp_vid";
     private static final String STATE_IPP_PID = "pending_ipp_pid";
@@ -114,6 +116,9 @@ public final class MainActivity extends Activity {
     private Button ptpImportButton;
     private Button usbEsclButton;
     private Button ippPdfButton;
+    private Button wfProfileButton;
+    private Button wfPs3PdfButton;
+    private volatile UsbPrinterProfile wfC5390Profile;
     private String pendingIppDeviceName;
     private int pendingIppVid, pendingIppPid;
     private EditText lanHostInput;
@@ -409,6 +414,19 @@ public final class MainActivity extends Activity {
         styleButton(ippPdfButton, false);
         ippPdfButton.setOnClickListener(v -> chooseUsbIppPdf());
         addButton(directPrintCard, ippPdfButton);
+        wfProfileButton = new Button(this);
+        wfProfileButton.setText("Epson WF-C5390 프로파일 내려받기");
+        styleButton(wfProfileButton, false);
+        wfProfileButton.setOnClickListener(v -> downloadWfC5390Profile());
+        addButton(directPrintCard, wfProfileButton);
+        addText(directPrintCard, "모델 프로파일은 설정 데이터만 받습니다. 앱 내장 변환기가 PDF를 PS3로 바꾸며, 실제 출력은 프린터에서 확인해야 합니다.",
+                12, MUTED, false, 5);
+        wfPs3PdfButton = new Button(this);
+        wfPs3PdfButton.setText("WF-C5390 · PDF → PS3 USB 인쇄");
+        styleButton(wfPs3PdfButton, true);
+        wfPs3PdfButton.setEnabled(false);
+        wfPs3PdfButton.setOnClickListener(v -> chooseWfC5390Pdf());
+        addButton(directPrintCard, wfPs3PdfButton);
         addCard(printPanel, directPrintCard);
         printPanel.setVisibility(View.GONE);
         root.addView(printPanel);
@@ -614,6 +632,7 @@ public final class MainActivity extends Activity {
             ptpImportButton.setEnabled(false);
             usbEsclButton.setEnabled(false);
             ippPdfButton.setEnabled(false);
+            wfPs3PdfButton.setEnabled(false);
             return;
         }
         try {
@@ -626,6 +645,8 @@ public final class MainActivity extends Activity {
             ptpImportButton.setEnabled(hasPermission && PtpUsbTransport.select(device) != null);
             usbEsclButton.setEnabled(hasPermission && UsbEsclHttpTransport.supports(device));
             ippPdfButton.setEnabled(hasPermission && UsbEsclHttpTransport.supports(device));
+            wfPs3PdfButton.setEnabled(hasPermission && printer != null && printer.rawCapable
+                    && wfC5390Profile != null);
         } catch (RuntimeException e) {
             permissionButton.setEnabled(false);
             printerProbeButton.setEnabled(false);
@@ -633,6 +654,7 @@ public final class MainActivity extends Activity {
             ptpImportButton.setEnabled(false);
             usbEsclButton.setEnabled(false);
             ippPdfButton.setEnabled(false);
+            wfPs3PdfButton.setEnabled(false);
         }
     }
 
@@ -796,6 +818,15 @@ public final class MainActivity extends Activity {
                 confirmUsbIppPdf(data.getData(), path, vid, pid);
             return;
         }
+        if (requestCode == REQUEST_OPEN_WF_PS3_PDF) {
+            String deviceName = pendingPrintDeviceName;
+            int vid = pendingPrintVid, pid = pendingPrintPid;
+            pendingPrintDeviceName = null;
+            if (resultCode == RESULT_OK && data != null && data.getData() != null
+                    && deviceName != null)
+                confirmWfC5390Pdf(data.getData(), deviceName, vid, pid);
+            return;
+        }
         if (requestCode == REQUEST_SAVE_ESCL_PDF) {
             boolean usb = pendingScanUsb;
             boolean feeder = pendingScanFeeder;
@@ -884,6 +915,127 @@ public final class MainActivity extends Activity {
             pendingPrintDeviceName = null;
             statusView.setText("RAW 파일 선택기를 실행할 수 없습니다.");
         }
+    }
+
+    private void downloadWfC5390Profile() {
+        wfProfileButton.setEnabled(false);
+        statusView.setText("Epson WF-C5390 프로파일을 확인하는 중입니다...");
+        writer.execute(() -> {
+            UsbPrinterProfile loaded = null;
+            String message;
+            try {
+                loaded = UsbPrinterProfile.fetchWfC5390(this);
+                message = loaded.model + " / " + loaded.pdl + " / " + loaded.dpi
+                        + " dpi 프로파일 적용\n출처: " + loaded.source
+                        + "\n선택된 USB 장치가 이 모델인지 확인한 뒤 인쇄하세요.";
+            } catch (Exception e) {
+                message = "WF-C5390 프로파일을 적용하지 못했습니다: " + e.getMessage();
+            }
+            UsbPrinterProfile finalProfile = loaded;
+            String result = message;
+            runOnUiThread(() -> {
+                if (isDestroyed()) return;
+                wfC5390Profile = finalProfile;
+                wfProfileButton.setEnabled(true);
+                updatePermissionButton();
+                statusView.setText(result);
+            });
+        });
+    }
+
+    private void chooseWfC5390Pdf() {
+        UsbPrinterProfile profile = wfC5390Profile;
+        UsbDevice device = selectedDevice();
+        if (profile == null) {
+            statusView.setText("먼저 WF-C5390 프로파일을 내려받으세요.");
+            return;
+        }
+        if (device == null || usbManager == null || !usbManager.hasPermission(device)) {
+            statusView.setText("USB 프린터를 연결하고 장치 접근 권한을 허용하세요.");
+            return;
+        }
+        UsbPrinterTransport.Selection printer = UsbPrinterTransport.select(device);
+        if (printer == null || !printer.rawCapable) {
+            statusView.setText("선택 장치가 USB Printer Class RAW 전송 조건을 만족하지 않습니다.");
+            return;
+        }
+        String product = safeUsbName(device.getProductName());
+        String manufacturer = safeUsbName(device.getManufacturerName());
+        if (!product.toUpperCase(Locale.ROOT).contains("WF-C5390")
+                && !product.equalsIgnoreCase("Unknown")) {
+            new AlertDialog.Builder(this).setTitle("연결 모델 확인")
+                    .setMessage("USB 장치명: " + manufacturer + " " + product + "\n"
+                            + String.format(Locale.US, "VID:PID %04X:%04X\n", device.getVendorId(), device.getProductId())
+                            + "프로파일은 Epson WF-C5390용입니다. 연결된 프린터가 맞는지 확인하세요.")
+                    .setNegativeButton("취소", null)
+                    .setPositiveButton("이 모델이 맞음", (d, w) -> openWfC5390PdfPicker(device))
+                    .show();
+            return;
+        }
+        openWfC5390PdfPicker(device);
+    }
+
+    private static String safeUsbName(String value) {
+        return value == null || value.trim().isEmpty() ? "Unknown" : value.trim();
+    }
+
+    private void openWfC5390PdfPicker(UsbDevice device) {
+        pendingPrintDeviceName = device.getDeviceName();
+        pendingPrintVid = device.getVendorId();
+        pendingPrintPid = device.getProductId();
+        Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        picker.addCategory(Intent.CATEGORY_OPENABLE);
+        picker.setType("application/pdf");
+        try { startActivityForResult(picker, REQUEST_OPEN_WF_PS3_PDF); }
+        catch (RuntimeException e) {
+            pendingPrintDeviceName = null;
+            statusView.setText("PDF 선택기를 열 수 없습니다.");
+        }
+    }
+
+    private void confirmWfC5390Pdf(Uri uri, String path, int vid, int pid) {
+        UsbPrinterProfile profile = wfC5390Profile;
+        UsbDevice device = findMatchingPrinter(path, vid, pid);
+        if (profile == null || device == null) {
+            statusView.setText("프로파일 또는 USB 권한이 변경되었습니다. 다시 준비하세요.");
+            return;
+        }
+        String product = safeUsbName(device.getProductName());
+        String descriptor = product.toUpperCase(Locale.ROOT).contains("WF-C5390")
+                ? "USB 제품명에서 WF-C5390을 확인했습니다."
+                : "USB 제품명에 WF-C5390이 표시되지 않습니다. 프린터 모델을 직접 확인하세요.";
+        new AlertDialog.Builder(this).setTitle("WF-C5390 USB 인쇄 확인")
+                .setMessage("PDF를 " + profile.pdl + "으로 변환합니다 (" + profile.dpi + " dpi).\n"
+                        + descriptor + "\n최대 " + profile.maxPages + "페이지, 작업 파일 최대 64 MiB.\n"
+                        + "USB 전송 완료는 실제 용지 출력 성공을 뜻하지 않습니다.")
+                .setNegativeButton("취소", null)
+                .setPositiveButton("변환 후 전송", (dialog, which) ->
+                        sendWfC5390Pdf(uri, path, vid, pid, profile))
+                .show();
+    }
+
+    private void sendWfC5390Pdf(Uri uri, String path, int vid, int pid,
+                                UsbPrinterProfile profile) {
+        statusView.setText("PDF를 PostScript 3으로 변환하는 중입니다...");
+        writer.execute(() -> {
+            File spool = new File(getCacheDir(), "wf-c5390-" + System.nanoTime() + ".ps");
+            String result;
+            try {
+                long rendered = PdfToPostScript3.render(getContentResolver(), uri, spool, profile);
+                UsbDevice device = findMatchingPrinter(path, vid, pid);
+                if (device == null) throw new IOException("프린터 연결 또는 권한이 변경되었습니다.");
+                long sent = UsbPrinterTransport.sendRawFile(usbManager, device, spool,
+                        profile.maxJobBytes);
+                result = "USB PS3 전송 완료: " + sent + " bytes (" + rendered
+                        + " bytes 변환). 실제 출력·색상·용지 설정을 확인하세요.";
+            } catch (Exception e) {
+                result = "WF-C5390 USB 인쇄 실패: " + e.getMessage();
+            } finally {
+                if (spool.exists()) spool.delete();
+            }
+            String message = result;
+            runOnUiThread(() -> { if (!isDestroyed()) statusView.setText(message); });
+        });
     }
 
     private String displayName(Uri uri) {
@@ -1179,20 +1331,20 @@ public final class MainActivity extends Activity {
         return UsbEsclHttpTransport.open(usbManager, device);
     }
 
-    private void openPrintSettings() {
-        try {
-            startActivity(new Intent(Settings.ACTION_PRINT_SETTINGS));
-        } catch (RuntimeException e) {
-            statusView.setText("Android 인쇄 서비스 설정을 열 수 없습니다.");
-        }
-    }
-
     private void choosePdfForSystemPrint() {
         Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         picker.addCategory(Intent.CATEGORY_OPENABLE);
         picker.setType("application/pdf");
         try { startActivityForResult(picker, REQUEST_OPEN_PDF); }
         catch (RuntimeException e) { statusView.setText("PDF 선택기를 열 수 없습니다."); }
+    }
+
+    private void openPrintSettings() {
+        try {
+            startActivity(new Intent(Settings.ACTION_PRINT_SETTINGS));
+        } catch (RuntimeException e) {
+            statusView.setText("Android 인쇄 서비스 설정을 열 수 없습니다.");
+        }
     }
 
     private void printPdfViaSystem(Uri uri) {
