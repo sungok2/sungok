@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Wireless Explorer</string>
+    <string name="lan_opt_in">UPnP 로컬 네트워크 확장 탐색 (요청 전송)</string>
+    <string name="unknown_on">미확인만: 켬</string>
+    <string name="unknown_off">미확인만: 끔</string>
+    <string name="counter_summary">무선 %1$d건 · 로컬서비스 %2$d건 · 누적 %3$d건</string>
+    <string name="progress_remaining">탐색 진행 · 남은 시간 %1$d초 / 총 180초</string>
+</resources>

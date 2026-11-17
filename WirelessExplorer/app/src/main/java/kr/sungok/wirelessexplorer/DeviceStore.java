@@ -1,6 +1,7 @@
 package kr.sungok.wirelessexplorer;
 
 import android.content.Context;
+import android.util.AtomicFile;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -19,6 +20,8 @@ import java.util.Map;
 /** A local-only ledger of radio endpoints, not a count of physical devices. */
 public final class DeviceStore {
     private static final int LIMIT = 3000;
+    private static final long MAX_JSON_FILE_BYTES = 6_000_000L;
+    private String lastPersistenceError = "";
     private final File file;
     private final Map<String, DeviceRecord> records = new LinkedHashMap<>();
 
@@ -33,21 +36,25 @@ public final class DeviceStore {
 
     public void observe(String protocol, String name, String address, String details,
                         int rssi, boolean confirmedThisSession) {
-        String id = address == null ? "" : address.trim();
+        String id = ObservationRules.normalizedId(protocol, address);
         if (id.isEmpty()) return;
         String key = protocol + "|" + id;
+        String safeName = ObservationRules.sanitize(name, 120);
+        String safeDetails = ObservationRules.sanitize(details, 440);
         long now = System.currentTimeMillis();
         DeviceRecord record = records.get(key);
         if (record == null) {
             record = new DeviceRecord(key, protocol,
-                    SignalRules.labelFor(name, "이름 없는 기기"),
-                    id, details == null ? "" : details, rssi, now, confirmedThisSession);
+                    SignalRules.labelFor(safeName, "이름 없는 기기"),
+                    id, safeDetails, rssi, now, confirmedThisSession);
             records.put(key, record);
         } else {
-            if (name != null && !name.trim().isEmpty()) record.name = name.trim();
-            if (details != null && !details.trim().isEmpty()) record.details = details;
-            if (rssi < 0) record.rssi = rssi;
-            record.lastSeen = now;
+            if (!safeName.isEmpty()) record.name = safeName;
+            if (!safeDetails.isEmpty()) record.details = safeDetails;
+            // A stale scan cache must never replace the last verified signal reading.
+            if (rssi < 0 && (confirmedThisSession || !record.confirmed)) record.rssi = rssi;
+            if (confirmedThisSession || !record.confirmed) record.lastSeen = now;
+            if (confirmedThisSession) record.lastConfirmedAt = now;
             record.observations++;
             record.live = record.live || confirmedThisSession;
             record.confirmed = record.confirmed || confirmedThisSession;
@@ -74,12 +81,42 @@ public final class DeviceStore {
 
     public int total() { return records.size(); }
 
+    public int countLiveRadioEndpoints() {
+        int count = 0;
+        for (DeviceRecord d : records.values()) {
+            if (d.live && ObservationRules.isRadioEvidence(d.protocol)) count++;
+        }
+        return count;
+    }
+
+    public int countLiveNetworkServices() {
+        int count = 0;
+        for (DeviceRecord d : records.values()) {
+            if (d.live && !ObservationRules.isRadioEvidence(d.protocol)) count++;
+        }
+        return count;
+    }
+
+    /** The same BT/BLE address is only a duplicate *candidate*, never auto-merged. */
+    public int sharedBluetoothAddressCandidates() {
+        int count = 0;
+        for (DeviceRecord d : records.values()) {
+            if (!d.live || !"BLE".equals(d.protocol)) continue;
+            DeviceRecord other = records.get("BT|" + d.address);
+            if (other != null && other.live &&
+                    ObservationRules.sharedBluetoothAddressCandidate(
+                            d.protocol, d.address, other.protocol, other.address)) count++;
+        }
+        return count;
+    }
+
+    public String lastPersistenceError() { return lastPersistenceError; }
+
     /** Remove every observation, including cached entries, from app-private storage. */
     public void clear() {
         records.clear();
-        if (file.exists()) file.delete();
-        File temp = new File(file.getParentFile(), file.getName() + ".tmp");
-        if (temp.exists()) temp.delete();
+        new AtomicFile(file).delete();
+        lastPersistenceError = "";
     }
 
     public String asJson() {
@@ -91,9 +128,10 @@ public final class DeviceStore {
     }
 
     public String asCsv() {
-        StringBuilder b = new StringBuilder("protocol,name,address,rssi,signal,details,firstSeen,lastSeen,observations,thisSession,confirmed\n");
+        StringBuilder b = new StringBuilder("protocol,kind,name,address,rssi,signal,details,firstSeen,lastReadAt,lastConfirmedAt,observations,thisSession,everConfirmed\n");
         for (DeviceRecord d : all()) {
             b.append(SignalRules.csv(d.protocol)).append(',')
+                    .append(SignalRules.csv(ObservationRules.isRadioEvidence(d.protocol) ? "radio-endpoint" : "network-service")).append(',')
                     .append(SignalRules.csv(d.name)).append(',')
                     .append(SignalRules.csv(d.address)).append(',')
                     .append(d.rssi).append(',')
@@ -101,6 +139,7 @@ public final class DeviceStore {
                     .append(SignalRules.csv(d.details)).append(',')
                     .append(d.firstSeen).append(',')
                     .append(d.lastSeen).append(',')
+                    .append(d.lastConfirmedAt).append(',')
                     .append(d.observations).append(',')
                     .append(d.live).append(',')
                     .append(d.confirmed).append('\n');
@@ -108,27 +147,35 @@ public final class DeviceStore {
         return b.toString();
     }
 
-    public void save() {
-        File temp = new File(file.getParentFile(), file.getName() + ".tmp");
-        try (FileOutputStream out = new FileOutputStream(temp)) {
-            out.write(asJson().getBytes(StandardCharsets.UTF_8));
-            out.flush();
-            if (!temp.renameTo(file)) {
-                // File replacement fallback; no network or external storage involved.
-                try (FileOutputStream direct = new FileOutputStream(file)) {
-                    direct.write(asJson().getBytes(StandardCharsets.UTF_8));
-                }
-                temp.delete();
+    public boolean save() {
+        AtomicFile atomic = new AtomicFile(file);
+        FileOutputStream stream = null;
+        try {
+            byte[] data = asJson().getBytes(StandardCharsets.UTF_8);
+            if (data.length > MAX_JSON_FILE_BYTES) {
+                lastPersistenceError = "기록이 허용 용량을 초과했습니다. 먼저 내보내기를 사용하세요.";
+                return false;
             }
-        } catch (IOException ignored) {
-            // The UI remains usable even when a storage write fails.
+            stream = atomic.startWrite();
+            stream.write(data);
+            atomic.finishWrite(stream);
+            lastPersistenceError = "";
+            return true;
+        } catch (IOException | RuntimeException e) {
+            if (stream != null) atomic.failWrite(stream);
+            lastPersistenceError = "내부 저장 실패 (" + e.getClass().getSimpleName() + ")";
+            return false;
         }
     }
 
     private void load() {
         if (!file.exists()) return;
-        try (FileInputStream in = new FileInputStream(file)) {
-            byte[] data = new byte[(int) Math.min(file.length(), 4_000_000L)];
+        if (file.length() > MAX_JSON_FILE_BYTES) {
+            lastPersistenceError = "저장 파일이 용량 제한을 넘어 열 수 없습니다.";
+            return;
+        }
+        try (FileInputStream in = new AtomicFile(file).openRead()) {
+            byte[] data = new byte[(int) file.length()];
             int count = 0;
             while (count < data.length) {
                 int bytes = in.read(data, count, data.length - count);
@@ -142,8 +189,9 @@ public final class DeviceStore {
                 DeviceRecord record = DeviceRecord.fromJson(j);
                 if (!record.key.isEmpty() && records.size() < LIMIT) records.put(record.key, record);
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             records.clear();
+            lastPersistenceError = "기존 탐색 기록을 열 수 없습니다: " + e.getClass().getSimpleName();
         }
     }
 }
