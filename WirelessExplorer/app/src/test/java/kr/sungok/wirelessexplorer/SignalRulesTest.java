@@ -17,6 +17,18 @@ public class SignalRulesTest {
         assertEquals("미분류 무선기기", SignalRules.category("BLE", "???"));
     }
 
+    @Test public void wifiBandAndChannelBoundaries() {
+        assertEquals("2.4 GHz", SignalRules.wifiBand(2412));
+        assertEquals(1, SignalRules.wifiChannel(2412));
+        assertEquals(14, SignalRules.wifiChannel(2484));
+        assertEquals("5 GHz", SignalRules.wifiBand(5180));
+        assertEquals(36, SignalRules.wifiChannel(5180));
+        assertEquals("6 GHz", SignalRules.wifiBand(5955));
+        assertEquals(1, SignalRules.wifiChannel(5955));
+        assertEquals(0, SignalRules.wifiChannel(1234));
+        assertEquals("대역 미분류", SignalRules.wifiBand(1234));
+    }
+
     @Test public void categoriesRemainUncertain() {
         assertEquals("오디오 기기 추정", SignalRules.category("BLE", "Galaxy Buds"));
         assertEquals("미분류 무선기기", SignalRules.category("BT", ""));
