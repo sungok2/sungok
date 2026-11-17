@@ -12,7 +12,7 @@ public final class SsdpHeaders {
         Map<String, String> values = new HashMap<>();
         if (packet == null || packet.length() > 8192) return values;
         String[] lines = packet.split("\\r?\\n", 70);
-        if (lines.length == 0 || !lines[0].trim().startsWith("HTTP/1.1 200")) return values;
+        if (lines.length == 0 || !lines[0].trim().matches("HTTP/1\\.[01] 200(?: .*)?")) return values;
         for (int i = 1; i < lines.length; i++) {
             String line = lines[i];
             int colon = line.indexOf(':');

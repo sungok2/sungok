@@ -1,6 +1,10 @@
 package kr.sungok.wirelessexplorer;
 
 import android.content.Context;
+import android.util.AtomicFile;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.nio.charset.StandardCharsets;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import org.junit.Test;
@@ -14,7 +18,7 @@ import static org.junit.Assert.*;
  */
 @RunWith(AndroidJUnit4.class)
 public class DeviceStoreInstrumentedTest {
-    @Test public void freshEvidenceAndLocalPersistenceAreCorrect() {
+    @Test public void freshEvidenceAndLocalPersistenceAreCorrect() throws Exception {
         Context app = InstrumentationRegistry.getInstrumentation().getTargetContext();
         DeviceStore store = new DeviceStore(app);
         store.clear();
@@ -49,10 +53,33 @@ public class DeviceStoreInstrumentedTest {
             assertEquals("AA:BB:CC:DD:EE:FF", wifi.address);
             assertTrue(wifi.confirmed);
             assertTrue(wifi.lastConfirmedAt > 0);
+            long verifiedAt = wifi.lastConfirmedAt;
+            long verifiedLastSeen = wifi.lastSeen;
+            int verifiedRssi = wifi.rssi;
+            String verifiedDetail = wifi.details;
+            // Re-reading Android's cache must not alter verified evidence.
+            persisted.observe("WIFI", "StaleAP", "aa-bb-cc-dd-ee-ff",
+                    "old cached results", -91, false);
+            DeviceRecord same = null;
+            for (DeviceRecord d : persisted.all()) if ("WIFI".equals(d.protocol)) same = d;
+            assertNotNull(same);
+            assertEquals(verifiedAt, same.lastConfirmedAt);
+            assertEquals(verifiedLastSeen, same.lastSeen);
+            assertEquals(verifiedRssi, same.rssi);
+            assertEquals(verifiedDetail, same.details);
+            assertEquals("TestAP", same.name);
             assertTrue(persisted.asCsv().contains("lastConfirmedAt"));
             assertTrue(persisted.asJson().contains("lastConfirmedAt"));
 
-            persisted.clear();
+            assertTrue(persisted.save());
+            // Simulate a power loss during the next atomic history write.
+            AtomicFile atomic = new AtomicFile(new File(app.getFilesDir(), "observations.json"));
+            FileOutputStream interrupted = atomic.startWrite();
+            interrupted.write("not a valid complete JSON array".getBytes(StandardCharsets.UTF_8));
+            atomic.failWrite(interrupted);
+            DeviceStore recovered = new DeviceStore(app);
+            assertEquals("AtomicFile rollback must preserve valid history", 2, recovered.total());
+            recovered.clear();
             assertEquals(0, new DeviceStore(app).total());
         } finally {
             new DeviceStore(app).clear();

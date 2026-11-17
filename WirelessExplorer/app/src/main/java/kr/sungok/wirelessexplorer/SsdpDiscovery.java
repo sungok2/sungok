@@ -1,11 +1,17 @@
 package kr.sungok.wirelessexplorer;
 
+import android.content.Context;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
+
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Optional, LAN-only UPnP/SSDP discovery. Does not connect to found URLs. */
 public final class SsdpDiscovery {
@@ -21,16 +27,40 @@ public final class SsdpDiscovery {
             "MX: 2\r\n" +
             "ST: ssdp:all\r\n\r\n").getBytes(StandardCharsets.US_ASCII);
 
+    private final Context context;
+    private final AtomicBoolean inFlight = new AtomicBoolean(false);
     private volatile DatagramSocket active;
     private volatile boolean cancelled;
 
+    public SsdpDiscovery(Context context) {
+        this.context = context.getApplicationContext();
+    }
+
     public void discover(Callback callback) {
+        if (!inFlight.compareAndSet(false, true)) {
+            callback.status("UPnP 검색이 이미 진행 중입니다");
+            return;
+        }
         cancelled = false;
         Thread thread = new Thread(() -> {
             DatagramSocket socket = null;
             try {
+                ConnectivityManager manager = (ConnectivityManager)
+                        context.getSystemService(Context.CONNECTIVITY_SERVICE);
+                Network network = manager == null ? null : manager.getActiveNetwork();
+                NetworkCapabilities capabilities = network == null
+                        ? null : manager.getNetworkCapabilities(network);
+                // Do not let opt-in LAN discovery silently transmit over mobile
+                // data or bypass a VPN. Fail closed when transports are uncertain.
+                if (capabilities == null || !capabilities.hasTransport(
+                        NetworkCapabilities.TRANSPORT_WIFI)
+                        || capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
+                    callback.status("UPnP 미실행 · VPN 없는 Wi-Fi 연결에서만 사용하세요");
+                    return;
+                }
                 socket = new DatagramSocket();
                 active = socket;
+                network.bindSocket(socket);
                 socket.setSoTimeout(700);
                 InetAddress multicast = InetAddress.getByName("239.255.255.250");
                 DatagramPacket query = new DatagramPacket(REQUEST, REQUEST.length, multicast, 1900);
@@ -72,6 +102,7 @@ public final class SsdpDiscovery {
             } finally {
                 if (socket != null) socket.close();
                 if (active == socket) active = null;
+                inFlight.set(false);
             }
         }, "WirelessExplorer-SSDP");
         thread.setDaemon(true);

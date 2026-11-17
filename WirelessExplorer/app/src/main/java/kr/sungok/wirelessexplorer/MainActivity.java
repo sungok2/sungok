@@ -74,7 +74,8 @@ public final class MainActivity extends Activity implements WirelessScanner.List
     private boolean extendedLan;
     private int visibleLimit = 60;
     private long sessionStartElapsed;
-    private boolean sessionOnly = true;
+    private boolean sessionOnly = false;
+    private final Runnable countdownTick = this::updateProgress;
     private boolean pendingStart;
     private boolean exportingJson;
     private boolean refreshScheduled;
@@ -235,7 +236,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         page.addView(space(9));
         LinearLayout toggleRow = new LinearLayout(this);
         toggleRow.setOrientation(LinearLayout.HORIZONTAL);
-        sessionButton = action("이번 탐색만", false, () -> {
+        sessionButton = action("과거 포함", false, () -> {
             sessionOnly = !sessionOnly;
             sessionButton.setText(sessionOnly ? "이번 탐색만" : "과거 포함");
             render();
@@ -340,6 +341,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         radioStates.clear();
         visibleLimit = 60;
         sessionStartElapsed = SystemClock.elapsedRealtime();
+        main.removeCallbacks(countdownTick);
         scanner.setExtendedLan(extendedLan);
         lanToggle.setEnabled(false);
         sessionOnly = true;
@@ -354,6 +356,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
 
     private void stopSession() {
         scanner.stop();
+        main.removeCallbacks(countdownTick);
         scanButton.setText("탐색 시작");
         lanToggle.setEnabled(true);
         if (!store.save()) status.setText(store.lastPersistenceError());
@@ -532,7 +535,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         long elapsed = Math.max(0L, SystemClock.elapsedRealtime() - sessionStartElapsed);
         long secondsLeft = Math.max(0L, (ScanPlan.SESSION_MS - elapsed) / 1000L);
         progress.setText(getString(R.string.progress_remaining, secondsLeft));
-        main.postDelayed(this::updateProgress, 1000L);
+        main.postDelayed(countdownTick, 1000L);
     }
 
     private void exportReport() {
@@ -581,6 +584,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
 
     @Override protected void onStop() {
         if (scanner != null && scanner.isRunning()) scanner.stop();
+        main.removeCallbacks(countdownTick);
         if (store != null) store.save();
         super.onStop();
     }
