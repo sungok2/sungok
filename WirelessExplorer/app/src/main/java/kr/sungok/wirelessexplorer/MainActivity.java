@@ -19,6 +19,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.content.res.ColorStateList;
+import android.content.res.Configuration;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.text.InputType;
@@ -61,6 +62,10 @@ public final class MainActivity extends Activity implements WirelessScanner.List
     private WirelessScanner scanner;
     private TextView status, counter, coverage, scanButton, sessionButton, progress, unknownButton;
     private CheckBox lanToggle;
+    private LinearLayout advancedPanel;
+    private TextView coverageToggle, toolToggle;
+    private boolean coverageExpanded;
+    private boolean toolsExpanded;
     private LinearLayout list, filterBar;
     private String filter = "ALL";
     private String search = "";
@@ -103,29 +108,33 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         setContentView(root);
         ScrollView scroller = new ScrollView(this);
         scroller.setFillViewport(true);
+        scroller.setBackgroundColor(BG);
         scroller.setVerticalScrollBarEnabled(false);
         root.addView(scroller, new LinearLayout.LayoutParams(-1, -1));
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
+        page.setBackgroundColor(BG);
         scroller.addView(page);
 
         TextView eyebrow = text("WIRELESS  /  EXPLORER", 12, ACCENT, true);
         eyebrow.setLetterSpacing(0.15f);
         page.addView(eyebrow);
         page.addView(space(7));
-        TextView heading = text("주변 무선기기 탐색", 27, WHITE, true);
+        boolean landscape = getResources().getConfiguration().orientation
+                == Configuration.ORIENTATION_LANDSCAPE;
+        TextView heading = text("주변 무선기기 탐색", landscape ? 22 : 26, WHITE, true);
         page.addView(heading);
         page.addView(space(8));
-        TextView subtitle = text("갤럭시 기반 · 로컬 기록 · 기기별 증거 중심 목록", 13, SUBTLE, false);
+        TextView subtitle = text("갤럭시 전용 · 로컬 기록 · 무선 증거 중심 탐색", 13, SUBTLE, false);
         page.addView(subtitle);
-        page.addView(space(20));
+        page.addView(space(landscape ? 10 : 14));
 
         LinearLayout summary = panel();
         page.addView(summary);
         counter = text("무선 0건 · 서비스 0건 · 누적 0건", 18, WHITE, true);
         summary.addView(counter);
         summary.addView(space(7));
-        TextView caution = text("실제 기기 대수가 아닌 무선 주소·네트워크 서비스 항목 수입니다. 중복 가능성을 고려하세요.", 12, SUBTLE, false);
+        TextView caution = text("무선 주소와 서비스 항목 기준 · 실제 기기 수와 다를 수 있습니다.", 12, SUBTLE, false);
         summary.addView(caution);
         summary.addView(space(11));
         status = text("준비 완료 · 탐색 시작을 눌러주세요", 13, ACCENT, false);
@@ -133,21 +142,22 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         summary.addView(space(8));
         progress = text("탐색 대기", 13, ACCENT, true);
         summary.addView(progress);
-        summary.addView(space(12));
+        summary.addView(space(10));
+        coverageToggle = text("방식별 탐색 상태 보기 ▾", 12, ACCENT, true);
+        coverageToggle.setPadding(0, dp(4), 0, dp(4));
+        coverageToggle.setOnClickListener(v -> {
+            coverageExpanded = !coverageExpanded;
+            coverage.setVisibility(coverageExpanded ? View.VISIBLE : View.GONE);
+            coverageToggle.setText(coverageExpanded
+                    ? "방식별 탐색 상태 접기 ▴" : "방식별 탐색 상태 보기 ▾");
+        });
+        summary.addView(coverageToggle);
         coverage = text("BLE · 대기\nBT · 대기\nWIFI · 대기\nP2P · 대기\nNSD · 대기\nUPNP · 선택사항", 12, SUBTLE, false);
         coverage.setLineSpacing(dp(3), 1.1f);
+        coverage.setVisibility(View.GONE);
         summary.addView(coverage);
 
         page.addView(space(12));
-        lanToggle = new CheckBox(this);
-        lanToggle.setText(R.string.lan_opt_in);
-        lanToggle.setTextColor(SUBTLE);
-        lanToggle.setTextSize(13);
-        lanToggle.setButtonTintList(ColorStateList.valueOf(ACCENT));
-        lanToggle.setContentDescription("연결된 로컬 네트워크에 UPnP 표준 탐색 요청 전송 여부");
-        lanToggle.setOnCheckedChangeListener((button, checked) -> extendedLan = checked);
-        page.addView(lanToggle);
-        page.addView(space(15));
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
         page.addView(actions);
@@ -155,28 +165,50 @@ public final class MainActivity extends Activity implements WirelessScanner.List
             if (scanner.isRunning()) stopSession();
             else requestAndStart();
         });
-        actions.addView(scanButton, new LinearLayout.LayoutParams(0, dp(50), 1f));
-        addHorizontalSpace(actions, 10);
+        actions.addView(scanButton, new LinearLayout.LayoutParams(0, dp(49), 1f));
+        addHorizontalSpace(actions, 9);
         actions.addView(action("CSV 내보내기", false, () -> export(false)),
-                new LinearLayout.LayoutParams(0, dp(50), 1f));
+                new LinearLayout.LayoutParams(0, dp(49), 1f));
 
-        page.addView(space(9));
+        advancedPanel = new LinearLayout(this);
+        advancedPanel.setOrientation(LinearLayout.VERTICAL);
+        advancedPanel.setVisibility(View.GONE);
+        advancedPanel.setPadding(0, dp(8), 0, dp(6));
+        lanToggle = new CheckBox(this);
+        lanToggle.setText(R.string.lan_opt_in);
+        lanToggle.setTextColor(SUBTLE);
+        lanToggle.setTextSize(13);
+        lanToggle.setButtonTintList(ColorStateList.valueOf(ACCENT));
+        lanToggle.setContentDescription("연결된 로컬 네트워크에 UPnP 표준 탐색 요청 전송 여부");
+        lanToggle.setOnCheckedChangeListener((button, checked) -> extendedLan = checked);
+        advancedPanel.addView(lanToggle);
+        advancedPanel.addView(space(9));
+
         LinearLayout more = new LinearLayout(this);
         more.setOrientation(LinearLayout.HORIZONTAL);
-        page.addView(more);
+        advancedPanel.addView(more);
         more.addView(action("JSON 내보내기", false, () -> export(true)),
-                new LinearLayout.LayoutParams(0, dp(44), 1f));
-        addHorizontalSpace(more, 10);
-        more.addView(action("위치 설정 열기", false,
+                new LinearLayout.LayoutParams(0, dp(43), 1f));
+        addHorizontalSpace(more, 8);
+        more.addView(action("위치 설정", false,
                 () -> startActivity(new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))),
-                new LinearLayout.LayoutParams(0, dp(44), 1f));
-        page.addView(space(9));
-        page.addView(action("탐색 진단 보고서(.txt) 저장", false, this::exportReport),
-                new LinearLayout.LayoutParams(-1, dp(44)));
-        page.addView(space(9));
-        page.addView(action("저장된 탐지 기록 전체 삭제", false, this::confirmDelete),
-                new LinearLayout.LayoutParams(-1, dp(40)));
-        page.addView(space(21));
+                new LinearLayout.LayoutParams(0, dp(43), 1f));
+        advancedPanel.addView(space(8));
+        advancedPanel.addView(action("탐색 진단 보고서(.txt) 저장", false, this::exportReport),
+                new LinearLayout.LayoutParams(-1, dp(43)));
+        advancedPanel.addView(space(8));
+        advancedPanel.addView(action("저장된 탐지 기록 전체 삭제", false, this::confirmDelete),
+                new LinearLayout.LayoutParams(-1, dp(43)));
+
+        page.addView(space(8));
+        toolToggle = action("추가 옵션 · UPnP · 보고서 ▾", false, () -> {
+            toolsExpanded = !toolsExpanded;
+            advancedPanel.setVisibility(toolsExpanded ? View.VISIBLE : View.GONE);
+            toolToggle.setText(toolsExpanded ? "추가 옵션 접기 ▴" : "추가 옵션 · UPnP · 보고서 ▾");
+        });
+        page.addView(toolToggle, new LinearLayout.LayoutParams(-1, dp(39)));
+        page.addView(advancedPanel);
+        page.addView(space(landscape ? 9 : 15));
 
         TextView section = text("발견 항목", 19, WHITE, true);
         page.addView(section);
@@ -201,22 +233,24 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         });
         page.addView(searchBox, new LinearLayout.LayoutParams(-1, dp(46)));
         page.addView(space(9));
-        sessionButton = action("이번 탐색만 표시", true, () -> {
+        LinearLayout toggleRow = new LinearLayout(this);
+        toggleRow.setOrientation(LinearLayout.HORIZONTAL);
+        sessionButton = action("이번 탐색만", false, () -> {
             sessionOnly = !sessionOnly;
-            sessionButton.setText(sessionOnly ? "이번 탐색만 표시" : "과거 탐지 포함");
-            sessionButton.setBackground(shape(sessionOnly ? SURFACE : BORDER, 14, BORDER));
+            sessionButton.setText(sessionOnly ? "이번 탐색만" : "과거 포함");
             render();
         });
-        page.addView(sessionButton, new LinearLayout.LayoutParams(-1, dp(40)));
-        page.addView(space(8));
-        unknownButton = action("미확인 기기·미분류만 보기: 끔", false, () -> {
+        toggleRow.addView(sessionButton, new LinearLayout.LayoutParams(0, dp(39), 1f));
+        addHorizontalSpace(toggleRow, 8);
+        unknownButton = action("미확인만: 끔", false, () -> {
             unknownOnly = !unknownOnly;
             unknownButton.setText(unknownOnly ? R.string.unknown_on : R.string.unknown_off);
             visibleLimit = 60;
             render();
         });
-        page.addView(unknownButton, new LinearLayout.LayoutParams(-1, dp(40)));
-        page.addView(space(8));
+        toggleRow.addView(unknownButton, new LinearLayout.LayoutParams(0, dp(39), 1f));
+        page.addView(toggleRow);
+        page.addView(space(9));
 
         HorizontalScrollView filters = new HorizontalScrollView(this);
         filters.setHorizontalScrollBarEnabled(false);
@@ -309,7 +343,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         scanner.setExtendedLan(extendedLan);
         lanToggle.setEnabled(false);
         sessionOnly = true;
-        sessionButton.setText("이번 탐색만 표시");
+        sessionButton.setText("이번 탐색만");
         sessionButton.setBackground(shape(SURFACE, 14, BORDER));
         scanner.start();
         scanButton.setText("탐색 중지");
