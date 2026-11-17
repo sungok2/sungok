@@ -269,6 +269,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
             need(missing, Manifest.permission.BLUETOOTH_SCAN);
             need(missing, Manifest.permission.BLUETOOTH_CONNECT);
         }
+        need(missing, Manifest.permission.ACCESS_COARSE_LOCATION);
         need(missing, Manifest.permission.ACCESS_FINE_LOCATION);
         if (Build.VERSION.SDK_INT >= 33) need(missing, Manifest.permission.NEARBY_WIFI_DEVICES);
         if (!missing.isEmpty()) {
