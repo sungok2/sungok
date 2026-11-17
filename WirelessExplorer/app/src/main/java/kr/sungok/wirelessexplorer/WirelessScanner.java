@@ -114,7 +114,7 @@ public final class WirelessScanner {
         startNsdCycle(0);
         startP2p();
         if (extendedLan) {
-            ssdp = new SsdpDiscovery();
+            ssdp = new SsdpDiscovery(context);
             main.postDelayed(this::discoverSsdp, 8_000);
             main.postDelayed(this::discoverSsdp, 100_000);
         }
