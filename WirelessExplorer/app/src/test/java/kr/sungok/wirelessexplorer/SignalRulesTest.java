@@ -17,6 +17,12 @@ public class SignalRulesTest {
         assertEquals("미분류 무선기기", SignalRules.category("BLE", "???"));
     }
 
+    @Test public void categoriesRemainUncertain() {
+        assertEquals("오디오 기기 추정", SignalRules.category("BLE", "Galaxy Buds"));
+        assertEquals("미분류 무선기기", SignalRules.category("BT", ""));
+        assertEquals("Wi-Fi 접속점", SignalRules.category("WIFI", ""));
+    }
+
     @Test public void csvQuotesAreEscaped() {
         assertEquals("\"a\"\"b\"", SignalRules.csv("a\"b"));
         assertEquals("\"\"", SignalRules.csv(null));
