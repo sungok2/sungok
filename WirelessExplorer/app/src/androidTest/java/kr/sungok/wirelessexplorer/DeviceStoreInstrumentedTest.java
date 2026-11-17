@@ -18,7 +18,7 @@ import static org.junit.Assert.*;
  */
 @RunWith(AndroidJUnit4.class)
 public class DeviceStoreInstrumentedTest {
-    @Test public void freshEvidenceAndLocalPersistenceAreCorrect() {
+    @Test public void freshEvidenceAndLocalPersistenceAreCorrect() throws Exception {
         Context app = InstrumentationRegistry.getInstrumentation().getTargetContext();
         DeviceStore store = new DeviceStore(app);
         store.clear();
