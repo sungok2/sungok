@@ -222,6 +222,8 @@ public final class WirelessScanner {
                     readWifi(fresh);
                 } else if (BluetoothDevice.ACTION_FOUND.equals(action)) {
                     readClassic(intent);
+                } else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
+                    radio("BT", "검색 완료");
                 } else if (WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION.equals(action)) {
                     readP2pPeers();
                 }
@@ -265,6 +267,7 @@ public final class WirelessScanner {
         try {
             List<android.net.wifi.ScanResult> results = wifi.getScanResults();
             if (results == null) return;
+            boolean anyFresh = false;
             for (android.net.wifi.ScanResult r : results) {
                 if (r.BSSID == null || r.BSSID.isEmpty()) continue;
                 String name = r.SSID == null || r.SSID.isEmpty() ? "숨김 Wi-Fi" : r.SSID;
@@ -274,8 +277,9 @@ public final class WirelessScanner {
                 String detail = r.frequency + " MHz · " + r.capabilities
                         + (newInThisSession ? " · 이번 탐색 확인" : " · 과거 스캔 캐시(현재 위치 미확인)");
                 publish("WIFI", name, r.BSSID, detail, r.level, newInThisSession);
-                if (newInThisSession) radio("WIFI", "새 결과 수신");
+                if (newInThisSession) anyFresh = true;
             }
+            if (anyFresh) radio("WIFI", "새 결과 수신");
         } catch (SecurityException | IllegalStateException e) {
             radio("WIFI", "결과 접근 실패 / 위치 확인");
             report("Wi-Fi 결과를 읽을 수 없습니다 · 위치 권한/서비스 확인");
