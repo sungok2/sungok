@@ -58,7 +58,7 @@ public final class DeviceRecord {
         d.lastSeen = j.optLong("lastSeen", d.firstSeen);
         d.observations = Math.max(1, j.optInt("observations", 1));
         d.confirmed = j.optBoolean("confirmed", j.optBoolean("live", false));
-        d.lastConfirmedAt = j.optLong("lastConfirmedAt", d.confirmed ? d.lastSeen : 0L);
+        d.lastConfirmedAt = j.optLong("lastConfirmedAt", 0L); // v0.2 did not retain verified time
         return d;
     }
 }
