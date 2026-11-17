@@ -12,6 +12,8 @@ public final class DeviceRecord {
     public boolean live;
     /** True only after direct scan evidence, not merely a cached Wi-Fi result. */
     public boolean confirmed;
+    /** 0 for a cached-only endpoint; never label this as an observed radio signal. */
+    public long lastConfirmedAt;
 
     public DeviceRecord(String key, String protocol, String name, String address,
                         String details, int rssi, long timestamp, boolean live) {
@@ -26,6 +28,7 @@ public final class DeviceRecord {
         this.observations = 1;
         this.live = live;
         this.confirmed = live;
+        this.lastConfirmedAt = live ? timestamp : 0L;
     }
 
     public JSONObject toJson() throws JSONException {
@@ -41,6 +44,8 @@ public final class DeviceRecord {
         j.put("observations", observations);
         j.put("live", live);
         j.put("confirmed", confirmed);
+        j.put("lastConfirmedAt", lastConfirmedAt);
+        j.put("kind", ObservationRules.isRadioEvidence(protocol) ? "radio-endpoint" : "network-service");
         return j;
     }
 
@@ -53,6 +58,7 @@ public final class DeviceRecord {
         d.lastSeen = j.optLong("lastSeen", d.firstSeen);
         d.observations = Math.max(1, j.optInt("observations", 1));
         d.confirmed = j.optBoolean("confirmed", j.optBoolean("live", false));
+        d.lastConfirmedAt = j.optLong("lastConfirmedAt", d.confirmed ? d.lastSeen : 0L);
         return d;
     }
 }
