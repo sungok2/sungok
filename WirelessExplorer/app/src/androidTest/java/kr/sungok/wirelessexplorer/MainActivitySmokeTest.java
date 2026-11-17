@@ -1,6 +1,6 @@
 package kr.sungok.wirelessexplorer;
 
-import android.view.View;
+import android.view.ViewGroup;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -18,7 +18,7 @@ public class MainActivitySmokeTest {
         assertNotNull(activity);
         assertNotNull(activity.getWindow());
         assertNotNull(activity.getWindow().getDecorView());
-        View content = activity.findViewById(android.R.id.content);
+        ViewGroup content = activity.findViewById(android.R.id.content);
         assertNotNull(content);
         assertTrue(content.getChildCount() > 0);
     }
