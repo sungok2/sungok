@@ -1,6 +1,6 @@
 # Wireless Explorer for Galaxy
 
-**Version:** 0.3.0 (engineering prototype)  
+**Version:** 0.3.1 (engineering prototype)  
 **Package ID:** kr.sungok.wirelessexplorer  
 **Requirements:** Android 8.0+ (API 26), Bluetooth/Wi-Fi hardware for the corresponding scans.  
 **Status:** Source implementation and GitHub Actions APK build workflow. An actual Galaxy hardware test is required before any production claim.
@@ -30,6 +30,7 @@ Catalog as many **detectable nearby wireless endpoints** as Android public APIs 
 - Atomic local-history writes and explicit save-error warnings; verified last-confirmed timestamp never overwritten by stale Wi-Fi cache.
 - Sanitized and bounded device names/addresses/details; MAC normalization, protocol-specific identity without incorrect cross-protocol merging.
 - Separate confirmed RF endpoints and LAN service counts; only *candidate* same-address Classic/BLE links, not automatic physical-device counts.
+- Compact dark results-first UI with collapsed advanced tools/diagnostics (prevents initial controls from pushing results offscreen), responsive landscape typography and ForceDark disabled.
 - Search by device name/address/details, unknown-only view, pagination, live scan countdown and evidence-oriented status labels.
 - User-exportable text diagnostic report with per-protocol status, counts, limits and a field verification checklist.
 - Wi-Fi 2.4/5/6 GHz band and channel classification, BLE advertised service identifiers.
@@ -51,7 +52,7 @@ Catalog as many **detectable nearby wireless endpoints** as Android public APIs 
 
 ## Build
 
-GitHub > Actions > **Wireless Explorer Android APK** > select a successful run > Artifacts > **WirelessExplorer-v0.3.0-debug-apk**.
+GitHub > Actions > **Wireless Explorer Android APK** > select a successful run > Artifacts > **WirelessExplorer-v0.3.1-debug-apk**.
 Unzip and install app-debug.apk on your Galaxy (allow installation from that source if prompted). Each CI run uses GitHub's temporary debug key. Uninstalling a previous build may be required before installing a build signed with a different key; uninstalling removes the app's local history, so export it first.
 
 To build with Android Studio, open **WirelessExplorer/** as its own project, use JDK 17, Android SDK platform 35, Android Gradle Plugin 8.9.2 and Gradle 8.11.1. A Gradle wrapper is not committed; GitHub Actions provisions Gradle.
