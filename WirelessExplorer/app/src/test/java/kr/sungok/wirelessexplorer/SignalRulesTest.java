@@ -26,5 +26,7 @@ public class SignalRulesTest {
     @Test public void csvQuotesAreEscaped() {
         assertEquals("\"a\"\"b\"", SignalRules.csv("a\"b"));
         assertEquals("\"\"", SignalRules.csv(null));
+        assertEquals("\"'=1+1\"", SignalRules.csv("=1+1"));
+        assertEquals("\"'  @HYPERLINK\"", SignalRules.csv("  @HYPERLINK"));
     }
 }

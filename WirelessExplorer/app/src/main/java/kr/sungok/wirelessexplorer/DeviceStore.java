@@ -50,6 +50,7 @@ public final class DeviceStore {
             record.lastSeen = now;
             record.observations++;
             record.live = record.live || confirmedThisSession;
+            record.confirmed = record.confirmed || confirmedThisSession;
         }
         if (records.size() > LIMIT) {
             String oldest = records.values().stream()
@@ -73,6 +74,14 @@ public final class DeviceStore {
 
     public int total() { return records.size(); }
 
+    /** Remove every observation, including cached entries, from app-private storage. */
+    public void clear() {
+        records.clear();
+        if (file.exists()) file.delete();
+        File temp = new File(file.getParentFile(), file.getName() + ".tmp");
+        if (temp.exists()) temp.delete();
+    }
+
     public String asJson() {
         JSONArray array = new JSONArray();
         for (DeviceRecord item : all()) {
@@ -82,7 +91,7 @@ public final class DeviceStore {
     }
 
     public String asCsv() {
-        StringBuilder b = new StringBuilder("protocol,name,address,rssi,signal,details,firstSeen,lastSeen,observations,thisSession\n");
+        StringBuilder b = new StringBuilder("protocol,name,address,rssi,signal,details,firstSeen,lastSeen,observations,thisSession,confirmed\n");
         for (DeviceRecord d : all()) {
             b.append(SignalRules.csv(d.protocol)).append(',')
                     .append(SignalRules.csv(d.name)).append(',')
@@ -93,7 +102,8 @@ public final class DeviceStore {
                     .append(d.firstSeen).append(',')
                     .append(d.lastSeen).append(',')
                     .append(d.observations).append(',')
-                    .append(d.live).append('\n');
+                    .append(d.live).append(',')
+                    .append(d.confirmed).append('\n');
         }
         return b.toString();
     }

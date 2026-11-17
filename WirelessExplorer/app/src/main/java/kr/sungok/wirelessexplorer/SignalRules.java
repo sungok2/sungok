@@ -31,6 +31,12 @@ public final class SignalRules {
 
     public static String csv(String value) {
         String s = value == null ? "" : value;
+        // Device names and service labels are untrusted; protect CSV spreadsheet viewers.
+        int first = 0;
+        while (first < s.length() && Character.isWhitespace(s.charAt(first))) first++;
+        if (first < s.length() && "=+-@".indexOf(s.charAt(first)) >= 0) {
+            s = "'" + s;
+        }
         return "\"" + s.replace("\"", "\"\"") + "\"";
     }
 }

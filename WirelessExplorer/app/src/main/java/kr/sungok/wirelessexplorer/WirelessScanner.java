@@ -21,6 +21,7 @@ import android.net.wifi.p2p.WifiP2pManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.bluetooth.le.ScanRecord;
 import android.util.SparseArray;
 
@@ -36,15 +37,17 @@ public final class WirelessScanner {
     public interface Listener {
         void onDevice(String protocol, String name, String id, String details, int rssi, boolean fresh);
         void onStatus(String message);
+        default void onRadioState(String protocol, String state) { }
     }
 
-    private static final int SESSION_MS = 120_000;
+    private static final int SESSION_MS = 180_000;
     private static final int WIFI_INTERVAL_MS = 35_000;
-    private static final int NSD_INTERVAL_MS = 14_000;
+    private static final int NSD_INTERVAL_MS = 13_500;
     private static final String[] SERVICE_TYPES = {
             "_http._tcp.", "_ipp._tcp.", "_googlecast._tcp.",
             "_airplay._tcp.", "_workstation._tcp.", "_smb._tcp.",
-            "_hap._tcp.", "_raop._tcp."
+            "_hap._tcp.", "_raop._tcp.",
+            "_device-info._tcp.", "_printer._tcp.", "_rtsp._tcp.", "_ssh._tcp."
     };
 
     private final Context context;
@@ -53,6 +56,8 @@ public final class WirelessScanner {
     private BluetoothAdapter bluetooth;
     private BluetoothLeScanner ble;
     private WifiManager wifi;
+    private WifiManager.MulticastLock multicastLock;
+    private long sessionStartedElapsedUs;
     private WifiP2pManager p2p;
     private WifiP2pManager.Channel p2pChannel;
     private NsdManager nsd;
@@ -71,10 +76,26 @@ public final class WirelessScanner {
     public void start() {
         if (running) return;
         running = true;
-        report("탐색 시작 · 120초 동안 수신된 신호를 수집합니다");
+        sessionStartedElapsedUs = SystemClock.elapsedRealtimeNanos() / 1000L;
+        report("탐색 시작 · 180초 동안 수신된 신호를 수집합니다");
         registerEvents();
+        radio("BLE", "시작 준비");
+        radio("BT", "시작 준비");
+        radio("WIFI", "시작 준비");
+        radio("P2P", "시작 준비");
+        radio("NSD", "시작 준비");
         startBluetooth();
         wifi = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+        if (wifi != null) {
+            try {
+                // Older Android versions need a lock for reliable mDNS multicast reception.
+                multicastLock = wifi.createMulticastLock("WirelessExplorer-mdns");
+                multicastLock.setReferenceCounted(false);
+                multicastLock.acquire();
+            } catch (SecurityException | IllegalStateException ignored) {
+                report("mDNS 멀티캐스트 수신 제한 · 일부 서비스가 누락될 수 있습니다");
+            }
+        }
         requestWifi();
         nsd = (NsdManager) context.getSystemService(Context.NSD_SERVICE);
         startNsdCycle(0);
@@ -82,8 +103,11 @@ public final class WirelessScanner {
         main.postDelayed(() -> {
             if (!running || bluetooth == null) return;
             try {
-                if (bluetooth.isEnabled()) bluetooth.startDiscovery();
+                if (bluetooth.isEnabled()) {
+                    radio("BT", bluetooth.startDiscovery() ? "검색 중" : "시작 거부");
+                } else radio("BT", "블루투스 꺼짐");
             } catch (SecurityException | IllegalStateException e) {
+                radio("BT", "검색 실패 / 권한 확인");
                 report("일반 블루투스 검색 실패: " + e.getClass().getSimpleName());
             }
         }, 15_000);
@@ -99,6 +123,9 @@ public final class WirelessScanner {
         try { if (bluetooth != null && bluetooth.isDiscovering()) bluetooth.cancelDiscovery(); }
         catch (SecurityException | IllegalStateException ignored) { }
         stopNsd();
+        try { if (multicastLock != null && multicastLock.isHeld()) multicastLock.release(); }
+        catch (RuntimeException ignored) { }
+        multicastLock = null;
         try { if (receiver != null) context.unregisterReceiver(receiver); }
         catch (IllegalArgumentException ignored) { }
         receiver = null;
@@ -111,14 +138,21 @@ public final class WirelessScanner {
             bluetooth = manager == null ? null : manager.getAdapter();
             if (bluetooth == null) {
                 report("블루투스 기능이 없는 단말입니다");
+                radio("BLE", "하드웨어 미지원");
+                radio("BT", "하드웨어 미지원");
                 return;
             }
             if (!bluetooth.isEnabled()) {
                 report("블루투스가 꺼져 있습니다 · 설정에서 켜주세요");
+                radio("BLE", "블루투스 꺼짐");
+                radio("BT", "블루투스 꺼짐");
                 return;
             }
             ble = bluetooth.getBluetoothLeScanner();
-            if (ble == null) return;
+            if (ble == null) {
+                radio("BLE", "BLE 수신기 미지원");
+                return;
+            }
             bleCallback = new ScanCallback() {
                 @Override public void onScanResult(int callbackType, ScanResult result) {
                     addBle(result);
@@ -129,13 +163,16 @@ public final class WirelessScanner {
                 }
 
                 @Override public void onScanFailed(int errorCode) {
+                    radio("BLE", "실패 / 코드 " + errorCode);
                     report("BLE 스캔 실패 · Android 오류 코드 " + errorCode);
                 }
             };
             ScanSettings settings = new ScanSettings.Builder()
                     .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build();
             ble.startScan(null, settings, bleCallback);
+            radio("BLE", "검색 중");
         } catch (SecurityException | IllegalStateException e) {
+            radio("BLE", "시작 실패 / 권한 확인");
             report("BLE 시작 실패 · 기기 권한이나 블루투스 상태를 확인하세요");
         }
     }
@@ -185,6 +222,8 @@ public final class WirelessScanner {
                     readWifi(fresh);
                 } else if (BluetoothDevice.ACTION_FOUND.equals(action)) {
                     readClassic(intent);
+                } else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
+                    radio("BT", "검색 완료");
                 } else if (WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION.equals(action)) {
                     readP2pPeers();
                 }
@@ -213,9 +252,11 @@ public final class WirelessScanner {
         if (!running || wifi == null) return;
         try {
             boolean accepted = wifi.startScan();
+            radio("WIFI", accepted ? "검색 중" : "스캔 제한 / 캐시만 확인");
             if (!accepted) report("Wi-Fi 새 검색이 제한되었습니다 · 기존 결과만 확인");
             readWifi(false); // Explicitly labeled as cached, not a fresh discovery.
         } catch (SecurityException | IllegalStateException e) {
+            radio("WIFI", "위치 권한 또는 서비스 확인");
             report("Wi-Fi 탐색을 위해 위치 권한과 위치 서비스를 켜주세요");
         }
         main.postDelayed(this::requestWifi, WIFI_INTERVAL_MS);
@@ -226,14 +267,21 @@ public final class WirelessScanner {
         try {
             List<android.net.wifi.ScanResult> results = wifi.getScanResults();
             if (results == null) return;
+            boolean anyFresh = false;
             for (android.net.wifi.ScanResult r : results) {
                 if (r.BSSID == null || r.BSSID.isEmpty()) continue;
                 String name = r.SSID == null || r.SSID.isEmpty() ? "숨김 Wi-Fi" : r.SSID;
+                long nowUs = SystemClock.elapsedRealtimeNanos() / 1000L;
+                boolean newInThisSession = ScanFreshness.isWifiFresh(
+                        fresh, r.timestamp, sessionStartedElapsedUs, nowUs);
                 String detail = r.frequency + " MHz · " + r.capabilities
-                        + (fresh ? " · 새 스캔" : " · 캐시 결과");
-                publish("WIFI", name, r.BSSID, detail, r.level, fresh);
+                        + (newInThisSession ? " · 이번 탐색 확인" : " · 과거 스캔 캐시(현재 위치 미확인)");
+                publish("WIFI", name, r.BSSID, detail, r.level, newInThisSession);
+                if (newInThisSession) anyFresh = true;
             }
+            if (anyFresh) radio("WIFI", "새 결과 수신");
         } catch (SecurityException | IllegalStateException e) {
+            radio("WIFI", "결과 접근 실패 / 위치 확인");
             report("Wi-Fi 결과를 읽을 수 없습니다 · 위치 권한/서비스 확인");
         }
     }
@@ -241,19 +289,22 @@ public final class WirelessScanner {
     private void startP2p() {
         try {
             p2p = (WifiP2pManager) context.getSystemService(Context.WIFI_P2P_SERVICE);
-            if (p2p == null) return;
+            if (p2p == null) { radio("P2P", "기능 미지원"); return; }
             p2pChannel = p2p.initialize(context, Looper.getMainLooper(), () -> {
                 p2pChannel = null;
+                radio("P2P", "채널 종료");
                 report("Wi-Fi Direct 채널 종료");
             });
-            if (p2pChannel == null) return;
+            if (p2pChannel == null) { radio("P2P", "채널 미연결"); return; }
             p2p.discoverPeers(p2pChannel, new WifiP2pManager.ActionListener() {
-                @Override public void onSuccess() { readP2pPeers(); }
+                @Override public void onSuccess() { radio("P2P", "검색 중"); readP2pPeers(); }
                 @Override public void onFailure(int reason) {
+                    radio("P2P", "검색 실패 / 코드 " + reason);
                     report("Wi-Fi Direct 검색 불가 · 코드 " + reason);
                 }
             });
         } catch (SecurityException | IllegalStateException e) {
+            radio("P2P", "권한 또는 기능 제한");
             report("Wi-Fi Direct 검색 권한이나 기능이 제한되었습니다");
         }
     }
@@ -278,7 +329,7 @@ public final class WirelessScanner {
         stopNsd();
         String type = SERVICE_TYPES[index % SERVICE_TYPES.length];
         NsdManager.DiscoveryListener discovery = new NsdManager.DiscoveryListener() {
-            @Override public void onDiscoveryStarted(String serviceType) { }
+            @Override public void onDiscoveryStarted(String serviceType) { radio("NSD", "검색 중"); }
             @Override public void onServiceFound(NsdServiceInfo info) {
                 if (!running || info == null) return;
                 String unique = info.getServiceType() + "/" + info.getServiceName();
@@ -289,6 +340,7 @@ public final class WirelessScanner {
             @Override public void onServiceLost(NsdServiceInfo info) { }
             @Override public void onDiscoveryStopped(String serviceType) { }
             @Override public void onStartDiscoveryFailed(String serviceType, int errorCode) {
+                radio("NSD", "서비스 탐색 제한 / 코드 " + errorCode);
                 report("mDNS 서비스 탐색 제한 · " + errorCode);
             }
             @Override public void onStopDiscoveryFailed(String serviceType, int errorCode) { }
@@ -297,6 +349,7 @@ public final class WirelessScanner {
             nsd.discoverServices(type, NsdManager.PROTOCOL_DNS_SD, discovery);
             activeNsd = discovery;
         } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
+            radio("NSD", "서비스 검색 오류");
             report("mDNS 탐색 오류 · " + type);
         }
         main.postDelayed(() -> startNsdCycle(index + 1), NSD_INTERVAL_MS);
@@ -319,5 +372,9 @@ public final class WirelessScanner {
 
     private void report(String message) {
         main.post(() -> listener.onStatus(message));
+    }
+
+    private void radio(String protocol, String state) {
+        main.post(() -> listener.onRadioState(protocol, state));
     }
 }

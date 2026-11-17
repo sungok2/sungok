@@ -2,6 +2,7 @@ package kr.sungok.wirelessexplorer;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -32,6 +33,8 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Locale;
 
 /** Offline-first discovery console. Device count is explicitly endpoint count. */
@@ -49,13 +52,15 @@ public final class MainActivity extends Activity implements WirelessScanner.List
     private final SimpleDateFormat time = new SimpleDateFormat("MM-dd HH:mm:ss", Locale.KOREA);
     private DeviceStore store;
     private WirelessScanner scanner;
-    private TextView status, counter, empty, scanButton, sessionButton;
+    private TextView status, counter, coverage, scanButton, sessionButton;
     private LinearLayout list, filterBar;
     private String filter = "ALL";
     private boolean sessionOnly = true;
     private boolean pendingStart;
     private boolean exportingJson;
     private boolean refreshScheduled;
+    private boolean persistScheduled;
+    private final Map<String,String> radioStates = new LinkedHashMap<>();
 
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -110,6 +115,10 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         summary.addView(space(11));
         status = text("준비 완료 · 탐색 시작을 눌러주세요", 13, ACCENT, false);
         summary.addView(status);
+        summary.addView(space(12));
+        coverage = text("BLE · 대기\nBT · 대기\nWIFI · 대기\nP2P · 대기\nNSD · 대기", 12, SUBTLE, false);
+        coverage.setLineSpacing(dp(3), 1.1f);
+        summary.addView(coverage);
 
         page.addView(space(15));
         LinearLayout actions = new LinearLayout(this);
@@ -134,6 +143,9 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         more.addView(action("위치 설정 열기", false,
                 () -> startActivity(new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))),
                 new LinearLayout.LayoutParams(0, dp(44), 1f));
+        page.addView(space(9));
+        page.addView(action("저장된 탐지 기록 전체 삭제", false, this::confirmDelete),
+                new LinearLayout.LayoutParams(-1, dp(40)));
         page.addView(space(21));
 
         TextView section = text("발견 항목", 19, WHITE, true);
@@ -216,23 +228,24 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         super.onRequestPermissionsResult(requestCode, permissions, grants);
         if (requestCode != REQ_PERMS || !pendingStart) return;
         pendingStart = false;
-        for (int grant : grants) {
-            if (grant != PackageManager.PERMISSION_GRANTED) {
-                status.setText("권한 거부 · 설정에서 주변 기기 및 정확한 위치를 허용하세요");
-                return;
-            }
-        }
         if (grants.length == 0) {
-            status.setText("필수 권한을 확인할 수 없습니다");
-        } else {
-            startSession();
+            status.setText("권한 결과를 확인할 수 없습니다");
+            return;
         }
+        int denied = 0;
+        for (int grant : grants) if (grant != PackageManager.PERMISSION_GRANTED) denied++;
+        if (denied > 0) {
+            Toast.makeText(this, "일부 권한 거부 · 허용된 무선 방식만 탐색합니다",
+                    Toast.LENGTH_LONG).show();
+        }
+        startSession();
     }
 
     private void startSession() {
         store.beginSession();
         sessionOnly = true;
         sessionButton.setText("이번 탐색만 표시");
+        sessionButton.setBackground(shape(SURFACE, 14, BORDER));
         scanner.start();
         scanButton.setText("탐색 중지");
         status.setText("탐색 중 · 검색 결과 누적 수집");
@@ -249,6 +262,13 @@ public final class MainActivity extends Activity implements WirelessScanner.List
     @Override public void onDevice(String protocol, String name, String id,
                                    String details, int rssi, boolean fresh) {
         store.observe(protocol, name, id, details, rssi, fresh);
+        if (!persistScheduled) {
+            persistScheduled = true;
+            main.postDelayed(() -> {
+                persistScheduled = false;
+                store.save();
+            }, 12_000);
+        }
         if (!refreshScheduled) {
             refreshScheduled = true;
             main.postDelayed(() -> {
@@ -269,6 +289,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
     private void render() {
         if (counter == null || list == null) return;
         counter.setText("이번 탐색  " + store.countThisSession() + "    ·    누적  " + store.total());
+        renderCoverage();
         list.removeAllViews();
         int shown = 0;
         int matching = 0;
@@ -312,7 +333,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         TextView title = text(d.name, 17, WHITE, true);
         title.setMaxLines(2);
         titleStack.addView(title);
-        TextView signal = text(d.rssi < 0 ? d.rssi + " dBm" : "신호 미제공",
+        TextView signal = text(d.rssi < 0 ? d.rssi + " dBm\n" + SignalRules.strength(d.rssi) : "신호 미제공",
                 12, d.rssi < 0 ? ACCENT : SUBTLE, true);
         signal.setGravity(Gravity.RIGHT);
         top.addView(signal);
@@ -324,7 +345,8 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         TextView detail = text(d.details, 12, SUBTLE, false);
         container.addView(detail);
         container.addView(space(8));
-        String badge = d.live ? "이번 탐색에서 발견" : "과거 탐지 이력";
+        String badge = d.live ? "이번 탐색에서 확인" :
+                (d.confirmed ? "이전 탐색에서 확인" : "캐시 정보 · 현재 주변 미확인");
         TextView meta = text(badge + "  ·  " + time.format(new Date(d.lastSeen))
                 + "  ·  수집 " + d.observations + "회", 11, d.live ? ACCENT : SUBTLE, false);
         container.addView(meta);
@@ -338,6 +360,43 @@ public final class MainActivity extends Activity implements WirelessScanner.List
             return true;
         });
         return container;
+    }
+
+    @Override public void onRadioState(String protocol, String state) {
+        radioStates.put(protocol, state);
+        renderCoverage();
+    }
+
+    private void renderCoverage() {
+        if (coverage == null || store == null) return;
+        StringBuilder b = new StringBuilder("무선 방식별 탐색 상태 · 이번 탐색에서 확인한 항목 수\n");
+        String[] types = {"BLE", "BT", "WIFI", "P2P", "NSD"};
+        List<DeviceRecord> items = store.all();
+        for (String type : types) {
+            int count = 0;
+            for (DeviceRecord d : items) {
+                if (d.live && type.equals(d.protocol)) count++;
+            }
+            b.append(type).append("  ").append(count).append("건  ·  ")
+                    .append(radioStates.containsKey(type) ? radioStates.get(type) : "대기")
+                    .append('\n');
+        }
+        coverage.setText(b.toString().trim());
+    }
+
+    private void confirmDelete() {
+        new AlertDialog.Builder(this)
+                .setTitle("탐지 기록 전체 삭제")
+                .setMessage("저장된 모든 주소·서비스 탐지 이력이 삭제됩니다. 복구할 수 없습니다.")
+                .setNegativeButton("취소", (dialog, which) -> { })
+                .setPositiveButton("모두 삭제", (dialog, which) -> {
+                    if (scanner.isRunning()) stopSession();
+                    store.clear();
+                    render();
+                    Toast.makeText(this, "저장된 탐지 기록을 삭제했습니다",
+                            Toast.LENGTH_LONG).show();
+                })
+                .show();
     }
 
     private void export(boolean json) {
