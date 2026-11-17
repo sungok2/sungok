@@ -29,8 +29,9 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Passive discovery of discoverable endpoints only.
- * Does not connect, pair, authenticate, interrogate ports or decode RF payloads.
+ * Discoverable radio endpoints + LAN service advertisement, with optional
+ * user-enabled UPnP M-SEARCH on the currently connected local network.
+ * Does not pair, authenticate, interrogate ports or decode RF payloads.
  */
 @SuppressWarnings("deprecation")
 public final class WirelessScanner {
@@ -85,7 +86,7 @@ public final class WirelessScanner {
         running = true;
         generation++;
         sessionStartedElapsedUs = SystemClock.elapsedRealtimeNanos() / 1000L;
-        report("탐색 시작 · 180초 동안 수신된 신호를 수집합니다");
+        report("탐색 시작 · BLE/Classic 분리 및 Wi-Fi·LAN 증거 수집 (180초)");
         registerEvents();
         radio("BLE", "시작 준비");
         radio("BT", "시작 준비");
@@ -297,9 +298,7 @@ public final class WirelessScanner {
             String address = device.getAddress();
             ScanRecord record = result.getScanRecord();
             String name = record == null ? null : record.getDeviceName();
-            if ((name == null || name.isEmpty()) && Build.VERSION.SDK_INT >= 31) {
-                name = device.getName();
-            }
+            if (name == null || name.isEmpty()) name = device.getName();
             StringBuilder detail = new StringBuilder("BLE 광고");
             if (record != null) {
                 SparseArray<byte[]> manufacturers = record.getManufacturerSpecificData();
@@ -312,6 +311,10 @@ public final class WirelessScanner {
                 }
                 if (record.getServiceUuids() != null && !record.getServiceUuids().isEmpty()) {
                     detail.append(" · 서비스 ").append(record.getServiceUuids().size()).append("개");
+                    int services = Math.min(2, record.getServiceUuids().size());
+                    for (int i = 0; i < services; i++) {
+                        detail.append(" [").append(record.getServiceUuids().get(i)).append("]");
+                    }
                 }
             }
             publish("BLE", name, address, detail.toString(), result.getRssi(), true);
@@ -388,7 +391,11 @@ public final class WirelessScanner {
                 long nowUs = SystemClock.elapsedRealtimeNanos() / 1000L;
                 boolean newInThisSession = ScanFreshness.isWifiFresh(
                         fresh, r.timestamp, sessionStartedElapsedUs, nowUs);
-                String detail = r.frequency + " MHz · " + r.capabilities
+                int channel = SignalRules.wifiChannel(r.frequency);
+                String detail = SignalRules.wifiBand(r.frequency) + " / "
+                        + r.frequency + " MHz"
+                        + (channel > 0 ? " · CH " + channel : "")
+                        + " · " + r.capabilities
                         + (newInThisSession ? " · 이번 탐색 확인" : " · 과거 스캔 캐시(현재 위치 미확인)");
                 publish("WIFI", name, r.BSSID, detail, r.level, newInThisSession);
                 if (newInThisSession) anyFresh = true;
