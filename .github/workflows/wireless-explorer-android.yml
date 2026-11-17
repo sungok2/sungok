@@ -45,6 +45,17 @@ jobs:
       - name: Unit tests and debug APK
         run: gradle --no-daemon --stacktrace :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
 
+      - name: Upload Android Lint diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: WirelessExplorer-v0.3.0-lint-report
+          path: |
+            WirelessExplorer/app/build/reports/lint-results-debug.html
+            WirelessExplorer/app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: APK integrity hash
         run: sha256sum app/build/outputs/apk/debug/app-debug.apk > app/build/outputs/apk/debug/app-debug.apk.sha256
 
