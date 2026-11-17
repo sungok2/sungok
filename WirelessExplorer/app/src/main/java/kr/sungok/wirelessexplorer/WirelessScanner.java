@@ -40,10 +40,7 @@ public final class WirelessScanner {
         default void onRadioState(String protocol, String state) { }
     }
 
-    private static final int SESSION_MS = 180_000;
-    private static final int WIFI_INTERVAL_MS = 35_000;
-    private static final int NSD_INTERVAL_MS = 13_500;
-    private static final String[] SERVICE_TYPES = {
+        private static final String[] SERVICE_TYPES = {
             "_http._tcp.", "_ipp._tcp.", "_googlecast._tcp.",
             "_airplay._tcp.", "_workstation._tcp.", "_smb._tcp.",
             "_hap._tcp.", "_raop._tcp.",
@@ -65,6 +62,9 @@ public final class WirelessScanner {
     private ScanCallback bleCallback;
     private BroadcastReceiver receiver;
     private boolean running;
+    private boolean bleScanning;
+    private boolean classicPhase;
+    private int generation;
 
     public WirelessScanner(Context context, Listener listener) {
         this.context = context.getApplicationContext();
@@ -76,6 +76,7 @@ public final class WirelessScanner {
     public void start() {
         if (running) return;
         running = true;
+        generation++;
         sessionStartedElapsedUs = SystemClock.elapsedRealtimeNanos() / 1000L;
         report("탐색 시작 · 180초 동안 수신된 신호를 수집합니다");
         registerEvents();
@@ -85,6 +86,9 @@ public final class WirelessScanner {
         radio("P2P", "시작 준비");
         radio("NSD", "시작 준비");
         startBluetooth();
+        // Classic inquiry can compete with BLE; scan the radios in phases.
+        main.postDelayed(this::beginClassicPhase, ScanPlan.BLE_LOW_LATENCY_MS);
+        main.postDelayed(this::retryP2p, ScanPlan.P2P_RETRY_MS);
         wifi = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
         if (wifi != null) {
             try {
@@ -100,29 +104,30 @@ public final class WirelessScanner {
         nsd = (NsdManager) context.getSystemService(Context.NSD_SERVICE);
         startNsdCycle(0);
         startP2p();
-        main.postDelayed(() -> {
-            if (!running || bluetooth == null) return;
-            try {
-                if (bluetooth.isEnabled()) {
-                    radio("BT", bluetooth.startDiscovery() ? "검색 중" : "시작 거부");
-                } else radio("BT", "블루투스 꺼짐");
-            } catch (SecurityException | IllegalStateException e) {
-                radio("BT", "검색 실패 / 권한 확인");
-                report("일반 블루투스 검색 실패: " + e.getClass().getSimpleName());
-            }
-        }, 15_000);
-        main.postDelayed(this::stop, SESSION_MS);
+        main.postDelayed(this::stop, ScanPlan.SESSION_MS);
     }
 
     public void stop() {
         if (!running) return;
         running = false;
+        generation++;
         main.removeCallbacksAndMessages(null);
+        classicPhase = false;
+        bleScanning = false;
         try { if (ble != null && bleCallback != null) ble.stopScan(bleCallback); }
         catch (SecurityException | IllegalStateException ignored) { }
         try { if (bluetooth != null && bluetooth.isDiscovering()) bluetooth.cancelDiscovery(); }
         catch (SecurityException | IllegalStateException ignored) { }
         stopNsd();
+        if (p2p != null && p2pChannel != null) {
+            try {
+                p2p.stopPeerDiscovery(p2pChannel, new WifiP2pManager.ActionListener() {
+                    @Override public void onSuccess() { }
+                    @Override public void onFailure(int reason) { }
+                });
+            } catch (SecurityException | IllegalStateException ignored) { }
+        }
+        p2pChannel = null;
         try { if (multicastLock != null && multicastLock.isHeld()) multicastLock.release(); }
         catch (RuntimeException ignored) { }
         multicastLock = null;
@@ -153,27 +158,104 @@ public final class WirelessScanner {
                 radio("BLE", "BLE 수신기 미지원");
                 return;
             }
+            final int callbackGeneration = generation;
             bleCallback = new ScanCallback() {
                 @Override public void onScanResult(int callbackType, ScanResult result) {
-                    addBle(result);
+                    if (callbackGeneration == generation) addBle(result);
                 }
 
                 @Override public void onBatchScanResults(List<ScanResult> results) {
-                    for (ScanResult result : results) addBle(result);
+                    if (callbackGeneration == generation) {
+                        for (ScanResult result : results) addBle(result);
+                    }
                 }
 
                 @Override public void onScanFailed(int errorCode) {
+                    if (callbackGeneration != generation) return;
+                    bleScanning = false;
                     radio("BLE", "실패 / 코드 " + errorCode);
                     report("BLE 스캔 실패 · Android 오류 코드 " + errorCode);
                 }
             };
-            ScanSettings settings = new ScanSettings.Builder()
-                    .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build();
-            ble.startScan(null, settings, bleCallback);
-            radio("BLE", "검색 중");
+            scanBle(ScanSettings.SCAN_MODE_LOW_LATENCY);
         } catch (SecurityException | IllegalStateException e) {
             radio("BLE", "시작 실패 / 권한 확인");
             report("BLE 시작 실패 · 기기 권한이나 블루투스 상태를 확인하세요");
+        }
+    }
+
+
+    private void scanBle(int mode) {
+        if (!running || ble == null || bleCallback == null) return;
+        try {
+            if (bleScanning) {
+                ble.stopScan(bleCallback);
+                bleScanning = false;
+            }
+            ble.startScan(null, new ScanSettings.Builder().setScanMode(mode).build(), bleCallback);
+            bleScanning = true;
+            radio("BLE", mode == ScanSettings.SCAN_MODE_LOW_LATENCY
+                    ? "집중 탐색" : "균형 탐색");
+        } catch (SecurityException | IllegalStateException e) {
+            bleScanning = false;
+            radio("BLE", "검색 실패 / 블루투스 또는 권한 확인");
+        }
+    }
+
+    private void beginClassicPhase() {
+        if (!running || bluetooth == null) return;
+        try {
+            if (!bluetooth.isEnabled()) {
+                radio("BT", "블루투스 꺼짐");
+                return;
+            }
+            classicPhase = true;
+            if (ble != null && bleScanning && bleCallback != null) {
+                ble.stopScan(bleCallback);
+                bleScanning = false;
+                radio("BLE", "일반 BT 검색 중 일시중단");
+            }
+            boolean accepted = bluetooth.startDiscovery();
+            radio("BT", accepted ? "기기 검색 중" : "검색 시작 거부");
+            if (!accepted) {
+                endClassicPhase();
+                return;
+            }
+            main.postDelayed(this::endClassicPhase, ScanPlan.CLASSIC_MAX_MS);
+        } catch (SecurityException | IllegalStateException e) {
+            radio("BT", "시작 실패 / 권한 또는 단말 상태 확인");
+            endClassicPhase();
+        }
+    }
+
+    private void endClassicPhase() {
+        if (!running || !classicPhase) return;
+        classicPhase = false;
+        try {
+            if (bluetooth != null && bluetooth.isDiscovering()) bluetooth.cancelDiscovery();
+        } catch (SecurityException | IllegalStateException ignored) { }
+        radio("BT", "검색 단계 완료");
+        scanBle(ScanSettings.SCAN_MODE_BALANCED);
+    }
+
+    private void retryP2p() {
+        if (!running || p2p == null || p2pChannel == null) return;
+        discoverP2p();
+    }
+
+    private void discoverP2p() {
+        if (!running || p2p == null || p2pChannel == null) return;
+        try {
+            p2p.discoverPeers(p2pChannel, new WifiP2pManager.ActionListener() {
+                @Override public void onSuccess() {
+                    if (running) { radio("P2P", "검색 중"); readP2pPeers(); }
+                }
+                @Override public void onFailure(int reason) {
+                    if (running) radio("P2P", "검색 실패 / 코드 " + reason);
+                }
+            });
+        } catch (SecurityException | IllegalStateException e) {
+            radio("P2P", "검색 권한/상태 제한");
         }
     }
 
@@ -224,6 +306,7 @@ public final class WirelessScanner {
                     readClassic(intent);
                 } else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
                     radio("BT", "검색 완료");
+                    if (classicPhase) endClassicPhase();
                 } else if (WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION.equals(action)) {
                     readP2pPeers();
                 }
@@ -259,7 +342,7 @@ public final class WirelessScanner {
             radio("WIFI", "위치 권한 또는 서비스 확인");
             report("Wi-Fi 탐색을 위해 위치 권한과 위치 서비스를 켜주세요");
         }
-        main.postDelayed(this::requestWifi, WIFI_INTERVAL_MS);
+        main.postDelayed(this::requestWifi, ScanPlan.WIFI_INTERVAL_MS);
     }
 
     private void readWifi(boolean fresh) {
@@ -296,13 +379,7 @@ public final class WirelessScanner {
                 report("Wi-Fi Direct 채널 종료");
             });
             if (p2pChannel == null) { radio("P2P", "채널 미연결"); return; }
-            p2p.discoverPeers(p2pChannel, new WifiP2pManager.ActionListener() {
-                @Override public void onSuccess() { radio("P2P", "검색 중"); readP2pPeers(); }
-                @Override public void onFailure(int reason) {
-                    radio("P2P", "검색 실패 / 코드 " + reason);
-                    report("Wi-Fi Direct 검색 불가 · 코드 " + reason);
-                }
-            });
+            discoverP2p();
         } catch (SecurityException | IllegalStateException e) {
             radio("P2P", "권한 또는 기능 제한");
             report("Wi-Fi Direct 검색 권한이나 기능이 제한되었습니다");
@@ -352,7 +429,7 @@ public final class WirelessScanner {
             radio("NSD", "서비스 검색 오류");
             report("mDNS 탐색 오류 · " + type);
         }
-        main.postDelayed(() -> startNsdCycle(index + 1), NSD_INTERVAL_MS);
+        main.postDelayed(() -> startNsdCycle(index + 1), ScanPlan.NSD_INTERVAL_MS);
     }
 
     private void stopNsd() {
