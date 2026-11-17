@@ -64,6 +64,8 @@ public final class WirelessScanner {
     private boolean running;
     private boolean bleScanning;
     private boolean classicPhase;
+    private boolean extendedLan;
+    private SsdpDiscovery ssdp;
     private int generation;
 
     public WirelessScanner(Context context, Listener listener) {
@@ -72,6 +74,11 @@ public final class WirelessScanner {
     }
 
     public boolean isRunning() { return running; }
+
+    /** Opt-in only: UPnP discovery sends a standard M-SEARCH multicast on the connected LAN. */
+    public void setExtendedLan(boolean enabled) {
+        if (!running) extendedLan = enabled;
+    }
 
     public void start() {
         if (running) return;
@@ -85,6 +92,7 @@ public final class WirelessScanner {
         radio("WIFI", "시작 준비");
         radio("P2P", "시작 준비");
         radio("NSD", "시작 준비");
+        radio("UPNP", extendedLan ? "확장 검색 준비" : "비활성(선택사항)");
         startBluetooth();
         // Classic inquiry can compete with BLE; scan the radios in phases.
         main.postDelayed(this::beginClassicPhase, ScanPlan.BLE_LOW_LATENCY_MS);
@@ -104,6 +112,11 @@ public final class WirelessScanner {
         nsd = (NsdManager) context.getSystemService(Context.NSD_SERVICE);
         startNsdCycle(0);
         startP2p();
+        if (extendedLan) {
+            ssdp = new SsdpDiscovery();
+            main.postDelayed(this::discoverSsdp, 8_000);
+            main.postDelayed(this::discoverSsdp, 100_000);
+        }
         main.postDelayed(this::stop, ScanPlan.SESSION_MS);
     }
 
@@ -114,6 +127,8 @@ public final class WirelessScanner {
         main.removeCallbacksAndMessages(null);
         classicPhase = false;
         bleScanning = false;
+        if (ssdp != null) ssdp.stop();
+        ssdp = null;
         try { if (ble != null && bleCallback != null) ble.stopScan(bleCallback); }
         catch (SecurityException | IllegalStateException ignored) { }
         try { if (bluetooth != null && bluetooth.isDiscovering()) bluetooth.cancelDiscovery(); }
@@ -135,6 +150,22 @@ public final class WirelessScanner {
         catch (IllegalArgumentException ignored) { }
         receiver = null;
         report("탐색 종료 · 이번 탐색에서 발견한 항목은 별도 표시됩니다");
+    }
+
+    private void discoverSsdp() {
+        if (!running || !extendedLan || ssdp == null) return;
+        final int token = generation;
+        radio("UPNP", "로컬 네트워크 검색 중(요청 전송)");
+        ssdp.discover(new SsdpDiscovery.Callback() {
+            @Override public void found(String name, String id, String details) {
+                if (running && generation == token) {
+                    publish("UPNP", name, id, details, 0, true);
+                }
+            }
+            @Override public void status(String message) {
+                if (running && generation == token) radio("UPNP", message);
+            }
+        });
     }
 
     private void startBluetooth() {
