@@ -1,38 +1,30 @@
-# Android 배포 후보 준비
+# Android 배포 안내 — v0.11.0
 
-현재 프로젝트는 M1 기능 검증 단계입니다. `assembleRelease` 산출물은 출시용 앱 ID(`com.galaxyuniversalio`)와 비디버그 빌드 설정을 사용하지만, **공식 서명키가 연결되기 전에는 unsigned release 후보이며 정식 배포본이 아닙니다.**
+## 제품 목적
 
-## 현재 CI 산출물
+이 앱의 주 사용 흐름은 Galaxy가 USB Host/OTG 모드로 유선 프린터·스캐너에 연결해 인쇄하거나 스캔하는 것입니다. 네트워크 eSCL 탐색은 부가 기능입니다.
 
-- `app-release-unsigned.apk`: 서명 전 보관·검토용
-- 릴리스 동작 확인은 CI 실행 때만 생성하는 임시 키로 별도 복사본을 서명하여 Android 13 에뮬레이터에 설치합니다. 이 임시 서명본은 배포하지 않습니다.
-- 실사용 업데이트에 사용할 키스토어 또는 비밀번호를 저장소에 커밋하거나 CI 로그에 출력하지 않습니다.
+PDF 인쇄는 Android `PrintManager`에 전달합니다. Android에 설치·활성화된 제조사 `PrintService`가 해당 프린터 모델의 USB OTG를 지원하면 Android 인쇄 화면에서 그 서비스를 선택할 수 있습니다. 앱은 PC용 드라이버를 APK에 넣거나, 제조사의 비공개 프로토콜을 자동으로 대체하지 않습니다. 공식 제조사 지원 범위와 제한은 `docs/VENDOR_DRIVER_INTEGRATION.md`를 참조하십시오.
 
-## 정식 APK 서명
+## USB 기능과 실제 범위
 
-릴리스 담당자가 소유·백업하는 PKCS#12 영구 키스토어와 별칭을 준비합니다. Windows PowerShell에서 `keytool`을 이용해 키를 만들 때 암호를 명령행 인수로 넣지 말고 대화형 프롬프트를 사용합니다. 생성한 `.p12` 파일은 저장소에 커밋하지 않습니다. GitHub 저장소의 Actions secrets에 다음 값을 등록하면 릴리스 workflow가 서명 APK를 만들도록 설계합니다.
+- Android USB Host에서 장치 열거와 사용자 권한을 처리합니다.
+- USB 프린터 상태 조회와 사전 작성된 PRN/PCL/PS RAW 데이터 전송은 지원 프로토콜 인터페이스에서만 동작합니다. RAW 전송 성공은 실제 인쇄 성공을 뜻하지 않습니다.
+- USB IPP-over-USB의 제한된 프로파일에서 PDF 직접 인쇄를 시도할 수 있습니다. 프린터가 `application/pdf`를 광고해야 합니다.
+- USB 스캔은 IPP-over-USB eSCL 장치에서 동작하도록 구현되어 있습니다. PTP는 호환 이미지 장치에서 JPEG를 가져오는 기능이며 일반 평판/ADF 스캐너 드라이버가 아닙니다.
+- 제조사 전용 스캐너 프로토콜은 현재 지원한다고 표시하지 않습니다. 제조사 앱/SDK가 공개적으로 허용하는 USB 연동 경로가 모델별로 확인되어야 합니다.
 
-- `ANDROID_RELEASE_KEYSTORE_B64`: PKCS#12 키스토어의 base64
-- `ANDROID_RELEASE_KEY_ALIAS`: 키 별칭
-- `ANDROID_RELEASE_STORE_PASSWORD`: 키스토어 암호
-- `ANDROID_RELEASE_KEY_PASSWORD`: 개인키 암호 (PKCS#12는 키스토어 암호와 동일하게 설정합니다.)
+## 버전
 
-PowerShell에서 저장소 secret 입력용 Base64 문자열을 만들려면 다음을 사용합니다. 결과 문자열은 터미널 이력이나 공개 이슈에 붙이지 말고 GitHub Actions secret 입력란에만 넣습니다.
+- 앱 ID: `com.galaxyuniversalio`
+- 버전: `0.11.0`, versionCode `12`
+- 최소 Android: API 26
+- 배포 형식: 서명된 직접 설치 APK. Google Play 업로드용 AAB와 Play App Signing은 별도입니다.
 
-```powershell
-[Convert]::ToBase64String([IO.File]::ReadAllBytes('.\\galaxy-universal-io-release.p12'))
-```
+## 검증 범위
 
-서명키는 모든 후속 업데이트에서 동일하게 사용해야 합니다. 분실하면 기존 설치본을 같은 앱 ID로 업데이트할 수 없습니다. 이 프로젝트는 현재 해당 secrets가 등록되었음을 확인하지 못했으므로, 서명된 정식 APK라고 표시하지 않습니다.
+GitHub Actions에서 Android release 빌드, 패키지 메타데이터, 비디버그 설정, APK 정렬과 Android 13 에뮬레이터 스모크 검사를 수행합니다. 에뮬레이터와 모의 USB/프로토콜 테스트는 실제 Galaxy, 실제 프린터·스캐너의 모델 호환성 증거가 아닙니다. 모델명·펌웨어·VID/PID를 기록한 물리 연결 시험이 끝난 모델만 호환 목록에 올립니다.
 
-## 배포 전 확인
+## 서명
 
-1. 실제 배포 대상과 배포 방식(직접 APK 배포 또는 Google Play)을 확정합니다. Play 배포는 별도 AAB, Play App Signing, 스토어 등록 자료와 심사가 필요합니다.
-2. 릴리스 버전/코드를 올리고 changelog와 알려진 제한사항을 갱신합니다.
-3. 서명 APK에서 `apksigner verify --verbose`를 실행하고 SHA-256을 기록합니다.
-4. 실제 Galaxy 기기에서 설치·업데이트·권한·네트워크 탐색·취소·파일 저장을 확인합니다. 물리 스캐너/프린터 모델별 호환성은 별도 증거가 있어야 표시합니다.
-5. HTTP LAN 스캔은 장치와 같은 신뢰 가능한 네트워크에서만 사용하도록 배포 안내에 명시합니다.
-
-## 이 후보의 범위
-
-CI 컴파일, 패키지 ID, 디버그 불가 설정 및 에뮬레이터 화면 흐름은 확인할 수 있습니다. 이를 실제 Galaxy, 실제 프린터/스캐너 호환성이나 정식 서명·스토어 배포 증거로 간주하지 않습니다.
+서명 APK의 개인키는 저장소에 커밋하지 않습니다. 이 프로젝트 전용 PKCS#12 키스토어와 별도 암호 백업을 보관하며, 모든 후속 업데이트에서 같은 키를 사용합니다. 서명키를 분실하면 기존 설치본에 정상 업데이트할 수 없습니다. GitHub Actions 자동 서명을 사용하려면 릴리스 담당자가 `docs/VENDOR_DRIVER_INTEGRATION.md`와 키 인계서의 비밀정보를 저장소 Actions secrets에 직접 등록해야 합니다.

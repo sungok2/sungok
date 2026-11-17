@@ -1,6 +1,6 @@
-> **M1 / v0.10.0 (2026-11-16)** Current update: same-Wi-Fi DNS-SD discovery for cleartext eSCL `_uscan._tcp.`, validated service resource path, short-lived multicast lock, and a selected-device read-only capabilities check before applying an endpoint. See [M1 discovery scope and verification limits](docs/M1_DISCOVERY.md). The app labels discovery results as candidates until the eSCL profile is verified.
+> **M1 / v0.11.0 (2026-11-17)** Primary workflow: connect a supported wired printer or scanner to a Galaxy USB-host/OTG port. PDF printing is handed to Android Print Framework so installed, enabled manufacturer Print Services can provide their own drivers. The app does not bundle PC drivers or claim every model is compatible. See [manufacturer-driver integration limits](docs/VENDOR_DRIVER_INTEGRATION.md). M1 LAN eSCL discovery remains an optional network feature; see [M1 discovery scope](docs/M1_DISCOVERY.md).
 
-# Galaxy Universal I/O — M1 LAN eSCL discovery build
+# Galaxy Universal I/O — Galaxy USB wired print and scan
 
 - Target: Galaxy S20 Ultra / Android 13; Java app, minSdk 26, targetSdk 35; developer build uses Windows 11 / JDK 21 / Gradle 9.8.0 / Android SDK 36.
 - Discovery searches cleartext `_uscan._tcp.` services for 8 seconds and releases its Wi-Fi multicast lock on completion, cancellation, or failure. The resolved IPv4 address, port, and validated DNS-SD `rs` resource path are preserved.

@@ -15,6 +15,7 @@ import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.provider.OpenableColumns;
+import android.provider.Settings;
 import android.hardware.usb.UsbConstants;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbEndpoint;
@@ -97,7 +98,8 @@ public final class MainActivity extends Activity {
     private LinearLayout scanPanel, printPanel, devicePanel;
     private Button scanTabButton, printTabButton, devicesTabButton;
     private TextView usbHintView;
-    private int activePage = 0;
+    // Open the USB inventory first: wired peripheral use is the primary workflow.
+    private int activePage = 2;
     private boolean reportExpanded = false;
 
     private final List<UsbDevice> displayedDevices = new ArrayList<>();
@@ -273,8 +275,8 @@ public final class MainActivity extends Activity {
         hero.setPadding(dp(18), dp(18), dp(18), dp(18));
         hero.setBackground(rounded(0xFF102955, 0, 18));
         addText(hero, "GALAXY  ·  UNIVERSAL I/O", 12, 0xFFBBD4FF, true, 8);
-        addText(hero, "스캔부터 PDF까지", 24, WHITE, true, 5);
-        addText(hero, "USB · 네트워크 스캔 · 인쇄 · 진단", 13, 0xFFD4E3FF, false, 0);
+        addText(hero, "USB 인쇄 · 스캔", 24, WHITE, true, 5);
+        addText(hero, "제조사 인쇄 서비스 · USB 장치 진단 · 네트워크 스캔", 13, 0xFFD4E3FF, false, 0);
         addCard(root, hero);
 
         LinearLayout statusCard = card();
@@ -375,13 +377,18 @@ public final class MainActivity extends Activity {
         printPanel = vertical();
         LinearLayout systemPrintCard = card();
         addText(systemPrintCard, "PDF 인쇄", 21, INK, true, 5);
-        addText(systemPrintCard, "휴대전화에 설치된 인쇄 서비스를 사용합니다. 프린터와 인쇄 서비스를 먼저 설정하세요.",
+        addText(systemPrintCard, "Android 시스템 인쇄로 전달합니다. USB OTG를 지원하는 제조사 인쇄 서비스가 설치·활성화되어 있으면 해당 드라이버를 선택하세요. 지원 여부는 프린터 모델과 서비스에 따라 다릅니다.",
                 13, MUTED, false, 12);
         Button pdfPrint = new Button(this);
-        pdfPrint.setText("PDF 파일 선택 후 인쇄");
+        pdfPrint.setText("제조사 드라이버로 PDF 인쇄");
         styleButton(pdfPrint, true);
         pdfPrint.setOnClickListener(v -> choosePdfForSystemPrint());
         addButton(systemPrintCard, pdfPrint);
+        Button printSettings = new Button(this);
+        printSettings.setText("Android 인쇄 서비스 설정 열기");
+        styleButton(printSettings, false);
+        printSettings.setOnClickListener(v -> openPrintSettings());
+        addButton(systemPrintCard, printSettings);
         addCard(printPanel, systemPrintCard);
         LinearLayout directPrintCard = card();
         addText(directPrintCard, "고급 USB 직접 인쇄", 17, INK, true, 5);
@@ -1170,6 +1177,14 @@ public final class MainActivity extends Activity {
                 || !usbManager.hasPermission(device) || !UsbEsclHttpTransport.supports(device))
             throw new IOException("USB scanner disconnected or permission revoked");
         return UsbEsclHttpTransport.open(usbManager, device);
+    }
+
+    private void openPrintSettings() {
+        try {
+            startActivity(new Intent(Settings.ACTION_PRINT_SETTINGS));
+        } catch (RuntimeException e) {
+            statusView.setText("Android 인쇄 서비스 설정을 열 수 없습니다.");
+        }
     }
 
     private void choosePdfForSystemPrint() {
