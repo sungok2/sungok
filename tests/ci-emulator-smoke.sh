@@ -33,7 +33,7 @@ python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-initial-window.xml
 tap_text "스캔" "devices-initial"
 capture "scan"
 python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/scan-window.xml "문서 스캔"
-python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/scan-window.xml "네트워크 스캔 → PDF 저장"
+python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/scan-window.xml "스캐너에서 문서를 가져와 PDF로 저장합니다."
 python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/scan-window.xml "같은 Wi-Fi에서 스캐너 찾기"
 tap_text "같은 Wi-Fi에서 스캐너 찾기" "scan"
 sleep 9
@@ -52,7 +52,7 @@ fi
 tap_text "인쇄" "scan-discovery"
 capture "print"
 python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/print-window.xml "PDF 인쇄"
-python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/print-window.xml "PDF 파일 선택 후 인쇄"
+python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/print-window.xml "제조사 드라이버로 PDF 인쇄"
 tap_text "장치 · 진단" "print"
 capture "devices"
 python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-window.xml "USB 장치"
