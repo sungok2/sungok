@@ -1,6 +1,6 @@
 # Wireless Explorer for Galaxy
 
-**Version:** 0.2.0 (engineering prototype)  
+**Version:** 0.3.0 (engineering prototype)  
 **Package ID:** kr.sungok.wirelessexplorer  
 **Requirements:** Android 8.0+ (API 26), Bluetooth/Wi-Fi hardware for the corresponding scans.  
 **Status:** Source implementation and GitHub Actions APK build workflow. An actual Galaxy hardware test is required before any production claim.
@@ -17,14 +17,23 @@ Catalog as many **detectable nearby wireless endpoints** as Android public APIs 
 - Bluetooth Classic inquiry, only for responding discoverable devices.
 - Wi-Fi access point results: SSID/BSSID, frequency, advertised capabilities, RSSI. Cached results are explicitly tagged; new scan results are tagged as such.
 - Wi-Fi Direct peer discovery with device name/address, no connections.
-- Rotating passive mDNS/DNS-SD service discovery on the *already connected local network*. Eight common service types.
-- Three-minute foreground scanning sessions, user-controlled stop and guaranteed scan cleanup on backgrounding.
+- Rotating mDNS/DNS-SD service discovery on the *already connected local network*. Twelve common service types.
+- Three-minute foreground scanning sessions with **separate BLE discovery / Bluetooth Classic inquiry phases** to reduce radio competition and lower power after initial high-intensity BLE scan.
+- Optional UPnP/SSDP discovery: sends a single standard M-SEARCH on connected private LAN when the user explicitly enables the checkbox; reads responses only, never follows returned URLs. Do not enable without network-owner authorization.
+- User-controlled stop, scan callback invalidation and cleanup on backgrounding.
 - Per-radio-endpoint local history, current session flags, basic heuristic category labels and last-seen timestamps.
 - Wi-Fi scan result timestamps are checked against the session start time so cached AP records never masquerade as freshly observed endpoints.
 - Multicast lock held while foreground mDNS discovery runs (important for older Android versions).
 - Twelve DNS-SD service types rotated during the three-minute scan.
 - Per-protocol scanner state, displayed alongside fresh endpoint counts and failure reasons.
 - Separate labeling of unconfirmed cached entries versus previously confirmed live detections.
+- Atomic local-history writes and explicit save-error warnings; verified last-confirmed timestamp never overwritten by stale Wi-Fi cache.
+- Sanitized and bounded device names/addresses/details; MAC normalization, protocol-specific identity without incorrect cross-protocol merging.
+- Separate confirmed RF endpoints and LAN service counts; only *candidate* same-address Classic/BLE links, not automatic physical-device counts.
+- Search by device name/address/details, unknown-only view, pagination, live scan countdown and evidence-oriented status labels.
+- User-exportable text diagnostic report with per-protocol status, counts, limits and a field verification checklist.
+- Wi-Fi 2.4/5/6 GHz band and channel classification, BLE advertised service identifiers.
+- Android unit tests for timestamps, normalization, CSV safety, SSDP header parsing, scan schedule and report correctness.
 - User-accessible full deletion of local radio observations; periodic local persistence.
 - CSV formula-injection hardening for untrusted network/device names.
 - Filtering by protocol; CSV and JSON exports through Android's system file picker.
@@ -42,7 +51,7 @@ Catalog as many **detectable nearby wireless endpoints** as Android public APIs 
 
 ## Build
 
-GitHub > Actions > **Wireless Explorer Android APK** > select a successful run > Artifacts > **WirelessExplorer-v0.2.0-debug-apk**.
+GitHub > Actions > **Wireless Explorer Android APK** > select a successful run > Artifacts > **WirelessExplorer-v0.3.0-debug-apk**.
 Unzip and install app-debug.apk on your Galaxy (allow installation from that source if prompted). Each CI run uses GitHub's temporary debug key. Uninstalling a previous build may be required before installing a build signed with a different key; uninstalling removes the app's local history, so export it first.
 
 To build with Android Studio, open **WirelessExplorer/** as its own project, use JDK 17, Android SDK platform 35, Android Gradle Plugin 8.9.2 and Gradle 8.11.1. A Gradle wrapper is not committed; GitHub Actions provisions Gradle.
@@ -67,7 +76,9 @@ To build with Android Studio, open **WirelessExplorer/** as its own project, use
 - Android 9+ Wi-Fi scan throttling commonly limits foreground scans to four per two minutes. App requests new scans every 35 seconds, and reads cached scans in between. Scan result timestamps determine whether each access point was actually observed during the current session. Search results can be stale or missing.
 - BT Classic inquiry may compete with BLE and is scheduled once after the session starts.
 - mDNS service discoveries are service endpoints, not guaranteed distinct physical devices.
-- No authenticated LAN connections, service probing, port scans, brute-force, decryption or RF decoding are implemented.
+- No authenticated LAN connections, port scans, brute-force, decryption or RF decoding are implemented.
+- The UPnP checkbox initiates *only* UDP discovery on the connected LAN; it is disabled by default and cannot examine devices on unrelated networks.
+- Android 17 (API 37) local network permission policies will require another compatibility review if a future app update targets API 37+.
 - On recent Android versions, local-network permission policy may evolve; test on the actual device/OS.
 
 ## Verification checklist (physical Galaxy)
@@ -84,8 +95,13 @@ To build with Android Studio, open **WirelessExplorer/** as its own project, use
 - [ ] Confirm deletion clears saved data and cannot be undone
 - [ ] Confirm missing scanner permissions are reported per protocol rather than aborting all scanning
 - [ ] Deny permissions and verify readable error feedback
+- [ ] Verify BLE active -> Classic inquiry -> balanced BLE transition
+- [ ] Verify UPnP default off, opt-in requests remain LAN-only, and service entries are not counted as RF endpoints
+- [ ] Confirm recent record remains dated by true fresh discovery after cached Wi-Fi reads
+- [ ] Export and verify diagnostic TXT, CSV, JSON files
+- [ ] Check search, unknown-only filter, pagination, accessibility text sizes and screen rotations
 - [ ] Turn screen off/leave app and confirm scanner stops
-- [ ] Check battery use during the 120-second scan
+- [ ] Check battery use during the 180-second scan
 
 The Android build/unit tests alone cannot prove that radio scanning works on real Galaxy hardware.
 
