@@ -21,6 +21,7 @@ import android.net.wifi.p2p.WifiP2pManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.bluetooth.le.ScanRecord;
 import android.util.SparseArray;
 
@@ -38,13 +39,14 @@ public final class WirelessScanner {
         void onStatus(String message);
     }
 
-    private static final int SESSION_MS = 120_000;
+    private static final int SESSION_MS = 180_000;
     private static final int WIFI_INTERVAL_MS = 35_000;
-    private static final int NSD_INTERVAL_MS = 14_000;
+    private static final int NSD_INTERVAL_MS = 13_500;
     private static final String[] SERVICE_TYPES = {
             "_http._tcp.", "_ipp._tcp.", "_googlecast._tcp.",
             "_airplay._tcp.", "_workstation._tcp.", "_smb._tcp.",
-            "_hap._tcp.", "_raop._tcp."
+            "_hap._tcp.", "_raop._tcp.",
+            "_device-info._tcp.", "_printer._tcp.", "_rtsp._tcp.", "_ssh._tcp."
     };
 
     private final Context context;
@@ -53,6 +55,8 @@ public final class WirelessScanner {
     private BluetoothAdapter bluetooth;
     private BluetoothLeScanner ble;
     private WifiManager wifi;
+    private WifiManager.MulticastLock multicastLock;
+    private long sessionStartedElapsedUs;
     private WifiP2pManager p2p;
     private WifiP2pManager.Channel p2pChannel;
     private NsdManager nsd;
@@ -71,10 +75,21 @@ public final class WirelessScanner {
     public void start() {
         if (running) return;
         running = true;
-        report("탐색 시작 · 120초 동안 수신된 신호를 수집합니다");
+        sessionStartedElapsedUs = SystemClock.elapsedRealtimeNanos() / 1000L;
+        report("탐색 시작 · 180초 동안 수신된 신호를 수집합니다");
         registerEvents();
         startBluetooth();
         wifi = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+        if (wifi != null) {
+            try {
+                // Older Android versions need a lock for reliable mDNS multicast reception.
+                multicastLock = wifi.createMulticastLock("WirelessExplorer-mdns");
+                multicastLock.setReferenceCounted(false);
+                multicastLock.acquire();
+            } catch (SecurityException | IllegalStateException ignored) {
+                report("mDNS 멀티캐스트 수신 제한 · 일부 서비스가 누락될 수 있습니다");
+            }
+        }
         requestWifi();
         nsd = (NsdManager) context.getSystemService(Context.NSD_SERVICE);
         startNsdCycle(0);
@@ -99,6 +114,9 @@ public final class WirelessScanner {
         try { if (bluetooth != null && bluetooth.isDiscovering()) bluetooth.cancelDiscovery(); }
         catch (SecurityException | IllegalStateException ignored) { }
         stopNsd();
+        try { if (multicastLock != null && multicastLock.isHeld()) multicastLock.release(); }
+        catch (RuntimeException ignored) { }
+        multicastLock = null;
         try { if (receiver != null) context.unregisterReceiver(receiver); }
         catch (IllegalArgumentException ignored) { }
         receiver = null;
@@ -229,9 +247,12 @@ public final class WirelessScanner {
             for (android.net.wifi.ScanResult r : results) {
                 if (r.BSSID == null || r.BSSID.isEmpty()) continue;
                 String name = r.SSID == null || r.SSID.isEmpty() ? "숨김 Wi-Fi" : r.SSID;
+                long nowUs = SystemClock.elapsedRealtimeNanos() / 1000L;
+                boolean newInThisSession = ScanFreshness.isWifiFresh(
+                        fresh, r.timestamp, sessionStartedElapsedUs, nowUs);
                 String detail = r.frequency + " MHz · " + r.capabilities
-                        + (fresh ? " · 새 스캔" : " · 캐시 결과");
-                publish("WIFI", name, r.BSSID, detail, r.level, fresh);
+                        + (newInThisSession ? " · 이번 탐색 확인" : " · 과거 스캔 캐시(현재 위치 미확인)");
+                publish("WIFI", name, r.BSSID, detail, r.level, newInThisSession);
             }
         } catch (SecurityException | IllegalStateException e) {
             report("Wi-Fi 결과를 읽을 수 없습니다 · 위치 권한/서비스 확인");
