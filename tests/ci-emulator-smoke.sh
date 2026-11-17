@@ -29,7 +29,7 @@ tap_text() {
 capture "devices-initial"
 python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-initial-window.xml "USB 인쇄 · 스캔"
 python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-initial-window.xml "USB 장치"
-python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-initial-window.xml "연결된 USB 장치가 없습니다."
+python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-initial-window.xml "연결된 USB 장치가 없습니다. OTG 케이블 및 전원을 확인하세요."
 tap_text "스캔" "devices-initial"
 capture "scan"
 python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/scan-window.xml "문서 스캔"
