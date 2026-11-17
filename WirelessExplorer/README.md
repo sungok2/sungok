@@ -1,6 +1,6 @@
 # Wireless Explorer for Galaxy
 
-**Version:** 0.3.1 (engineering prototype)  
+**Version:** 0.4.0 (engineering prototype)  
 **Package ID:** kr.sungok.wirelessexplorer  
 **Requirements:** Android 8.0+ (API 26), Bluetooth/Wi-Fi hardware for the corresponding scans.  
 **Status:** Source implementation and GitHub Actions APK build workflow. An actual Galaxy hardware test is required before any production claim.
@@ -28,6 +28,12 @@ Catalog as many **detectable nearby wireless endpoints** as Android public APIs 
 - Per-protocol scanner state, displayed alongside fresh endpoint counts and failure reasons.
 - Separate labeling of unconfirmed cached entries versus previously confirmed live detections.
 - Atomic local-history writes and explicit save-error warnings; verified last-confirmed timestamp never overwritten by stale Wi-Fi cache.
+- v0.4.0: protect all verified signal details, RSSI, and last-seen time against subsequent cached Wi-Fi reads; cached-only records do not appear to be newly observed after repeated cache reads.
+- v0.4.0: restore an interrupted atomic history write from the previous good backup and validate the recovered file size.
+- v0.4.0: UPnP M-SEARCH is blocked when the active network is not Wi-Fi or is a VPN, and its UDP socket is bound explicitly to the active Wi-Fi network. Overlapping UPnP searches are rejected.
+- v0.4.0: accept standards-conforming legacy HTTP/1.0 SSDP responses as well as HTTP/1.1.
+- v0.4.0: show saved history on initial launch; countdown tasks deduplicated on scan restarts.
+- v0.4.0: Android 13 and 15 emulator CI jobs with cache rollback instrumentation; no physical radio performance claim.
 - Sanitized and bounded device names/addresses/details; MAC normalization, protocol-specific identity without incorrect cross-protocol merging.
 - Separate confirmed RF endpoints and LAN service counts; only *candidate* same-address Classic/BLE links, not automatic physical-device counts.
 - Compact dark results-first UI with collapsed advanced tools/diagnostics (prevents initial controls from pushing results offscreen), responsive landscape typography and ForceDark disabled.
@@ -52,7 +58,7 @@ Catalog as many **detectable nearby wireless endpoints** as Android public APIs 
 
 ## Build
 
-GitHub > Actions > **Wireless Explorer Android APK** > select a successful run > Artifacts > **WirelessExplorer-v0.3.1-debug-apk**.
+GitHub > Actions > **Wireless Explorer Android APK** > select a successful run > Artifacts > **WirelessExplorer-v0.4.0-debug-apk**.
 Unzip and install app-debug.apk on your Galaxy (allow installation from that source if prompted). Each CI run uses GitHub's temporary debug key. Uninstalling a previous build may be required before installing a build signed with a different key; uninstalling removes the app's local history, so export it first.
 
 To build with Android Studio, open **WirelessExplorer/** as its own project, use JDK 17, Android SDK platform 35, Android Gradle Plugin 8.9.2 and Gradle 8.11.1. A Gradle wrapper is not committed; GitHub Actions provisions Gradle.
