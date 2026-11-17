@@ -109,8 +109,10 @@ public final class WirelessScanner {
                 report("mDNS 멀티캐스트 수신 제한 · 일부 서비스가 누락될 수 있습니다");
             }
         }
+        if (wifi == null) radio("WIFI", "Wi-Fi 기능 미지원");
         requestWifi();
         nsd = (NsdManager) context.getSystemService(Context.NSD_SERVICE);
+        if (nsd == null) radio("NSD", "서비스 탐색 미지원");
         startNsdCycle(0);
         startP2p();
         if (extendedLan) {
