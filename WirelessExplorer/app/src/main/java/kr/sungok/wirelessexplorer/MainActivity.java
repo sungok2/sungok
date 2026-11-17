@@ -389,10 +389,12 @@ public final class MainActivity extends Activity implements WirelessScanner.List
             list.addView(panel);
         } else if (matching > shown) {
             final int remaining = matching - shown;
-            TextView showMore = action("추가 60개 표시 · 남은 " + remaining + "개", false,
-                    () -> { visibleLimit = Math.min(400, visibleLimit + 60); render(); });
-            list.addView(showMore, new LinearLayout.LayoutParams(-1, dp(44)));
-            list.addView(space(6));
+            if (visibleLimit < 400) {
+                TextView showMore = action("추가 60개 표시 · 남은 " + remaining + "개", false,
+                        () -> { visibleLimit = Math.min(400, visibleLimit + 60); render(); });
+                list.addView(showMore, new LinearLayout.LayoutParams(-1, dp(44)));
+                list.addView(space(6));
+            }
             if (visibleLimit >= 400) list.addView(text(
                     "화면 표시 상한 400건 · 모든 결과는 CSV/JSON으로 내보낼 수 있습니다.",
                     12, SUBTLE, false));
@@ -433,6 +435,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
                 (d.confirmed ? "이전 탐색에서 확인" : "캐시 정보 · 현재 주변 미확인");
         String timestampLabel = d.lastConfirmedAt > 0L
                 ? "최종 실탐지 " + time.format(new Date(d.lastConfirmedAt))
+                : d.confirmed ? "과거 실탐지 시각 미검증(v0.2 이전)"
                 : "캐시 수집 " + time.format(new Date(d.lastSeen));
         TextView meta = text(badge + "  ·  " + timestampLabel
                 + "  ·  수집 " + d.observations + "회", 11, d.live ? ACCENT : SUBTLE, false);
