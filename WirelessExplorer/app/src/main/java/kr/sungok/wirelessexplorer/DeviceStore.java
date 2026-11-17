@@ -7,6 +7,8 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.File;
+import java.io.ByteArrayOutputStream;
+import java.io.FileNotFoundException;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -49,13 +51,21 @@ public final class DeviceStore {
                     id, safeDetails, rssi, now, confirmedThisSession);
             records.put(key, record);
         } else {
-            if (!safeName.isEmpty()) record.name = safeName;
-            if (!safeDetails.isEmpty()) record.details = safeDetails;
-            // A stale scan cache must never replace the last verified signal reading.
-            if (rssi < 0 && (confirmedThisSession || !record.confirmed)) record.rssi = rssi;
-            if (confirmedThisSession || !record.confirmed) record.lastSeen = now;
-            if (confirmedThisSession) record.lastConfirmedAt = now;
-            record.observations++;
+            // Cached results must neither refresh verified evidence nor make
+            // a previously observed endpoint appear more recently present.
+            if (confirmedThisSession) {
+                if (!safeName.isEmpty()) record.name = safeName;
+                if (!safeDetails.isEmpty()) record.details = safeDetails;
+                if (rssi < 0) record.rssi = rssi;
+                record.lastSeen = now;
+                record.lastConfirmedAt = now;
+            } else if (!record.confirmed) {
+                // Cache-only record keeps the time of its *first local import*.
+                // Re-reading Android's cache does not create a new observation.
+                if ("이름 없는 기기".equals(record.name) && !safeName.isEmpty())
+                    record.name = safeName;
+            }
+            if (confirmedThisSession) record.observations++;
             record.live = record.live || confirmedThisSession;
             record.confirmed = record.confirmed || confirmedThisSession;
         }
@@ -169,20 +179,25 @@ public final class DeviceStore {
     }
 
     private void load() {
-        if (!file.exists()) return;
-        if (file.length() > MAX_JSON_FILE_BYTES) {
-            lastPersistenceError = "저장 파일이 용량 제한을 넘어 열 수 없습니다.";
+        // AtomicFile may have a valid .bak while the base file is absent after
+        // an interrupted update. Always allow AtomicFile.openRead() to recover.
+        AtomicFile atomic = new AtomicFile(file);
+        File backup = new File(file.getPath() + ".bak");
+        if (!file.exists() && !backup.exists()) return;
+        if (file.length() > MAX_JSON_FILE_BYTES || backup.length() > MAX_JSON_FILE_BYTES) {
+            lastPersistenceError = "저장 파일의 용량이 안전 제한을 초과했습니다.";
             return;
         }
-        try (FileInputStream in = new AtomicFile(file).openRead()) {
-            byte[] data = new byte[(int) file.length()];
-            int count = 0;
-            while (count < data.length) {
-                int bytes = in.read(data, count, data.length - count);
-                if (bytes == -1) break;
-                count += bytes;
+        try (FileInputStream in = atomic.openRead();
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            byte[] chunk = new byte[8192];
+            int count;
+            while ((count = in.read(chunk)) != -1) {
+                if (out.size() + count > MAX_JSON_FILE_BYTES)
+                    throw new IOException("History file exceeds safe limit");
+                out.write(chunk, 0, count);
             }
-            JSONArray array = new JSONArray(new String(data, 0, count, StandardCharsets.UTF_8));
+            JSONArray array = new JSONArray(new String(out.toByteArray(), StandardCharsets.UTF_8));
             for (int i = 0; i < array.length(); i++) {
                 JSONObject j = array.optJSONObject(i);
                 if (j == null) continue;
