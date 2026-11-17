@@ -104,12 +104,14 @@ jobs:
           profile: pixel_4
           disable-animations: true
           emulator-boot-timeout: 600
-          script: |
+          script: >-
             cd WirelessExplorer
-            gradle --no-daemon :app:connectedDebugAndroidTest
-            adb shell am start -n kr.sungok.wirelessexplorer/.MainActivity
-            sleep 2
-            adb exec-out screencap -p > ../WirelessExplorer-UI-emulator.png
+            && gradle --no-daemon :app:connectedDebugAndroidTest
+            && adb install -r app/build/outputs/apk/debug/app-debug.apk
+            && adb shell am start -n kr.sungok.wirelessexplorer/.MainActivity
+            && sleep 2
+            && adb exec-out screencap -p > ../WirelessExplorer-UI-emulator.png
+            && test -s ../WirelessExplorer-UI-emulator.png
 
       - name: Upload emulator screenshot and test reports
         if: always()
