@@ -33,6 +33,12 @@ public final class UsbPrinterProfile {
         this.source = source;
     }
 
+    public static UsbPrinterProfile loadBundled(Context context) throws IOException {
+        try (InputStream asset = context.getAssets().open("profiles/WF-C5390.profile")) {
+            return parse(readBounded(asset), "앱 내장 프로파일");
+        }
+    }
+
     public static UsbPrinterProfile fetchWfC5390(Context context) throws IOException {
         HttpURLConnection connection = null;
         byte[] remote;

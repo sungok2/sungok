@@ -141,6 +141,7 @@ public final class MainActivity extends Activity {
     private String catalogWarning = "";
     private String notice = "";
     private boolean receiverRegistered;
+    private Integer pendingPrinterProbeId;
 
     private final BroadcastReceiver usbReceiver = new BroadcastReceiver() {
         @Override
@@ -155,6 +156,14 @@ public final class MainActivity extends Activity {
                     }
                 } catch (RuntimeException ignored) { }
                 boolean granted = device != null && usbManager.hasPermission(device);
+                boolean resumeProbe = device != null && pendingPrinterProbeId != null
+                        && pendingPrinterProbeId == device.getDeviceId();
+                if (resumeProbe || device == null) pendingPrinterProbeId = null;
+                if (granted && resumeProbe) {
+                    refreshInventory();
+                    probePrinter(device);
+                    return;
+                }
                 notice = granted ? "USB 접근 권한이 승인되었습니다."
                         : "USB 권한이 없거나 장치가 분리되었습니다.";
             } else {
@@ -168,6 +177,11 @@ public final class MainActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         usbManager = (UsbManager) getSystemService(Context.USB_SERVICE);
+        try {
+            wfC5390Profile = UsbPrinterProfile.loadBundled(this);
+        } catch (IOException e) {
+            notice = "내장 WF-C5390 설정을 읽지 못했습니다.";
+        }
         if (state != null) {
             pendingExportReport = state.getString(STATE_EXPORT_SNAPSHOT);
             activePage = state.getInt(STATE_PAGE);
@@ -438,8 +452,19 @@ public final class MainActivity extends Activity {
         styleButton(checkUsb, true);
         checkUsb.setOnClickListener(v -> checkUsbPrinter());
         addButton(directPrintCard, checkUsb);
+        Button epsonSetup = new Button(this);
+        epsonSetup.setText("WF-C5390 프린터 설정 확인");
+        styleButton(epsonSetup, false);
+        epsonSetup.setOnClickListener(v -> new AlertDialog.Builder(this)
+                .setTitle("WF-C5390 제어판 설정")
+                .setMessage("설정 › 일반 설정 › 프린터 설정에서 다음 두 항목을 확인하세요.\n\n"
+                        + "• USB를 통한 PC 연결: 사용\n"
+                        + "• 인쇄 언어 › USB: PS3 (자동에서 출력이 안 될 때)\n\n"
+                        + "설정이 잠겨 있으면 프린터 관리자에게 확인하세요.")
+                .setPositiveButton("확인", null).show());
+        addButton(directPrintCard, epsonSetup);
         wfProfileButton = new Button(this);
-        wfProfileButton.setText("Epson WF-C5390 프로파일 내려받기");
+        wfProfileButton.setText("WF-C5390 온라인 설정 확인");
         styleButton(wfProfileButton, false);
         wfProfileButton.setOnClickListener(v -> downloadWfC5390Profile());
         addButton(directPrintCard, wfProfileButton);
@@ -901,7 +926,10 @@ public final class MainActivity extends Activity {
     }
 
     private void probeSelectedPrinter() {
-        UsbDevice device = selectedDevice();
+        probePrinter(selectedDevice());
+    }
+
+    private void probePrinter(UsbDevice device) {
         if (device == null || usbManager == null) return;
         UsbPrinterTransport.Selection sel = UsbPrinterTransport.select(device);
         if (sel == null || !usbManager.hasPermission(device)) {
@@ -919,6 +947,10 @@ public final class MainActivity extends Activity {
                 latestPrinterProbe = String.format(Locale.US, "%04X:%04X / %s\n%s",
                         device.getVendorId(), device.getProductId(), device.getDeviceName(), snapshot);
                 refreshInventory();
+                statusView.setText(latestPrinterProbe);
+                new AlertDialog.Builder(this).setTitle("USB 프린터 진단 결과")
+                        .setMessage(latestPrinterProbe)
+                        .setPositiveButton("확인", null).show();
             });
         });
     }
@@ -960,6 +992,7 @@ public final class MainActivity extends Activity {
         if (printer == null) {
             statusView.setText("USB 장치는 감지됐지만 표준 프린터 인터페이스가 없습니다. 장치 · 진단에서 연결 장치를 확인하세요.");
         } else if (!usbManager.hasPermission(selected)) {
+            pendingPrinterProbeId = selected.getDeviceId();
             requestSelectedDevicePermission();
         } else if (!printer.rawCapable) {
             statusView.setText("USB 프린터 감지 및 권한 확인 완료. 이 인터페이스에서는 WF-C5390 PS3 직접 전송을 사용할 수 없습니다.");
@@ -986,7 +1019,7 @@ public final class MainActivity extends Activity {
             String result = message;
             runOnUiThread(() -> {
                 if (isDestroyed()) return;
-                wfC5390Profile = finalProfile;
+                if (finalProfile != null) wfC5390Profile = finalProfile;
                 wfProfileButton.setEnabled(true);
                 updatePermissionButton();
                 statusView.setText(result);
@@ -998,7 +1031,7 @@ public final class MainActivity extends Activity {
         UsbPrinterProfile profile = wfC5390Profile;
         UsbDevice device = selectedDevice();
         if (profile == null) {
-            statusView.setText("먼저 WF-C5390 프로파일을 내려받으세요.");
+            statusView.setText("WF-C5390 설정을 읽지 못했습니다. 온라인 설정 확인을 눌러 주세요.");
             return;
         }
         if (device == null || usbManager == null || !usbManager.hasPermission(device)) {
