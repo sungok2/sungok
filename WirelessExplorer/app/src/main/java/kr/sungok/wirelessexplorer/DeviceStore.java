@@ -58,6 +58,10 @@ public final class DeviceStore {
                 if (rssi < 0) record.rssi = rssi;
                 record.lastSeen = now;
                 record.lastConfirmedAt = now;
+                if (SignalTrend.valid(rssi) && now - record.lastTrendSampleAt >= 1000L) {
+                    record.signalTrace = SignalTrend.append(record.signalTrace, rssi);
+                    record.lastTrendSampleAt = now;
+                }
             } else if (!record.confirmed) {
                 // Cache-only record keeps the time of its *first local import*.
                 // Re-reading Android's cache does not create a new observation.
@@ -137,7 +141,7 @@ public final class DeviceStore {
     }
 
     public String asCsv() {
-        StringBuilder b = new StringBuilder("protocol,kind,name,address,rssi,signal,details,firstSeen,lastReadAt,lastConfirmedAt,observations,thisSession,everConfirmed\n");
+        StringBuilder b = new StringBuilder("protocol,kind,name,address,rssi,signal,details,firstSeen,lastReadAt,lastConfirmedAt,observations,thisSession,everConfirmed,signalTrace\n");
         for (DeviceRecord d : all()) {
             b.append(SignalRules.csv(d.protocol)).append(',')
                     .append(SignalRules.csv(ObservationRules.isRadioEvidence(d.protocol) ? "radio-endpoint" : "network-service")).append(',')
@@ -151,7 +155,8 @@ public final class DeviceStore {
                     .append(d.lastConfirmedAt).append(',')
                     .append(d.observations).append(',')
                     .append(d.live).append(',')
-                    .append(d.confirmed).append('\n');
+                    .append(d.confirmed).append(',')
+                    .append(SignalRules.csv(SignalTrend.clean(d.signalTrace))).append('\n');
         }
         return b.toString();
     }
