@@ -200,7 +200,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
                 new LinearLayout.LayoutParams(0, dp(49), 1f));
         page.addView(space(9));
         lanProbeToggle = new CheckBox(this);
-        lanProbeToggle.setText("현재 Wi-Fi LAN 장치 검색 · TCP/UPnP (선택)");
+        lanProbeToggle.setText(R.string.lan_probe_option);
         lanProbeToggle.setTextColor(WHITE);
         lanProbeToggle.setTextSize(13);
         lanProbeToggle.setButtonTintList(ColorStateList.valueOf(ACCENT));
@@ -407,10 +407,12 @@ public final class MainActivity extends Activity implements WirelessScanner.List
                 }
             }
         } catch (RuntimeException ignored) { }
-        readiness.setText(ScanReadiness.describe(hasBluetooth, bluetoothOn, hasWifi,
-                wifiOn, locationOn, fine, btPermission, wifiPermission)
-                + "\n활성 LAN 연결: " + (activeVpn ? "VPN 연결 · LAN 조사 제한"
-                : activeWifi ? "Wi-Fi 연결됨" : "Wi-Fi 활성 연결 없음 · LAN 조사 불가"));
+        readiness.setText(getString(R.string.readiness_with_network,
+                ScanReadiness.describe(hasBluetooth, bluetoothOn, hasWifi,
+                        wifiOn, locationOn, fine, btPermission, wifiPermission),
+                activeVpn ? getString(R.string.active_lan_vpn)
+                        : activeWifi ? getString(R.string.active_lan_wifi)
+                        : getString(R.string.active_lan_none)));
     }
 
     private void requestAndStart() {
