@@ -53,10 +53,12 @@ public class DeviceStoreInstrumentedTest {
             assertEquals("AA:BB:CC:DD:EE:FF", wifi.address);
             assertTrue(wifi.confirmed);
             assertTrue(wifi.lastConfirmedAt > 0);
+            assertEquals(1, SignalTrend.sampleCount(wifi.signalTrace));
             long verifiedAt = wifi.lastConfirmedAt;
             long verifiedLastSeen = wifi.lastSeen;
             int verifiedRssi = wifi.rssi;
             String verifiedDetail = wifi.details;
+            String verifiedTrace = wifi.signalTrace;
             // Re-reading Android's cache must not alter verified evidence.
             persisted.observe("WIFI", "StaleAP", "aa-bb-cc-dd-ee-ff",
                     "old cached results", -91, false);
@@ -67,6 +69,7 @@ public class DeviceStoreInstrumentedTest {
             assertEquals(verifiedLastSeen, same.lastSeen);
             assertEquals(verifiedRssi, same.rssi);
             assertEquals(verifiedDetail, same.details);
+            assertEquals(verifiedTrace, same.signalTrace);
             assertEquals("TestAP", same.name);
             assertTrue(persisted.asCsv().contains("lastConfirmedAt"));
             assertTrue(persisted.asJson().contains("lastConfirmedAt"));
