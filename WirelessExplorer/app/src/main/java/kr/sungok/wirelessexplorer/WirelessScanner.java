@@ -436,7 +436,8 @@ public final class WirelessScanner {
                 android.net.Network network = cm.getActiveNetwork();
                 NetworkCapabilities caps = network == null
                         ? null : cm.getNetworkCapabilities(network);
-                if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+                if (Build.VERSION.SDK_INT >= 29 && caps != null
+                        && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
                         && caps.getTransportInfo() instanceof WifiInfo) {
                     info = (WifiInfo) caps.getTransportInfo();
                 }
