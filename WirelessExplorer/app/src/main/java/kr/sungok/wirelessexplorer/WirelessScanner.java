@@ -60,6 +60,8 @@ public final class WirelessScanner {
     private WifiP2pManager.Channel p2pChannel;
     private NsdManager nsd;
     private NsdManager.DiscoveryListener activeNsd;
+    private boolean nsdStopping;
+    private int pendingNsdIndex = -1;
     private ScanCallback bleCallback;
     private BroadcastReceiver receiver;
     private boolean running;
@@ -136,6 +138,7 @@ public final class WirelessScanner {
         catch (SecurityException | IllegalStateException ignored) { }
         try { if (bluetooth != null && bluetooth.isDiscovering()) bluetooth.cancelDiscovery(); }
         catch (SecurityException | IllegalStateException ignored) { }
+        pendingNsdIndex = -1;
         stopNsd();
         if (p2p != null && p2pChannel != null) {
             try {
@@ -441,42 +444,86 @@ public final class WirelessScanner {
         }
     }
 
+    /**
+     * Android NSD stop is asynchronous. Do not start a new service-type scan
+     * until onDiscoveryStopped confirms the old listener was released.
+     */
     private void startNsdCycle(int index) {
         if (!running || nsd == null) return;
-        stopNsd();
+        if (activeNsd != null) {
+            pendingNsdIndex = index;
+            stopNsd();
+            return;
+        }
+        pendingNsdIndex = -1;
         String type = SERVICE_TYPES[index % SERVICE_TYPES.length];
+        final int callbackGeneration = generation;
         NsdManager.DiscoveryListener discovery = new NsdManager.DiscoveryListener() {
-            @Override public void onDiscoveryStarted(String serviceType) { radio("NSD", "검색 중"); }
+            private boolean current() {
+                return running && generation == callbackGeneration
+                        && activeNsd == this;
+            }
+
+            @Override public void onDiscoveryStarted(String serviceType) {
+                if (current()) radio("NSD", "검색 중 · " + serviceType);
+            }
+
             @Override public void onServiceFound(NsdServiceInfo info) {
-                if (!running || info == null) return;
+                if (!current() || info == null) return;
                 String unique = info.getServiceType() + "/" + info.getServiceName();
                 publish("NSD", info.getServiceName(), unique,
                         "mDNS/DNS-SD 응답 · " + info.getServiceType()
-                                + " · 동일 로컬 네트워크", 0, true);
+                                + " · 연결된 로컬 네트워크", 0, true);
             }
+
             @Override public void onServiceLost(NsdServiceInfo info) { }
-            @Override public void onDiscoveryStopped(String serviceType) { }
-            @Override public void onStartDiscoveryFailed(String serviceType, int errorCode) {
-                radio("NSD", "서비스 탐색 제한 / 코드 " + errorCode);
-                report("mDNS 서비스 탐색 제한 · " + errorCode);
+
+            @Override public void onDiscoveryStopped(String serviceType) {
+                if (activeNsd != this) return;
+                activeNsd = null;
+                nsdStopping = false;
+                int nextIndex = pendingNsdIndex;
+                pendingNsdIndex = -1;
+                if (running && generation == callbackGeneration && nextIndex >= 0)
+                    main.post(() -> startNsdCycle(nextIndex));
             }
-            @Override public void onStopDiscoveryFailed(String serviceType, int errorCode) { }
+
+            @Override public void onStartDiscoveryFailed(String serviceType, int errorCode) {
+                if (activeNsd != this || generation != callbackGeneration) return;
+                activeNsd = null;
+                nsdStopping = false;
+                radio("NSD", "서비스 검색 시작 실패 · " + errorCode);
+            }
+
+            @Override public void onStopDiscoveryFailed(String serviceType, int errorCode) {
+                if (activeNsd != this || generation != callbackGeneration) return;
+                // An old listener may still be active. Fail closed instead of
+                // opening another discovery session and hitting NSD limits.
+                nsdStopping = false;
+                pendingNsdIndex = -1;
+                radio("NSD", "이전 검색 종료 실패 · " + errorCode);
+            }
         };
         try {
-            nsd.discoverServices(type, NsdManager.PROTOCOL_DNS_SD, discovery);
             activeNsd = discovery;
+            nsd.discoverServices(type, NsdManager.PROTOCOL_DNS_SD, discovery);
         } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
-            radio("NSD", "서비스 검색 오류");
-            report("mDNS 탐색 오류 · " + type);
+            if (activeNsd == discovery) activeNsd = null;
+            radio("NSD", "서비스 검색 예외 · " + e.getClass().getSimpleName());
         }
         main.postDelayed(() -> startNsdCycle(index + 1), ScanPlan.NSD_INTERVAL_MS);
     }
 
     private void stopNsd() {
-        if (nsd == null || activeNsd == null) return;
-        try { nsd.stopServiceDiscovery(activeNsd); }
-        catch (IllegalArgumentException | IllegalStateException ignored) { }
-        activeNsd = null;
+        if (nsd == null || activeNsd == null || nsdStopping) return;
+        try {
+            nsdStopping = true;
+            nsd.stopServiceDiscovery(activeNsd);
+        } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
+            nsdStopping = false;
+            pendingNsdIndex = -1;
+            radio("NSD", "서비스 종료 실패 · " + e.getClass().getSimpleName());
+        }
     }
 
     private void publish(String protocol, String name, String id,
