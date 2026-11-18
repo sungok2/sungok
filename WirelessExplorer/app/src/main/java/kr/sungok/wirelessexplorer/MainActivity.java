@@ -482,8 +482,9 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         String countText = getString(R.string.counter_summary, store.countLiveRadioEndpoints(),
                 store.countLiveNetworkServices(), store.total());
         int overlap = store.sharedBluetoothAddressCandidates();
-        counter.setText(countText + (overlap > 0
-                ? "\nBT/BLE 동일 주소 후보 " + overlap + "쌍 (기기 수 미확정)" : ""));
+        counter.setText(overlap > 0
+                ? getString(R.string.counter_with_candidate, countText, overlap)
+                : countText);
         renderCoverage();
         updateTargetCoverage();
         list.removeAllViews();
@@ -641,8 +642,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
             return;
         }
         int matched = KnownTargetCoverage.matchedCount(knownTargets.targets, sessionKeys());
-        targetSummary.setText("검증 기준 " + expectedCount + "개 중 이번 탐색 " + matched
-                + "개 관찰 · 미관찰은 부재 증거가 아닙니다");
+        targetSummary.setText(getString(R.string.target_coverage_summary, expectedCount, matched));
         targetSummary.setVisibility(View.VISIBLE);
     }
 
