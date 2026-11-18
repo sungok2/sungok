@@ -445,14 +445,8 @@ public final class WirelessScanner {
             if (info == null) info = wifi.getConnectionInfo(); // Old device compatibility.
             if (info == null) return;
             String bssid = info.getBSSID();
-            if (!usableBssid(bssid)) return;
-            String ssid = info.getSSID();
-            if (ssid != null && ssid.length() >= 2
-                    && ssid.startsWith("\"") && ssid.endsWith("\"")) {
-                ssid = ssid.substring(1, ssid.length() - 1);
-            }
-            if (ssid == null || ssid.isEmpty() || "<unknown ssid>".equalsIgnoreCase(ssid))
-                ssid = "현재 연결된 Wi-Fi AP";
+            if (!WifiConnectionEvidence.usableBssid(bssid)) return;
+            String ssid = WifiConnectionEvidence.displaySsid(info.getSSID());
             int freq = info.getFrequency();
             int channel = SignalRules.wifiChannel(freq);
             String detail = "현재 연결 중인 공유기 · Wi-Fi 연결 정보"
@@ -466,13 +460,6 @@ public final class WirelessScanner {
             wifiHadPermissionError = true;
             radio("WIFI", "연결 정보 접근 제한 · 정확한 위치 권한 확인");
         }
-    }
-
-    private static boolean usableBssid(String bssid) {
-        return bssid != null && bssid.matches("(?i)[0-9a-f]{2}(:[0-9a-f]{2}){5}")
-                && !"02:00:00:00:00:00".equals(bssid)
-                && !"00:00:00:00:00:00".equals(bssid)
-                && !"ff:ff:ff:ff:ff:ff".equalsIgnoreCase(bssid);
     }
 
     private String wifiSummary() {
@@ -517,7 +504,7 @@ public final class WirelessScanner {
             int newRows = 0;
             long nowUs = SystemClock.elapsedRealtimeNanos() / 1000L;
             for (android.net.wifi.ScanResult r : results) {
-                if (!usableBssid(r.BSSID)) continue;
+                if (!WifiConnectionEvidence.usableBssid(r.BSSID)) continue;
                 valid++;
                 String name = r.SSID == null || r.SSID.isEmpty() ? "숨김 Wi-Fi" : r.SSID;
                 boolean fresh = ScanFreshness.isWifiFresh(
