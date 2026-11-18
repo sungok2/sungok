@@ -29,6 +29,8 @@ import android.util.SparseArray;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.HashSet;
 
 /**
  * Discoverable radio endpoints + LAN service advertisement, with optional
@@ -79,7 +81,7 @@ public final class WirelessScanner {
     private int wifiAccepted;
     private int wifiBroadcasts;
     private int wifiLastRows;
-    private int wifiLastFresh;
+    private final Set<String> wifiFreshKeys = new HashSet<>();
     private boolean wifiConnected;
     private boolean wifiHadPermissionError;
     private volatile int generation;
@@ -106,7 +108,8 @@ public final class WirelessScanner {
         running = true;
         generation++;
         bleGate.clear();
-        wifiRequests = wifiAccepted = wifiBroadcasts = wifiLastRows = wifiLastFresh = 0;
+        wifiRequests = wifiAccepted = wifiBroadcasts = wifiLastRows = 0;
+        wifiFreshKeys.clear();
         wifiConnected = wifiHadPermissionError = false;
         sessionStartedElapsedUs = SystemClock.elapsedRealtimeNanos() / 1000L;
         report("탐색 시작 · BLE/Classic 분리 및 Wi-Fi·LAN 증거 수집 (180초)");
@@ -160,7 +163,11 @@ public final class WirelessScanner {
         bleGate.clear();
         if (lanDiscovery != null) lanDiscovery.stop();
         lanDiscovery = null;
-        radio("WIFI", wifiSummary() + " · 탐색 종료");
+         radio("WIFI", wifiSummary() + " · 탐색 종료");
+        radio("P2P", "탐색 종료 · Wi-Fi Direct 수신 가능 기기만");
+        radio("NSD", "탐색 종료 · 동일 LAN 광고 서비스만");
+        radio("BLE", "탐색 종료");
+        radio("BT", "탐색 종료 · 발견 가능 모드 기기만");
         if (lanProbeEnabled) radio("LAN", "탐색 종료 · 발견 항목은 목록에서 확인");
         classicPhase = false;
         bleScanning = false;
@@ -464,7 +471,7 @@ public final class WirelessScanner {
         if (wifiHadPermissionError)
             return "Wi-Fi 결과 접근 제한 · 정확한 위치 권한/위치 서비스 확인";
         return "AP 목록 " + wifiLastRows + "개"
-                + " · 새 AP " + wifiLastFresh + "개"
+                + " · 신규 AP " + wifiFreshKeys.size() + "개"
                 + " · 요청 허용 " + wifiAccepted + "/" + wifiRequests
                 + " · 결과 알림 " + wifiBroadcasts
                 + (wifiConnected ? " · 연결 AP 확인" : " · 연결 AP 미확인")
@@ -507,7 +514,7 @@ public final class WirelessScanner {
                 String name = r.SSID == null || r.SSID.isEmpty() ? "숨김 Wi-Fi" : r.SSID;
                 boolean fresh = ScanFreshness.isWifiFresh(
                         updated, r.timestamp, sessionStartedElapsedUs, nowUs);
-                if (fresh) newRows++;
+                if (fresh) { newRows++; wifiFreshKeys.add(r.BSSID); }
                 int channel = SignalRules.wifiChannel(r.frequency);
                 String detail = SignalRules.wifiBand(r.frequency) + " / "
                         + r.frequency + " MHz"
@@ -518,7 +525,6 @@ public final class WirelessScanner {
                 publish("WIFI", name, r.BSSID, detail, r.level, fresh);
             }
             wifiLastRows = valid;
-            wifiLastFresh = newRows;
             radio("WIFI", wifiSummary() +
                     (updated && newRows == 0 ? " · 갱신 알림이나 신규 AP 없음" : ""));
         } catch (SecurityException | IllegalStateException e) {
