@@ -158,7 +158,7 @@ public final class DeviceStore {
     }
 
     public String asCsv() {
-        StringBuilder b = new StringBuilder("protocol,kind,name,address,rssi,signal,details,firstSeen,lastReadAt,lastConfirmedAt,observations,thisSession,everConfirmed,signalTrace\n");
+        StringBuilder b = new StringBuilder("protocol,kind,name,address,rssi,signal,details,firstSeen,lastReadAt,lastConfirmedAt,observations,thisSession,everConfirmed,signalTrace,importedHistory\n");
         for (DeviceRecord d : all()) {
             b.append(SignalRules.csv(d.protocol)).append(',')
                     .append(SignalRules.csv(ObservationRules.isRadioEvidence(d.protocol) ? "radio-endpoint" : ("LAN".equals(d.protocol) ? "network-host" : "network-service"))).append(',')
@@ -173,7 +173,8 @@ public final class DeviceStore {
                     .append(d.observations).append(',')
                     .append(d.live).append(',')
                     .append(d.confirmed).append(',')
-                    .append(SignalRules.csv(SignalTrend.clean(d.signalTrace))).append('\n');
+                    .append(SignalRules.csv(SignalTrend.clean(d.signalTrace))).append(',')
+                    .append(d.imported).append('\n');
         }
         return b.toString();
     }
