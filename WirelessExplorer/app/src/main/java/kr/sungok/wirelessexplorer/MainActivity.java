@@ -71,7 +71,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
     private DeviceStore store;
     private WirelessScanner scanner;
     private TextView status, counter, coverage, scanButton, sessionButton, progress, unknownButton, targetSummary;
-    private CheckBox lanToggle;
+    private CheckBox lanToggle, lanProbeToggle;
     private LinearLayout advancedPanel;
     private TextView coverageToggle, toolToggle, readiness;
     private boolean coverageExpanded;
@@ -82,6 +82,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
     private String exportFormat = "csv";
     private boolean unknownOnly;
     private boolean extendedLan;
+    private boolean lanProbeEnabled;
     private String knownTargetInput = "";
     private KnownTargetCoverage.Result knownTargets;
     private int visibleLimit = 60;
@@ -195,6 +196,21 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         addHorizontalSpace(actions, 9);
         actions.addView(action("CSV 내보내기", false, () -> export(false)),
                 new LinearLayout.LayoutParams(0, dp(49), 1f));
+        page.addView(space(9));
+        lanProbeToggle = new CheckBox(this);
+        lanProbeToggle.setText("내 Wi-Fi LAN 장치 찾기 · 허가된 네트워크에서만");
+        lanProbeToggle.setTextColor(WHITE);
+        lanProbeToggle.setTextSize(13);
+        lanProbeToggle.setButtonTintList(ColorStateList.valueOf(ACCENT));
+        lanProbeToggle.setContentDescription(
+                "허가된 사설 Wi-Fi LAN에서만 최대 253개 IPv4의 제한된 서비스 포트에 접속을 시도합니다. 응답이 없어도 기기가 없다는 뜻은 아닙니다.");
+        lanProbeToggle.setOnCheckedChangeListener((button, checked) -> {
+            lanProbeEnabled = checked;
+            if (checked) Toast.makeText(this,
+                    "허가된 Wi-Fi LAN에서만 TCP 탐색합니다. 응답 없는 장치는 나타나지 않을 수 있습니다.",
+                    Toast.LENGTH_LONG).show();
+        });
+        page.addView(lanProbeToggle);
 
         advancedPanel = new LinearLayout(this);
         advancedPanel.setOrientation(LinearLayout.VERTICAL);
@@ -309,7 +325,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
     private void buildFilters() {
         filterBar.removeAllViews();
         String[][] choices = {{"ALL","전체"}, {"BLE","BLE"}, {"BT","블루투스"},
-                {"WIFI","Wi-Fi"}, {"P2P","Wi-Fi Direct"}, {"NSD","mDNS"}, {"UPNP","UPnP"}};
+                {"WIFI","Wi-Fi"}, {"LAN","LAN 장치"}, {"P2P","Wi-Fi Direct"}, {"NSD","mDNS"}, {"UPNP","UPnP"}};
         for (String[] choice : choices) {
             String id = choice[0];
             boolean selected = id.equals(filter);
@@ -426,9 +442,12 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         sessionStartElapsed = SystemClock.elapsedRealtime();
         main.removeCallbacks(countdownTick);
         scanner.setExtendedLan(extendedLan);
+        scanner.setLanProbeEnabled(lanProbeEnabled);
         lanToggle.setEnabled(false);
-        sessionOnly = true;
-        sessionButton.setText("이번 탐색만");
+        lanProbeToggle.setEnabled(false);
+        // Display old/cached records explicitly labeled rather than hiding them.
+        sessionOnly = false;
+        sessionButton.setText("과거 포함");
         sessionButton.setBackground(shape(SURFACE, 14, BORDER));
         scanner.start();
         scanButton.setText("탐색 중지");
@@ -443,6 +462,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         main.removeCallbacks(countdownTick);
         scanButton.setText("탐색 시작");
         lanToggle.setEnabled(true);
+        lanProbeToggle.setEnabled(true);
         if (!store.save()) status.setText(store.lastPersistenceError());
         updateProgress();
         render();
@@ -473,13 +493,15 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         if (scanner != null && !scanner.isRunning() && scanButton != null) {
             scanButton.setText("탐색 시작");
             if (lanToggle != null) lanToggle.setEnabled(true);
+            if (lanProbeToggle != null) lanProbeToggle.setEnabled(true);
             if (store != null && !store.save()) status.setText(store.lastPersistenceError());
         }
     }
 
     private void render() {
         if (counter == null || list == null) return;
-        String countText = getString(R.string.counter_summary, store.countLiveRadioEndpoints(),
+        String countText = getString(R.string.counter_dashboard,
+                store.countLiveRadioEndpoints(), store.countLiveLanHosts(),
                 store.countLiveNetworkServices(), store.total());
         int overlap = store.sharedBluetoothAddressCandidates();
         counter.setText(overlap > 0
@@ -613,7 +635,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
     private void renderCoverage() {
         if (coverage == null || store == null) return;
         StringBuilder b = new StringBuilder("무선 방식별 탐색 상태 · 이번 탐색에서 확인한 항목 수\n");
-        String[] types = {"BLE", "BT", "WIFI", "P2P", "NSD", "UPNP"};
+        String[] types = {"BLE", "BT", "WIFI", "LAN", "P2P", "NSD", "UPNP"};
         List<DeviceRecord> items = store.all();
         for (String type : types) {
             int count = 0;
@@ -810,8 +832,9 @@ public final class MainActivity extends Activity implements WirelessScanner.List
             if ("report".equals(exportFormat)) {
                 content = InventoryReport.generate(
                         new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.KOREA).format(new Date()),
-                        store.countLiveRadioEndpoints(), store.countLiveNetworkServices(),
-                        store.total(), store.sharedBluetoothAddressCandidates(), radioStates,
+                        store.countLiveRadioEndpoints(), store.countLiveLanHosts(),
+                        store.countLiveNetworkServices(), store.total(),
+                        store.sharedBluetoothAddressCandidates(), radioStates,
                         "Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")",
                         extendedLan);
                 content += "\n" + KnownTargetCoverage.report(knownTargets.targets, sessionKeys());
@@ -827,6 +850,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
 
     @Override protected void onStop() {
         if (scanner != null && scanner.isRunning()) scanner.stop();
+        if (lanProbeToggle != null) lanProbeToggle.setEnabled(true);
         main.removeCallbacks(countdownTick);
         if (store != null) store.save();
         super.onStop();
