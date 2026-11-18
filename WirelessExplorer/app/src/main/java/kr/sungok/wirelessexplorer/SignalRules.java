@@ -24,6 +24,7 @@ public final class SignalRules {
         if (protocol.equals("P2P")) return "Wi-Fi Direct 기기";
         if (protocol.equals("NSD")) return "로컬 네트워크 서비스";
         if (protocol.equals("UPNP")) return "UPnP 로컬 네트워크 서비스";
+        if (protocol.equals("LAN")) return "LAN TCP 응답 주소(유·무선 미확인)";
         if (n.contains("watch") || n.contains("band")) return "웨어러블 추정";
         if (n.contains("buds") || n.contains("headphone") || n.contains("airpods")) return "오디오 기기 추정";
         if (n.contains("tv") || n.contains("cast")) return "미디어 기기 추정";

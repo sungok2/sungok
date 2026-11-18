@@ -63,7 +63,8 @@ public final class KnownTargetCoverage {
             String protocol = parts[0].trim().toUpperCase(Locale.ROOT);
             if (!protocol.equals("BLE") && !protocol.equals("BT")
                     && !protocol.equals("WIFI") && !protocol.equals("P2P")
-                    && !protocol.equals("NSD") && !protocol.equals("UPNP")) {
+                    && !protocol.equals("NSD") && !protocol.equals("UPNP")
+                    && !protocol.equals("LAN")) {
                 errors.add((i + 1) + "행: 지원하지 않는 프로토콜입니다.");
                 continue;
             }

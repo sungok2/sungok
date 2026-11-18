@@ -15,6 +15,9 @@ import android.content.IntentFilter;
 import android.net.nsd.NsdManager;
 import android.net.nsd.NsdServiceInfo;
 import android.net.wifi.WifiManager;
+import android.net.wifi.WifiInfo;
+import android.net.ConnectivityManager;
+import android.net.NetworkCapabilities;
 import android.net.wifi.p2p.WifiP2pDevice;
 import android.net.wifi.p2p.WifiP2pManager;
 import android.os.Build;
@@ -26,6 +29,8 @@ import android.util.SparseArray;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.HashSet;
 
 /**
  * Discoverable radio endpoints + LAN service advertisement, with optional
@@ -69,7 +74,16 @@ public final class WirelessScanner {
     private boolean bleScanning;
     private boolean classicPhase;
     private boolean extendedLan;
+    private boolean lanProbeEnabled;
+    private LanDiscovery lanDiscovery;
     private SsdpDiscovery ssdp;
+    private int wifiRequests;
+    private int wifiAccepted;
+    private int wifiBroadcasts;
+    private int wifiLastRows;
+    private final Set<String> wifiFreshKeys = new HashSet<>();
+    private boolean wifiConnected;
+    private boolean wifiHadPermissionError;
     private volatile int generation;
 
     public WirelessScanner(Context context, Listener listener) {
@@ -84,11 +98,19 @@ public final class WirelessScanner {
         if (!running) extendedLan = enabled;
     }
 
+    /** Explicit opt-in only: small, bounded TCP handshakes to the active local Wi-Fi subnet. */
+    public void setLanProbeEnabled(boolean enabled) {
+        if (!running) lanProbeEnabled = enabled;
+    }
+
     public void start() {
         if (running) return;
         running = true;
         generation++;
         bleGate.clear();
+        wifiRequests = wifiAccepted = wifiBroadcasts = wifiLastRows = 0;
+        wifiFreshKeys.clear();
+        wifiConnected = wifiHadPermissionError = false;
         sessionStartedElapsedUs = SystemClock.elapsedRealtimeNanos() / 1000L;
         report("탐색 시작 · BLE/Classic 분리 및 Wi-Fi·LAN 증거 수집 (180초)");
         registerEvents();
@@ -98,6 +120,7 @@ public final class WirelessScanner {
         radio("P2P", "시작 준비");
         radio("NSD", "시작 준비");
         radio("UPNP", extendedLan ? "확장 검색 준비" : "비활성(선택사항)");
+        radio("LAN", lanProbeEnabled ? "주소 조사 준비" : "비활성(사용자 선택)");
         startBluetooth();
         // Classic inquiry can compete with BLE; scan the radios in phases.
         main.postDelayed(this::beginClassicPhase, ScanPlan.BLE_LOW_LATENCY_MS);
@@ -114,6 +137,7 @@ public final class WirelessScanner {
             }
         }
         if (wifi == null) radio("WIFI", "Wi-Fi 기능 미지원");
+        readConnectedWifi();
         requestWifi();
         nsd = (NsdManager) context.getSystemService(Context.NSD_SERVICE);
         if (nsd == null) radio("NSD", "서비스 탐색 미지원");
@@ -124,6 +148,10 @@ public final class WirelessScanner {
             main.postDelayed(this::discoverSsdp, 8_000);
             main.postDelayed(this::discoverSsdp, 100_000);
         }
+        if (lanProbeEnabled) {
+            lanDiscovery = new LanDiscovery();
+            main.postDelayed(this::discoverLan, 2_500L);
+        }
         main.postDelayed(this::stop, ScanPlan.SESSION_MS);
     }
 
@@ -133,6 +161,14 @@ public final class WirelessScanner {
         generation++;
         main.removeCallbacksAndMessages(null);
         bleGate.clear();
+        if (lanDiscovery != null) lanDiscovery.stop();
+        lanDiscovery = null;
+         radio("WIFI", wifiSummary() + " · 탐색 종료");
+        radio("P2P", "탐색 종료 · Wi-Fi Direct 수신 가능 기기만");
+        radio("NSD", "탐색 종료 · 동일 LAN 광고 서비스만");
+        radio("BLE", "탐색 종료");
+        radio("BT", "탐색 종료 · 발견 가능 모드 기기만");
+        if (lanProbeEnabled) radio("LAN", "탐색 종료 · 발견 항목은 목록에서 확인");
         classicPhase = false;
         bleScanning = false;
         if (ssdp != null) ssdp.stop();
@@ -317,8 +353,15 @@ public final class WirelessScanner {
                 if (manufacturers != null && manufacturers.size() > 0) {
                     detail.append(" · 제조사 ID:");
                     for (int i = 0; i < Math.min(manufacturers.size(), 5); i++) {
-                        detail.append(' ').append(String.format(Locale.ROOT, "0x%04X",
-                                manufacturers.keyAt(i)));
+                        int id = manufacturers.keyAt(i);
+                        detail.append(' ').append(String.format(Locale.ROOT, "0x%04X", id));
+                        String company = BleCompanyNames.forId(id);
+                        if (!company.isEmpty()) {
+                            detail.append(" (").append(company)
+                                    .append(" 광고 회사 ID · 기기 제조사 확정 아님)");
+                            if (name == null || name.isEmpty())
+                                name = "광고 회사 ID: " + company;
+                        }
                     }
                 }
                 if (record.getServiceUuids() != null && !record.getServiceUuids().isEmpty()) {
@@ -350,7 +393,9 @@ public final class WirelessScanner {
                 String action = intent.getAction();
                 if (WifiManager.SCAN_RESULTS_AVAILABLE_ACTION.equals(action)) {
                     boolean fresh = intent.getBooleanExtra(WifiManager.EXTRA_RESULTS_UPDATED, false);
+                    wifiBroadcasts++;
                     readWifi(fresh);
+                    readConnectedWifi();
                 } else if (BluetoothDevice.ACTION_FOUND.equals(action)) {
                     readClassic(intent);
                 } else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
@@ -380,46 +425,123 @@ public final class WirelessScanner {
         }
     }
 
+    /** A connected access point is evidence of an association, not a new RF scan. */
+    private void readConnectedWifi() {
+        if (!running || wifi == null) return;
+        try {
+            WifiInfo info = null;
+            ConnectivityManager cm = (ConnectivityManager)
+                    context.getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm != null) {
+                android.net.Network network = cm.getActiveNetwork();
+                NetworkCapabilities caps = network == null
+                        ? null : cm.getNetworkCapabilities(network);
+                if (Build.VERSION.SDK_INT >= 29 && caps != null
+                        && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+                        && caps.getTransportInfo() instanceof WifiInfo) {
+                    info = (WifiInfo) caps.getTransportInfo();
+                }
+            }
+            if (info == null) info = wifi.getConnectionInfo(); // Old device compatibility.
+            if (info == null) return;
+            String bssid = info.getBSSID();
+            if (!WifiConnectionEvidence.usableBssid(bssid)) return;
+            String ssid = WifiConnectionEvidence.displaySsid(info.getSSID());
+            int freq = info.getFrequency();
+            int channel = SignalRules.wifiChannel(freq);
+            String detail = "현재 연결 중인 공유기 · Wi-Fi 연결 정보"
+                    + (freq > 0 ? " · " + SignalRules.wifiBand(freq) + " "
+                    + freq + " MHz" + (channel > 0 ? " CH" + channel : "") : "")
+                    + " · 새로운 AP 스캔 결과와 별도 검증";
+            wifiConnected = true;
+            publish("WIFI", ssid, bssid, detail, info.getRssi(), true);
+            radio("WIFI", wifiSummary());
+        } catch (SecurityException | IllegalStateException e) {
+            wifiHadPermissionError = true;
+            radio("WIFI", "연결 정보 접근 제한 · 정확한 위치 권한 확인");
+        }
+    }
+
+    private String wifiSummary() {
+        if (wifiHadPermissionError)
+            return "Wi-Fi 결과 접근 제한 · 정확한 위치 권한/위치 서비스 확인";
+        return "AP 목록 " + wifiLastRows + "개"
+                + " · 신규 AP " + wifiFreshKeys.size() + "개"
+                + " · 요청 허용 " + wifiAccepted + "/" + wifiRequests
+                + " · 결과 알림 " + wifiBroadcasts
+                + (wifiConnected ? " · 연결 AP 확인" : " · 연결 AP 미확인")
+                + (wifiLastRows == 0 && !wifiConnected
+                    ? " · Wi-Fi 연결/스캔 제한 확인 필요" : "");
+    }
+
     private void requestWifi() {
         if (!running || wifi == null) return;
         try {
+            wifiRequests++;
             boolean accepted = wifi.startScan();
-            radio("WIFI", accepted ? "검색 중" : "스캔 제한 / 캐시만 확인");
-            if (!accepted) report("Wi-Fi 새 검색이 제한되었습니다 · 기존 결과만 확인");
-            readWifi(false); // Explicitly labeled as cached, not a fresh discovery.
+            if (accepted) wifiAccepted++;
+            readWifi(false); // Cached records are not newly sighted radio APs.
+            readConnectedWifi(); // Separate source: currently associated AP.
+            if (!accepted) radio("WIFI", wifiSummary() + " · 새 검색 요청 제한");
+            else radio("WIFI", wifiSummary());
         } catch (SecurityException | IllegalStateException e) {
-            radio("WIFI", "위치 권한 또는 서비스 확인");
-            report("Wi-Fi 탐색을 위해 위치 권한과 위치 서비스를 켜주세요");
+            wifiHadPermissionError = true;
+            radio("WIFI", "Wi-Fi 스캔 차단 · 위치 권한/서비스 및 운영체제 설정 확인");
         }
-        main.postDelayed(this::requestWifi, ScanPlan.WIFI_INTERVAL_MS);
+        if (running) main.postDelayed(this::requestWifi, ScanPlan.WIFI_INTERVAL_MS);
     }
 
-    private void readWifi(boolean fresh) {
+    private void readWifi(boolean updated) {
         if (!running || wifi == null) return;
         try {
             List<android.net.wifi.ScanResult> results = wifi.getScanResults();
-            if (results == null) return;
-            boolean anyFresh = false;
+            if (results == null) {
+                wifiLastRows = 0;
+                radio("WIFI", wifiSummary() + " · 결과 목록 null");
+                return;
+            }
+            int valid = 0;
+            int newRows = 0;
+            long nowUs = SystemClock.elapsedRealtimeNanos() / 1000L;
             for (android.net.wifi.ScanResult r : results) {
-                if (r.BSSID == null || r.BSSID.isEmpty()) continue;
+                if (!WifiConnectionEvidence.usableBssid(r.BSSID)) continue;
+                valid++;
                 String name = r.SSID == null || r.SSID.isEmpty() ? "숨김 Wi-Fi" : r.SSID;
-                long nowUs = SystemClock.elapsedRealtimeNanos() / 1000L;
-                boolean newInThisSession = ScanFreshness.isWifiFresh(
-                        fresh, r.timestamp, sessionStartedElapsedUs, nowUs);
+                boolean fresh = ScanFreshness.isWifiFresh(
+                        updated, r.timestamp, sessionStartedElapsedUs, nowUs);
+                if (fresh) { newRows++; wifiFreshKeys.add(r.BSSID); }
                 int channel = SignalRules.wifiChannel(r.frequency);
                 String detail = SignalRules.wifiBand(r.frequency) + " / "
                         + r.frequency + " MHz"
                         + (channel > 0 ? " · CH " + channel : "")
                         + " · " + r.capabilities
-                        + (newInThisSession ? " · 이번 탐색 확인" : " · 과거 스캔 캐시(현재 위치 미확인)");
-                publish("WIFI", name, r.BSSID, detail, r.level, newInThisSession);
-                if (newInThisSession) anyFresh = true;
+                        + (fresh ? " · 이번 탐색 AP 스캔" :
+                        " · 과거 스캔 캐시(현재 주변 미확인)");
+                publish("WIFI", name, r.BSSID, detail, r.level, fresh);
             }
-            if (anyFresh) radio("WIFI", "새 결과 수신");
+            wifiLastRows = valid;
+            radio("WIFI", wifiSummary() +
+                    (updated && newRows == 0 ? " · 갱신 알림이나 신규 AP 없음" : ""));
         } catch (SecurityException | IllegalStateException e) {
-            radio("WIFI", "결과 접근 실패 / 위치 확인");
-            report("Wi-Fi 결과를 읽을 수 없습니다 · 위치 권한/서비스 확인");
+            wifiHadPermissionError = true;
+            radio("WIFI", "getScanResults 접근 제한 · 정확한 위치 권한/위치 서비스 확인");
         }
+    }
+
+    private void discoverLan() {
+        if (!running || !lanProbeEnabled || lanDiscovery == null) return;
+        final int token = generation;
+        lanDiscovery.discover(context, new LanDiscovery.Callback() {
+            @Override public void found(String ip, String description) {
+                if (running && token == generation)
+                    publish("LAN", "LAN 응답 " + ip, ip, description, 0, true);
+            }
+
+            @Override public void status(String message) {
+                if (running && token == generation)
+                    radio("LAN", message);
+            }
+        });
     }
 
     private void startP2p() {

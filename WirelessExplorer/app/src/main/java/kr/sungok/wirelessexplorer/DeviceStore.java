@@ -102,10 +102,18 @@ public final class DeviceStore {
         return count;
     }
 
+    /** Hosts with an actual allowed-network TCP response, possibly wired. */
+    public int countLiveLanHosts() {
+        int count = 0;
+        for (DeviceRecord d : records.values())
+            if (d.live && "LAN".equals(d.protocol)) count++;
+        return count;
+    }
+
     public int countLiveNetworkServices() {
         int count = 0;
         for (DeviceRecord d : records.values()) {
-            if (d.live && !ObservationRules.isRadioEvidence(d.protocol)) count++;
+            if (d.live && ("NSD".equals(d.protocol) || "UPNP".equals(d.protocol))) count++;
         }
         return count;
     }
@@ -150,10 +158,10 @@ public final class DeviceStore {
     }
 
     public String asCsv() {
-        StringBuilder b = new StringBuilder("protocol,kind,name,address,rssi,signal,details,firstSeen,lastReadAt,lastConfirmedAt,observations,thisSession,everConfirmed,signalTrace\n");
+        StringBuilder b = new StringBuilder("protocol,kind,name,address,rssi,signal,details,firstSeen,lastReadAt,lastConfirmedAt,observations,thisSession,everConfirmed,signalTrace,importedHistory\n");
         for (DeviceRecord d : all()) {
             b.append(SignalRules.csv(d.protocol)).append(',')
-                    .append(SignalRules.csv(ObservationRules.isRadioEvidence(d.protocol) ? "radio-endpoint" : "network-service")).append(',')
+                    .append(SignalRules.csv(ObservationRules.isRadioEvidence(d.protocol) ? "radio-endpoint" : ("LAN".equals(d.protocol) ? "network-host" : "network-service"))).append(',')
                     .append(SignalRules.csv(d.name)).append(',')
                     .append(SignalRules.csv(d.address)).append(',')
                     .append(d.rssi).append(',')
@@ -165,7 +173,8 @@ public final class DeviceStore {
                     .append(d.observations).append(',')
                     .append(d.live).append(',')
                     .append(d.confirmed).append(',')
-                    .append(SignalRules.csv(SignalTrend.clean(d.signalTrace))).append('\n');
+                    .append(SignalRules.csv(SignalTrend.clean(d.signalTrace))).append(',')
+                    .append(d.imported).append('\n');
         }
         return b.toString();
     }
@@ -208,7 +217,8 @@ public final class DeviceStore {
             String protocol = j.optString("protocol", "");
             if (!"BLE".equals(protocol) && !"BT".equals(protocol)
                     && !"WIFI".equals(protocol) && !"P2P".equals(protocol)
-                    && !"NSD".equals(protocol) && !"UPNP".equals(protocol)) {
+                    && !"NSD".equals(protocol) && !"UPNP".equals(protocol)
+                    && !"LAN".equals(protocol)) {
                 skipped++;
                 continue;
             }

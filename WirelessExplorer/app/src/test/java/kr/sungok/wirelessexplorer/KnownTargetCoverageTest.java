@@ -24,6 +24,14 @@ public class KnownTargetCoverageTest {
         assertTrue(report.contains("미관찰은 부재 증거가 아닙니다"));
     }
 
+    @Test public void acceptsExactPrivateLanHostBenchmark() {
+        KnownTargetCoverage.Result r = KnownTargetCoverage.parse(
+                "LAN,192.168.1.5,Known printer IP\n");
+        assertTrue(r.errors.isEmpty());
+        assertEquals(1, r.targets.size());
+        assertEquals("LAN|192.168.1.5", r.targets.get(0).key);
+    }
+
     @Test public void rejectsBadRowsAndExactDuplicates() {
         KnownTargetCoverage.Result result = KnownTargetCoverage.parse(
             "BLE,aa:bb:cc:dd:ee:ff\n"

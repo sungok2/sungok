@@ -40,10 +40,14 @@ public class DeviceStoreInstrumentedTest {
             assertEquals(2, store.total());
             assertEquals(1, store.countLiveRadioEndpoints());
             assertEquals(1, store.countLiveNetworkServices());
+            store.observe("LAN", "LAN host", "192.168.1.15",
+                    "TCP 80 responded", 0, true);
+            assertEquals(1, store.countLiveLanHosts());
+            assertEquals(1, store.countLiveNetworkServices());
             assertTrue(store.save());
 
             DeviceStore persisted = new DeviceStore(app);
-            assertEquals(2, persisted.total());
+            assertEquals(3, persisted.total());
             assertEquals(0, persisted.countThisSession());
             DeviceRecord wifi = null;
             for (DeviceRecord d : persisted.all()) {
@@ -81,7 +85,7 @@ public class DeviceStoreInstrumentedTest {
             interrupted.write("not a valid complete JSON array".getBytes(StandardCharsets.UTF_8));
             atomic.failWrite(interrupted);
             DeviceStore recovered = new DeviceStore(app);
-            assertEquals("AtomicFile rollback must preserve valid history", 2, recovered.total());
+            assertEquals("AtomicFile rollback must preserve valid history", 3, recovered.total());
             recovered.clear();
             assertEquals(0, new DeviceStore(app).total());
         } finally {

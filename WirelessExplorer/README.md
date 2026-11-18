@@ -1,6 +1,6 @@
 # Wireless Explorer for Galaxy
 
-**Version:** 0.6.1 (engineering prototype)  
+**Version:** 0.7.0 (engineering prototype)  
 **Package ID:** kr.sungok.wirelessexplorer  
 **Requirements:** Android 8.0+ (API 26), Bluetooth/Wi-Fi hardware for the corresponding scans.  
 **Status:** Source implementation and GitHub Actions APK build workflow. An actual Galaxy hardware test is required before any production claim.
@@ -44,6 +44,12 @@ Catalog as many **detectable nearby wireless endpoints** as Android public APIs 
 - v0.6.0: user can register **known test targets** by tapping a discovered endpoint or entering exact PROTOCOL,ID[,label] rows, up to 60; shows this session's exact-match observed/missed counts. Names are never used for exact identity matching and missed targets are not assumed physically absent.
 - v0.6.0: JSON history **import** through the system file picker for upgrades requiring uninstall due to changed CI debug signatures. Imported records are validated, deduplicated, restored to atomic local storage and marked external; never counted as present in the current scan. Malformed or oversized imports are rejected.
 - v0.6.0: API 33/35 emulator integration test verifies JSON recovery, correct imported provenance and scan-history preservation.
+- v0.7.0: separate **three distinct inventories**: nearby RF endpoints (BLE/Classic/Wi-Fi AP), optional responders to limited TCP probes on the *currently connected private Wi-Fi LAN* (which can be wired devices), and NSD/UPnP services. Never equate those counts with distinct physical devices.
+- v0.7.0: if Android's nearby AP scan list is empty/throttled, independently try the currently associated Wi-Fi AP's SSID/BSSID/frequency through public connection APIs. Only a valid actual connection BSSID is counted as present. Scanner reports new APs, raw AP list size, request success, OS scan broadcasts and active-association state.
+- v0.7.0: user opt-in front-page checkbox performs bounded authorized LAN discovery: ≤253 private IPv4 addresses on the Wi-Fi interface subnet, ≤7 common service TCP handshake attempts/address, maximum 12 concurrent checks, 42-second overall deadline. No login, HTTP payload, authentication, public addresses, VPN connections or unrestricted port scans. Device IPs with **no open probed port will not appear**, so 0 responders is not a proof of absence. Network permission from its owner is necessary.
+- v0.7.0: Bluetooth SIG advertising company-ID labels for a handful of verified IDs (including Samsung 0x0075), identified only as company ID, not as validated physical-device manufacturer/model.
+- v0.7.0: dashboard distinguishes active Wi-Fi from merely Wi-Fi radio on; radio status after 180 seconds shows the final Wi-Fi scan diagnostics rather than the misleading '검색 중' state.
+- v0.7.0: CSV includes restored-history provenance and API 33/35 CI tests count LAN entries distinctly from RF endpoints.
 - v0.6.1: internationalized count labels resolve two Android Lint warnings; CI tests AOSP Android 13 and Google APIs Android 15 to separate app failures from unrelated Pixel Launcher ANR popups. The remaining warning to review is the intentional targetSdk 35 versus latest API level.
 - Sanitized and bounded device names/addresses/details; MAC normalization, protocol-specific identity without incorrect cross-protocol merging.
 - Separate confirmed RF endpoints and LAN service counts; only *candidate* same-address Classic/BLE links, not automatic physical-device counts.
@@ -69,7 +75,7 @@ Catalog as many **detectable nearby wireless endpoints** as Android public APIs 
 
 ## Build
 
-GitHub > Actions > **Wireless Explorer Android APK** > select a successful run > Artifacts > **WirelessExplorer-v0.6.1-debug-apk**.
+GitHub > Actions > **Wireless Explorer Android APK** > select a successful run > Artifacts > **WirelessExplorer-v0.7.0-debug-apk**.
 Unzip and install app-debug.apk on your Galaxy (allow installation from that source if prompted). Each CI run uses GitHub's temporary debug key. Uninstalling a previous build may be required before installing a build signed with a different key; uninstalling removes the app's local history, so export it first.
 
 To build with Android Studio, open **WirelessExplorer/** as its own project, use JDK 17, Android SDK platform 35, Android Gradle Plugin 8.9.2 and Gradle 8.11.1. A Gradle wrapper is not committed; GitHub Actions provisions Gradle.
