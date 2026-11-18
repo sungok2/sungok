@@ -11,6 +11,7 @@ public final class DeviceRecord {
     public int observations;
     /** Latest 24 confirmed radio measurements; never created from scan caches. */
     public String signalTrace;
+    public long lastTrendSampleAt;
     public boolean live;
     /** True only after direct scan evidence, not merely a cached Wi-Fi result. */
     public boolean confirmed;
@@ -29,6 +30,7 @@ public final class DeviceRecord {
         this.lastSeen = timestamp;
         this.observations = 1;
         this.signalTrace = live ? SignalTrend.append("", rssi) : "";
+        this.lastTrendSampleAt = live && SignalTrend.valid(rssi) ? timestamp : 0L;
         this.live = live;
         this.confirmed = live;
         this.lastConfirmedAt = live ? timestamp : 0L;
@@ -46,6 +48,7 @@ public final class DeviceRecord {
         j.put("lastSeen", lastSeen);
         j.put("observations", observations);
         j.put("signalTrace", SignalTrend.clean(signalTrace));
+        j.put("lastTrendSampleAt", lastTrendSampleAt);
         j.put("live", live);
         j.put("confirmed", confirmed);
         j.put("lastConfirmedAt", lastConfirmedAt);
@@ -62,6 +65,7 @@ public final class DeviceRecord {
         d.lastSeen = j.optLong("lastSeen", d.firstSeen);
         d.observations = Math.max(1, j.optInt("observations", 1));
         d.signalTrace = SignalTrend.clean(j.optString("signalTrace", ""));
+        d.lastTrendSampleAt = j.optLong("lastTrendSampleAt", 0L);
         d.confirmed = j.optBoolean("confirmed", j.optBoolean("live", false));
         d.lastConfirmedAt = j.optLong("lastConfirmedAt", 0L); // v0.2 did not retain verified time
         return d;
