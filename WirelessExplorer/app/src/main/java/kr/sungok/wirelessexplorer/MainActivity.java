@@ -200,16 +200,16 @@ public final class MainActivity extends Activity implements WirelessScanner.List
                 new LinearLayout.LayoutParams(0, dp(49), 1f));
         page.addView(space(9));
         lanProbeToggle = new CheckBox(this);
-        lanProbeToggle.setText("내 Wi-Fi LAN 장치 찾기 · 허가된 네트워크에서만");
+        lanProbeToggle.setText("현재 Wi-Fi LAN 장치 검색 · TCP/UPnP (선택)");
         lanProbeToggle.setTextColor(WHITE);
         lanProbeToggle.setTextSize(13);
         lanProbeToggle.setButtonTintList(ColorStateList.valueOf(ACCENT));
         lanProbeToggle.setContentDescription(
-                "허가된 사설 Wi-Fi LAN에서만 최대 253개 IPv4의 제한된 서비스 포트에 접속을 시도합니다. 응답이 없어도 기기가 없다는 뜻은 아닙니다.");
+                "허가된 사설 Wi-Fi LAN에서만 최대 253개 IPv4의 제한된 서비스 TCP 연결과 UPnP 탐색 요청을 보냅니다. 응답이 없어도 기기가 없다는 뜻은 아닙니다.");
         lanProbeToggle.setOnCheckedChangeListener((button, checked) -> {
             lanProbeEnabled = checked;
             if (checked) Toast.makeText(this,
-                    "허가된 Wi-Fi LAN에서만 TCP 탐색합니다. 응답 없는 장치는 나타나지 않을 수 있습니다.",
+                    "허가된 Wi-Fi LAN에 제한된 TCP/UPnP 요청을 보냅니다. 응답 없는 장치는 누락될 수 있습니다.",
                     Toast.LENGTH_LONG).show();
         });
         page.addView(lanProbeToggle);
@@ -459,7 +459,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         visibleLimit = 60;
         sessionStartElapsed = SystemClock.elapsedRealtime();
         main.removeCallbacks(countdownTick);
-        scanner.setExtendedLan(extendedLan);
+        scanner.setExtendedLan(extendedLan || lanProbeEnabled);
         scanner.setLanProbeEnabled(lanProbeEnabled);
         lanToggle.setEnabled(false);
         lanProbeToggle.setEnabled(false);
