@@ -56,7 +56,8 @@ public final class DeviceRecord {
         j.put("confirmed", confirmed);
         j.put("imported", imported);
         j.put("lastConfirmedAt", lastConfirmedAt);
-        j.put("kind", ObservationRules.isRadioEvidence(protocol) ? "radio-endpoint" : "network-service");
+        j.put("kind", ObservationRules.isRadioEvidence(protocol) ? "radio-endpoint"
+                : ("LAN".equals(protocol) ? "network-host" : "network-service"));
         return j;
     }
 
