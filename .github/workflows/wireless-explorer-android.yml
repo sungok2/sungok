@@ -76,7 +76,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        api: [33, 35]
+        include:
+          - api: 33
+            image: aosp_atd
+          - api: 35
+            image: google_apis
     timeout-minutes: 40
     steps:
       - name: Checkout source
@@ -103,7 +107,7 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api }}
-          target: google_apis
+          target: ${{ matrix.image }}
           arch: x86_64
           profile: pixel_4
           disable-animations: true
