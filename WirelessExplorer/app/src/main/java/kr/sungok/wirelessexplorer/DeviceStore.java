@@ -58,7 +58,10 @@ public final class DeviceStore {
                 if (rssi < 0) record.rssi = rssi;
                 record.lastSeen = now;
                 record.lastConfirmedAt = now;
-                record.signalTrace = SignalTrend.append(record.signalTrace, rssi);
+                if (SignalTrend.valid(rssi) && now - record.lastTrendSampleAt >= 1000L) {
+                    record.signalTrace = SignalTrend.append(record.signalTrace, rssi);
+                    record.lastTrendSampleAt = now;
+                }
             } else if (!record.confirmed) {
                 // Cache-only record keeps the time of its *first local import*.
                 // Re-reading Android's cache does not create a new observation.
