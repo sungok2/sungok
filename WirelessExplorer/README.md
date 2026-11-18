@@ -1,6 +1,6 @@
 # Wireless Explorer for Galaxy
 
-**Version:** 0.6.0 (engineering prototype)  
+**Version:** 0.6.1 (engineering prototype)  
 **Package ID:** kr.sungok.wirelessexplorer  
 **Requirements:** Android 8.0+ (API 26), Bluetooth/Wi-Fi hardware for the corresponding scans.  
 **Status:** Source implementation and GitHub Actions APK build workflow. An actual Galaxy hardware test is required before any production claim.
@@ -43,7 +43,8 @@ Catalog as many **detectable nearby wireless endpoints** as Android public APIs 
 - v0.6.0: BLE advertising TX power metadata when present; user-facing BLE/Classic same-address candidate notice without merging physical identities.
 - v0.6.0: user can register **known test targets** by tapping a discovered endpoint or entering exact PROTOCOL,ID[,label] rows, up to 60; shows this session's exact-match observed/missed counts. Names are never used for exact identity matching and missed targets are not assumed physically absent.
 - v0.6.0: JSON history **import** through the system file picker for upgrades requiring uninstall due to changed CI debug signatures. Imported records are validated, deduplicated, restored to atomic local storage and marked external; never counted as present in the current scan. Malformed or oversized imports are rejected.
-- v0.6.0: API 33/35 emulator integration test verifies lossless JSON recovery, correct imported provenance and scan-history preservation.
+- v0.6.0: API 33/35 emulator integration test verifies JSON recovery, correct imported provenance and scan-history preservation.
+- v0.6.1: internationalized count labels resolve two Android Lint warnings; CI tests AOSP Android 13 and Google APIs Android 15 to separate app failures from unrelated Pixel Launcher ANR popups. The remaining warning to review is the intentional targetSdk 35 versus latest API level.
 - Sanitized and bounded device names/addresses/details; MAC normalization, protocol-specific identity without incorrect cross-protocol merging.
 - Separate confirmed RF endpoints and LAN service counts; only *candidate* same-address Classic/BLE links, not automatic physical-device counts.
 - Compact dark results-first UI with collapsed advanced tools/diagnostics (prevents initial controls from pushing results offscreen), responsive landscape typography and ForceDark disabled.
@@ -68,7 +69,7 @@ Catalog as many **detectable nearby wireless endpoints** as Android public APIs 
 
 ## Build
 
-GitHub > Actions > **Wireless Explorer Android APK** > select a successful run > Artifacts > **WirelessExplorer-v0.6.0-debug-apk**.
+GitHub > Actions > **Wireless Explorer Android APK** > select a successful run > Artifacts > **WirelessExplorer-v0.6.1-debug-apk**.
 Unzip and install app-debug.apk on your Galaxy (allow installation from that source if prompted). Each CI run uses GitHub's temporary debug key. Uninstalling a previous build may be required before installing a build signed with a different key; uninstalling removes the app's local history, so export it first.
 
 To build with Android Studio, open **WirelessExplorer/** as its own project, use JDK 17, Android SDK platform 35, Android Gradle Plugin 8.9.2 and Gradle 8.11.1. A Gradle wrapper is not committed; GitHub Actions provisions Gradle.
@@ -79,8 +80,10 @@ To build with Android Studio, open **WirelessExplorer/** as its own project, use
 2. Press **탐색 시작** and grant Nearby devices, precise location, and (Android 13+) Nearby Wi-Fi devices.
 3. Keep the app visible for up to three minutes. Walk slowly around the target area if needed. A single snapshot is incomplete; some advertisement cycles are long.
 4. Use protocol filters. **이번 탐색만 표시** excludes historical entries and initial cached Wi-Fi results that have not been reconfirmed.
-5. Long-press a record to copy details. Export to CSV/JSON if needed.
-6. A scan stopped by the screen changing or the app leaving the foreground is intentional; start a new session after returning.
+5. Tap a record to register its exact protocol/address as a test target; long-press to copy details. The expandable **추가 옵션** panel also lets you paste target rows as `PROTOCOL,ID,optional-name`. Targets are tested against exact endpoint IDs during *later* sessions; a missing target does not prove the radio device is absent.
+6. Export a JSON backup before uninstalling an older APK. After installing the new APK, open **추가 옵션** > **JSON 탐지 기록 복원** and select that backup. Imported history is labeled external and is never counted as present in the current scan.
+7. Export CSV/JSON/TXT diagnostic reports after completing an inventory session; use the exact-target report to record observed and missed known endpoints.
+8. A scan stopped by the screen changing or the app leaving the foreground is intentional; start a new session after returning.
 
 ## Permissions and limits
 
