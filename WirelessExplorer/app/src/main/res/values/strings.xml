@@ -6,7 +6,11 @@
     <string name="unknown_off">미확인만: 끔</string>
     <string name="counter_with_candidate">%1$s\nBT/BLE 동일 주소 후보 %2$d쌍 (기기 수 미확정)</string>
     <string name="target_coverage_summary">검증 기준 %1$d개 중 이번 탐색 %2$d개 관찰 · 미관찰은 부재 증거가 아닙니다</string>
+    <string name="lan_probe_option">현재 Wi-Fi LAN 장치 검색 · TCP/UPnP (선택)</string>
+    <string name="readiness_with_network">%1$s\n활성 LAN 연결: %2$s</string>
+    <string name="active_lan_wifi">Wi-Fi 연결됨</string>
+    <string name="active_lan_vpn">VPN 연결 · LAN 조사 제한</string>
+    <string name="active_lan_none">Wi-Fi 활성 연결 없음 · LAN 조사 불가</string>
     <string name="counter_dashboard">무선 %1$d건 · LAN 응답 %2$d건 · 서비스 %3$d건 · 누적 %4$d건</string>
-    <string name="counter_summary">무선 %1$d건 · 로컬서비스 %2$d건 · 누적 %3$d건</string>
     <string name="progress_remaining">탐색 진행 · 남은 시간 %1$d초 / 총 180초</string>
 </resources>
