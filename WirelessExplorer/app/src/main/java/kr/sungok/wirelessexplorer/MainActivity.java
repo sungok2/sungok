@@ -40,6 +40,9 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.OutputStream;
+import java.io.InputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -55,6 +58,7 @@ import java.util.Locale;
 public final class MainActivity extends Activity implements WirelessScanner.Listener {
     private static final int REQ_PERMS = 120;
     private static final int REQ_EXPORT = 121;
+    private static final int REQ_IMPORT = 122;
     private static final int BG = Color.rgb(11, 17, 32);
     private static final int SURFACE = Color.rgb(23, 33, 53);
     private static final int ACCENT = Color.rgb(64, 220, 184);
@@ -220,6 +224,9 @@ public final class MainActivity extends Activity implements WirelessScanner.List
                 new LinearLayout.LayoutParams(-1, dp(43)));
         advancedPanel.addView(space(8));
         advancedPanel.addView(action("검증 기준 기기 등록 · 정확한 주소/ID", false, this::editKnownTargets),
+                new LinearLayout.LayoutParams(-1, dp(43)));
+        advancedPanel.addView(space(8));
+        advancedPanel.addView(action("JSON 탐지 기록 복원 · 재설치 후 이력 유지", false, this::importHistory),
                 new LinearLayout.LayoutParams(-1, dp(43)));
         advancedPanel.addView(space(8));
         advancedPanel.addView(action("저장된 탐지 기록 전체 삭제", false, this::confirmDelete),
@@ -572,6 +579,11 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         TextView meta = text(badge + "  ·  " + timestampLabel
                 + "  ·  수집 " + d.observations + "회", 11, d.live ? ACCENT : SUBTLE, false);
         container.addView(meta);
+        if (d.imported) {
+            container.addView(space(5));
+            container.addView(text("외부 JSON에서 가져온 기록 · 수신 사실은 독립 검증되지 않음",
+                    11, SUBTLE, false));
+        }
         container.setOnClickListener(v -> new AlertDialog.Builder(this)
                 .setTitle(d.name)
                 .setMessage(d.protocol + " / " + d.address + "\n" + d.details
@@ -733,6 +745,45 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         startActivityForResult(intent, REQ_EXPORT);
     }
 
+    private void importHistory() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("application/json");
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        startActivityForResult(intent, REQ_IMPORT);
+    }
+
+    private void handleImport(Intent data) {
+        Uri uri = data.getData();
+        if (uri == null) return;
+        try (InputStream in = getContentResolver().openInputStream(uri);
+             ByteArrayOutputStream bytes = new ByteArrayOutputStream()) {
+            if (in == null) throw new IOException("파일을 읽을 수 없습니다");
+            byte[] chunk = new byte[8192];
+            int count;
+            while ((count = in.read(chunk)) != -1) {
+                if (bytes.size() + count > 6_000_000)
+                    throw new IOException("파일 크기 6MB 제한 초과");
+                bytes.write(chunk, 0, count);
+            }
+            DeviceStore.ImportResult imported = store.importJson(
+                    new String(bytes.toByteArray(), StandardCharsets.UTF_8));
+            if (!imported.success()) {
+                Toast.makeText(this, "복원 실패 · " + imported.error, Toast.LENGTH_LONG).show();
+                return;
+            }
+            sessionOnly = false;
+            sessionButton.setText("과거 포함");
+            render();
+            Toast.makeText(this, "복원 성공 " + imported.added
+                    + "건 · 중복/무효 제외 " + imported.skipped + "건",
+                    Toast.LENGTH_LONG).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "JSON 파일 복원 오류: " + e.getMessage(),
+                    Toast.LENGTH_LONG).show();
+        }
+    }
+
     private void export(boolean json) {
         exportingJson = json;
         exportFormat = json ? "json" : "csv";
@@ -745,7 +796,12 @@ public final class MainActivity extends Activity implements WirelessScanner.List
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQ_EXPORT || resultCode != RESULT_OK || data == null) return;
+        if (resultCode != RESULT_OK || data == null) return;
+        if (requestCode == REQ_IMPORT) {
+            handleImport(data);
+            return;
+        }
+        if (requestCode != REQ_EXPORT) return;
         Uri uri = data.getData();
         if (uri == null) return;
         try (OutputStream out = getContentResolver().openOutputStream(uri)) {
