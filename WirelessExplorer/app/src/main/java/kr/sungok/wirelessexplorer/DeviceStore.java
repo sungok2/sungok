@@ -214,9 +214,11 @@ public final class DeviceStore {
             }
             String id = ObservationRules.normalizedId(protocol, j.optString("address", ""));
             String key = protocol + "|" + id;
+            String sourceKey = j.optString("key", "");
+            boolean keyValid = key.equals(sourceKey)
+                    || (protocol + "|" + j.optString("address", "")).equals(sourceKey);
             if (id.isEmpty() || id.length() > 240 || records.containsKey(key)
-                    || staging.containsKey(key)
-                    || !key.equals(j.optString("key", ""))) {
+                    || staging.containsKey(key) || !keyValid) {
                 skipped++;
                 continue;
             }
