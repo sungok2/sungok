@@ -111,6 +111,15 @@ public final class DeviceStore {
     }
 
     /** The same BT/BLE address is only a duplicate *candidate*, never auto-merged. */
+    public boolean hasSharedBluetoothAddressCandidate(DeviceRecord d) {
+        if (d == null || !d.live) return false;
+        String companion = "BLE".equals(d.protocol) ? "BT"
+                : "BT".equals(d.protocol) ? "BLE" : "";
+        if (companion.isEmpty()) return false;
+        DeviceRecord other = records.get(companion + "|" + d.address);
+        return other != null && other.live;
+    }
+
     public int sharedBluetoothAddressCandidates() {
         int count = 0;
         for (DeviceRecord d : records.values()) {
