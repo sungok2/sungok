@@ -62,7 +62,7 @@ jobs:
       - name: Upload installable APK and checksum
         uses: actions/upload-artifact@v4
         with:
-          name: WirelessExplorer-v0.5.0-debug-apk
+          name: WirelessExplorer-v0.6.0-debug-apk
           path: |
             WirelessExplorer/app/build/outputs/apk/debug/app-debug.apk
             WirelessExplorer/app/build/outputs/apk/debug/app-debug.apk.sha256
@@ -121,7 +121,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: WirelessExplorer-v0.5.0-emulator-qa-api${{ matrix.api }}
+          name: WirelessExplorer-v0.6.0-emulator-qa-api${{ matrix.api }}
           path: |
             WirelessExplorer-UI-emulator.png
             WirelessExplorer/app/build/reports/androidTests/
