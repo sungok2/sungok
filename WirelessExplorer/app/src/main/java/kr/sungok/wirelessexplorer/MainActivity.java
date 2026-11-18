@@ -3,6 +3,10 @@ package kr.sungok.wirelessexplorer;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothManager;
+import android.location.LocationManager;
+import android.net.wifi.WifiManager;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -63,7 +67,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
     private TextView status, counter, coverage, scanButton, sessionButton, progress, unknownButton;
     private CheckBox lanToggle;
     private LinearLayout advancedPanel;
-    private TextView coverageToggle, toolToggle;
+    private TextView coverageToggle, toolToggle, readiness;
     private boolean coverageExpanded;
     private boolean toolsExpanded;
     private LinearLayout list, filterBar;
@@ -90,6 +94,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         scanner = new WirelessScanner(this, this);
         buildUi();
         render();
+        refreshReadiness();
         if (!store.lastPersistenceError().isEmpty()) status.setText(store.lastPersistenceError());
     }
 
@@ -149,6 +154,8 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         coverageToggle.setOnClickListener(v -> {
             coverageExpanded = !coverageExpanded;
             coverage.setVisibility(coverageExpanded ? View.VISIBLE : View.GONE);
+            readiness.setVisibility(coverageExpanded ? View.VISIBLE : View.GONE);
+            if (coverageExpanded) refreshReadiness();
             coverageToggle.setText(coverageExpanded
                     ? "방식별 탐색 상태 접기 ▴" : "방식별 탐색 상태 보기 ▾");
         });
@@ -157,6 +164,11 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         coverage.setLineSpacing(dp(3), 1.1f);
         coverage.setVisibility(View.GONE);
         summary.addView(coverage);
+        summary.addView(space(8));
+        readiness = text("탐색 준비 상태 확인", 12, SUBTLE, false);
+        readiness.setLineSpacing(dp(2), 1.1f);
+        readiness.setVisibility(View.GONE);
+        summary.addView(readiness);
 
         page.addView(space(12));
         LinearLayout actions = new LinearLayout(this);
@@ -298,7 +310,58 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         }
     }
 
+    @Override protected void onResume() {
+        super.onResume();
+        refreshReadiness();
+    }
+
+    /** This preflight diagnoses missing discoverability prerequisites; it does not enable GPS. */
+    private void refreshReadiness() {
+        if (readiness == null) return;
+        boolean hasBluetooth = false;
+        boolean bluetoothOn = false;
+        boolean btPermission = Build.VERSION.SDK_INT < 31
+                || (checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN)
+                == PackageManager.PERMISSION_GRANTED
+                && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)
+                == PackageManager.PERMISSION_GRANTED);
+        try {
+            BluetoothManager manager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
+            BluetoothAdapter adapter = manager == null ? null : manager.getAdapter();
+            hasBluetooth = adapter != null;
+            bluetoothOn = btPermission && adapter != null && adapter.isEnabled();
+        } catch (RuntimeException ignored) { }
+
+        boolean hasWifi = false;
+        boolean wifiOn = false;
+        try {
+            WifiManager manager = (WifiManager) getApplicationContext()
+                    .getSystemService(Context.WIFI_SERVICE);
+            hasWifi = manager != null;
+            wifiOn = manager != null && manager.isWifiEnabled();
+        } catch (RuntimeException ignored) { }
+
+        boolean locationOn = false;
+        try {
+            LocationManager location = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+            if (location != null) {
+                locationOn = Build.VERSION.SDK_INT >= 28
+                        ? location.isLocationEnabled()
+                        : (location.isProviderEnabled(LocationManager.GPS_PROVIDER)
+                        || location.isProviderEnabled(LocationManager.NETWORK_PROVIDER));
+            }
+        } catch (RuntimeException ignored) { }
+        boolean fine = checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED;
+        boolean wifiPermission = Build.VERSION.SDK_INT < 33
+                || checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES)
+                == PackageManager.PERMISSION_GRANTED;
+        readiness.setText(ScanReadiness.describe(hasBluetooth, bluetoothOn, hasWifi,
+                wifiOn, locationOn, fine, btPermission, wifiPermission));
+    }
+
     private void requestAndStart() {
+        refreshReadiness();
         List<String> missing = new ArrayList<>();
         if (Build.VERSION.SDK_INT >= 31) {
             need(missing, Manifest.permission.BLUETOOTH_SCAN);
@@ -323,6 +386,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         super.onRequestPermissionsResult(requestCode, permissions, grants);
         if (requestCode != REQ_PERMS || !pendingStart) return;
         pendingStart = false;
+        refreshReadiness();
         if (grants.length == 0) {
             status.setText("권한 결과를 확인할 수 없습니다");
             return;
@@ -350,6 +414,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         scanner.start();
         scanButton.setText("탐색 중지");
         status.setText("탐색 중 · 검색 결과 누적 수집");
+        refreshReadiness();
         updateProgress();
         render();
     }
@@ -371,7 +436,8 @@ public final class MainActivity extends Activity implements WirelessScanner.List
             persistScheduled = true;
             main.postDelayed(() -> {
                 persistScheduled = false;
-                store.save();
+                if (!store.save() && status != null)
+                    status.setText(store.lastPersistenceError());
             }, 12_000);
         }
         if (!refreshScheduled) {
@@ -467,6 +533,14 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         container.addView(space(5));
         TextView detail = text(d.details, 12, SUBTLE, false);
         container.addView(detail);
+        if (SignalTrend.sampleCount(d.signalTrace) >= 2) {
+            container.addView(space(8));
+            TextView trend = text("신호 변화  " + SignalTrend.render(d.signalTrace)
+                    + "  ·  최근 " + SignalTrend.sampleCount(d.signalTrace) + "회 / 거리 아님",
+                    11, ACCENT, false);
+            trend.setContentDescription("최근 수신 신호 강도 변화. 위치 및 거리를 뜻하지 않습니다.");
+            container.addView(trend);
+        }
         container.addView(space(8));
         String badge = d.live ? "이번 탐색에서 확인" :
                 (d.confirmed ? "이전 탐색에서 확인" : "캐시 정보 · 현재 주변 미확인");
