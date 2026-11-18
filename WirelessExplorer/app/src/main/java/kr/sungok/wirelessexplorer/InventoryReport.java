@@ -15,7 +15,7 @@ public final class InventoryReport {
         b.append("WIRELESS EXPLORER · 무선 탐색 점검 보고서\n");
         b.append("생성 시각: ").append(generatedAt).append('\n');
         b.append("실행 환경: ").append(platform).append('\n');
-        b.append("앱 버전: 0.4.0\n\n");
+        b.append("앱 버전: 0.5.0\n\n");
         b.append("[탐지 항목]\n");
         b.append("이번 탐색 무선 주소/접속점: ").append(radio).append("건\n");
         b.append("이번 탐색 네트워크 서비스: ").append(network).append("건\n");
