@@ -856,7 +856,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
                         store.countLiveNetworkServices(), store.total(),
                         store.sharedBluetoothAddressCandidates(), radioStates,
                         "Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")",
-                        extendedLan);
+                        extendedLan || lanProbeEnabled);
                 content += "\n" + KnownTargetCoverage.report(knownTargets.targets, sessionKeys());
             } else {
                 content = exportingJson ? store.asJson() : store.asCsv();
