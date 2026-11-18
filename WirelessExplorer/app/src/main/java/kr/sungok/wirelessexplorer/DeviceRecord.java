@@ -15,6 +15,8 @@ public final class DeviceRecord {
     public boolean live;
     /** True only after direct scan evidence, not merely a cached Wi-Fi result. */
     public boolean confirmed;
+    /** Restored from an external JSON backup; its claimed history is not device-attested. */
+    public boolean imported;
     /** 0 for a cached-only endpoint; never label this as an observed radio signal. */
     public long lastConfirmedAt;
 
@@ -33,6 +35,7 @@ public final class DeviceRecord {
         this.lastTrendSampleAt = live && SignalTrend.valid(rssi) ? timestamp : 0L;
         this.live = live;
         this.confirmed = live;
+        this.imported = false;
         this.lastConfirmedAt = live ? timestamp : 0L;
     }
 
@@ -51,6 +54,7 @@ public final class DeviceRecord {
         j.put("lastTrendSampleAt", lastTrendSampleAt);
         j.put("live", live);
         j.put("confirmed", confirmed);
+        j.put("imported", imported);
         j.put("lastConfirmedAt", lastConfirmedAt);
         j.put("kind", ObservationRules.isRadioEvidence(protocol) ? "radio-endpoint" : "network-service");
         return j;
@@ -67,6 +71,7 @@ public final class DeviceRecord {
         d.signalTrace = SignalTrend.clean(j.optString("signalTrace", ""));
         d.lastTrendSampleAt = j.optLong("lastTrendSampleAt", 0L);
         d.confirmed = j.optBoolean("confirmed", j.optBoolean("live", false));
+        d.imported = j.optBoolean("imported", false);
         d.lastConfirmedAt = j.optLong("lastConfirmedAt", 0L); // v0.2 did not retain verified time
         return d;
     }

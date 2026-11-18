@@ -1,6 +1,6 @@
 # Wireless Explorer for Galaxy
 
-**Version:** 0.5.0 (engineering prototype)  
+**Version:** 0.6.0 (engineering prototype)  
 **Package ID:** kr.sungok.wirelessexplorer  
 **Requirements:** Android 8.0+ (API 26), Bluetooth/Wi-Fi hardware for the corresponding scans.  
 **Status:** Source implementation and GitHub Actions APK build workflow. An actual Galaxy hardware test is required before any production claim.
@@ -38,6 +38,12 @@ Catalog as many **detectable nearby wireless endpoints** as Android public APIs 
 - v0.5.0: opt-in diagnostics show Bluetooth, Wi-Fi, location service and precise/nearby permission readiness, useful when a known device is missing.
 - v0.5.0: bounded per-endpoint RSSI history (24 recent confirmed samples, at most one per second) and a mini signal bar display. These are uncalibrated radio measurements; they cannot establish distance or direction.
 - v0.5.0: CSV/JSON also include those bounded RSSI observations; cached scan entries never change the verified history.
+- v0.6.0: a bounded BLE advertisement gate limits duplicate callback pressure while preserving first sightings and prompt metadata changes. Stale session emissions are dropped, including callbacks arriving after a rapid stop/restart.
+- v0.6.0: mDNS rotation recovers if Android confirms an old listener stopped *after* the user started a new scan; bounded stop retries and no concurrent service-discovery listeners.
+- v0.6.0: BLE advertising TX power metadata when present; user-facing BLE/Classic same-address candidate notice without merging physical identities.
+- v0.6.0: user can register **known test targets** by tapping a discovered endpoint or entering exact PROTOCOL,ID[,label] rows, up to 60; shows this session's exact-match observed/missed counts. Names are never used for exact identity matching and missed targets are not assumed physically absent.
+- v0.6.0: JSON history **import** through the system file picker for upgrades requiring uninstall due to changed CI debug signatures. Imported records are validated, deduplicated, restored to atomic local storage and marked external; never counted as present in the current scan. Malformed or oversized imports are rejected.
+- v0.6.0: API 33/35 emulator integration test verifies lossless JSON recovery, correct imported provenance and scan-history preservation.
 - Sanitized and bounded device names/addresses/details; MAC normalization, protocol-specific identity without incorrect cross-protocol merging.
 - Separate confirmed RF endpoints and LAN service counts; only *candidate* same-address Classic/BLE links, not automatic physical-device counts.
 - Compact dark results-first UI with collapsed advanced tools/diagnostics (prevents initial controls from pushing results offscreen), responsive landscape typography and ForceDark disabled.
@@ -62,7 +68,7 @@ Catalog as many **detectable nearby wireless endpoints** as Android public APIs 
 
 ## Build
 
-GitHub > Actions > **Wireless Explorer Android APK** > select a successful run > Artifacts > **WirelessExplorer-v0.5.0-debug-apk**.
+GitHub > Actions > **Wireless Explorer Android APK** > select a successful run > Artifacts > **WirelessExplorer-v0.6.0-debug-apk**.
 Unzip and install app-debug.apk on your Galaxy (allow installation from that source if prompted). Each CI run uses GitHub's temporary debug key. Uninstalling a previous build may be required before installing a build signed with a different key; uninstalling removes the app's local history, so export it first.
 
 To build with Android Studio, open **WirelessExplorer/** as its own project, use JDK 17, Android SDK platform 35, Android Gradle Plugin 8.9.2 and Gradle 8.11.1. A Gradle wrapper is not committed; GitHub Actions provisions Gradle.

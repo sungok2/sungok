@@ -111,6 +111,15 @@ public final class DeviceStore {
     }
 
     /** The same BT/BLE address is only a duplicate *candidate*, never auto-merged. */
+    public boolean hasSharedBluetoothAddressCandidate(DeviceRecord d) {
+        if (d == null || !d.live) return false;
+        String companion = "BLE".equals(d.protocol) ? "BT"
+                : "BT".equals(d.protocol) ? "BLE" : "";
+        if (companion.isEmpty()) return false;
+        DeviceRecord other = records.get(companion + "|" + d.address);
+        return other != null && other.live;
+    }
+
     public int sharedBluetoothAddressCandidates() {
         int count = 0;
         for (DeviceRecord d : records.values()) {
@@ -159,6 +168,95 @@ public final class DeviceStore {
                     .append(SignalRules.csv(SignalTrend.clean(d.signalTrace))).append('\n');
         }
         return b.toString();
+    }
+
+    public static final class ImportResult {
+        public final int added;
+        public final int skipped;
+        public final String error;
+        ImportResult(int added, int skipped, String error) {
+            this.added = added;
+            this.skipped = skipped;
+            this.error = error;
+        }
+        public boolean success() { return error.isEmpty(); }
+    }
+
+    /**
+     * Import a user-selected export, not an arbitrary unbounded file.
+     * Validate everything first, never mark imported records as current-session
+     * observations, and roll back added entries if atomic persistence fails.
+     */
+    public ImportResult importJson(String json) {
+        if (json == null || json.length() > MAX_JSON_FILE_BYTES)
+            return new ImportResult(0, 0, "복원 파일이 비어 있거나 크기 제한을 초과했습니다.");
+        final JSONArray array;
+        try {
+            array = new JSONArray(json);
+        } catch (Exception e) {
+            return new ImportResult(0, 0, "JSON 배열 형식의 탐지 기록이 아닙니다.");
+        }
+        if (array.length() > LIMIT)
+            return new ImportResult(0, 0, "복원 파일에 허용 범위보다 많은 기록이 있습니다.");
+        int skipped = 0;
+        long now = System.currentTimeMillis();
+        long maxTime = now + 86_400_000L;
+        Map<String, DeviceRecord> staging = new LinkedHashMap<>();
+        for (int i = 0; i < array.length(); i++) {
+            JSONObject j = array.optJSONObject(i);
+            if (j == null) { skipped++; continue; }
+            String protocol = j.optString("protocol", "");
+            if (!"BLE".equals(protocol) && !"BT".equals(protocol)
+                    && !"WIFI".equals(protocol) && !"P2P".equals(protocol)
+                    && !"NSD".equals(protocol) && !"UPNP".equals(protocol)) {
+                skipped++;
+                continue;
+            }
+            String id = ObservationRules.normalizedId(protocol, j.optString("address", ""));
+            String key = protocol + "|" + id;
+            String sourceKey = j.optString("key", "");
+            boolean keyValid = key.equals(sourceKey)
+                    || (protocol + "|" + j.optString("address", "")).equals(sourceKey);
+            if (id.isEmpty() || id.length() > 240 || records.containsKey(key)
+                    || staging.containsKey(key) || !keyValid) {
+                skipped++;
+                continue;
+            }
+            long first = j.optLong("firstSeen", 0L);
+            long last = j.optLong("lastSeen", 0L);
+            if (first <= 0L || first > maxTime || last < first || last > maxTime) {
+                skipped++;
+                continue;
+            }
+            String name = ObservationRules.sanitize(j.optString("name", ""), 120);
+            String detail = ObservationRules.sanitize(j.optString("details", ""), 440);
+            int rssi = j.optInt("rssi", 0);
+            if (!SignalTrend.valid(rssi)) rssi = 0;
+            DeviceRecord d = new DeviceRecord(key, protocol,
+                    SignalRules.labelFor(name, "이름 없는 기기"), id, detail,
+                    rssi, first, false);
+            d.lastSeen = last;
+            d.observations = Math.max(1, Math.min(10_000_000, j.optInt("observations", 1)));
+            d.confirmed = j.optBoolean("confirmed", false);
+            d.lastConfirmedAt = j.optLong("lastConfirmedAt", 0L);
+            if (d.lastConfirmedAt < 0L || d.lastConfirmedAt > maxTime
+                    || d.lastConfirmedAt > d.lastSeen) d.lastConfirmedAt = 0L;
+            d.signalTrace = SignalTrend.clean(j.optString("signalTrace", ""));
+            d.lastTrendSampleAt = 0L;
+            d.live = false;   // Never claim an imported endpoint is present now.
+            d.imported = true;
+            staging.put(key, d);
+        }
+        if (records.size() + staging.size() > LIMIT)
+            return new ImportResult(0, skipped, "저장 용량 초과 · 기록을 백업하고 기존 이력을 정리하세요.");
+        for (Map.Entry<String, DeviceRecord> entry : staging.entrySet()) {
+            records.put(entry.getKey(), entry.getValue());
+        }
+        if (!save()) {
+            for (String key : staging.keySet()) records.remove(key);
+            return new ImportResult(0, skipped, "기록 저장 실패 · " + lastPersistenceError);
+        }
+        return new ImportResult(staging.size(), skipped, "");
     }
 
     public boolean save() {

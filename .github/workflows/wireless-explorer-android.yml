@@ -49,7 +49,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: WirelessExplorer-v0.5.0-lint-report
+          name: WirelessExplorer-v0.6.0-lint-report
           path: |
             WirelessExplorer/app/build/reports/lint-results-debug.html
             WirelessExplorer/app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt
@@ -62,7 +62,7 @@ jobs:
       - name: Upload installable APK and checksum
         uses: actions/upload-artifact@v4
         with:
-          name: WirelessExplorer-v0.5.0-debug-apk
+          name: WirelessExplorer-v0.6.0-debug-apk
           path: |
             WirelessExplorer/app/build/outputs/apk/debug/app-debug.apk
             WirelessExplorer/app/build/outputs/apk/debug/app-debug.apk.sha256
@@ -99,7 +99,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Android 13 emulator activity test
+      - name: Android emulator instrumentation and screenshot
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api }}
@@ -121,7 +121,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: WirelessExplorer-v0.5.0-emulator-qa-api${{ matrix.api }}
+          name: WirelessExplorer-v0.6.0-emulator-qa-api${{ matrix.api }}
           path: |
             WirelessExplorer-UI-emulator.png
             WirelessExplorer/app/build/reports/androidTests/
