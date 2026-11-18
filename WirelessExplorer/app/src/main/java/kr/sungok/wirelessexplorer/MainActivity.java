@@ -43,6 +43,8 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.Date;
 import java.util.List;
 import java.util.LinkedHashMap;
@@ -64,7 +66,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
     private final SimpleDateFormat time = new SimpleDateFormat("MM-dd HH:mm:ss", Locale.KOREA);
     private DeviceStore store;
     private WirelessScanner scanner;
-    private TextView status, counter, coverage, scanButton, sessionButton, progress, unknownButton;
+    private TextView status, counter, coverage, scanButton, sessionButton, progress, unknownButton, targetSummary;
     private CheckBox lanToggle;
     private LinearLayout advancedPanel;
     private TextView coverageToggle, toolToggle, readiness;
@@ -76,6 +78,8 @@ public final class MainActivity extends Activity implements WirelessScanner.List
     private String exportFormat = "csv";
     private boolean unknownOnly;
     private boolean extendedLan;
+    private String knownTargetInput = "";
+    private KnownTargetCoverage.Result knownTargets;
     private int visibleLimit = 60;
     private long sessionStartElapsed;
     private boolean sessionOnly = false;
@@ -92,6 +96,8 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         getWindow().setNavigationBarColor(BG);
         store = new DeviceStore(this);
         scanner = new WirelessScanner(this, this);
+        knownTargetInput = getPreferences(MODE_PRIVATE).getString("known_targets", "");
+        knownTargets = KnownTargetCoverage.parse(knownTargetInput);
         buildUi();
         render();
         refreshReadiness();
@@ -142,6 +148,9 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         summary.addView(space(7));
         TextView caution = text("무선 주소와 서비스 항목 기준 · 실제 기기 수와 다를 수 있습니다.", 12, SUBTLE, false);
         summary.addView(caution);
+        targetSummary = text("", 12, ACCENT, true);
+        targetSummary.setVisibility(View.GONE);
+        summary.addView(targetSummary);
         summary.addView(space(11));
         status = text("준비 완료 · 탐색 시작을 눌러주세요", 13, ACCENT, false);
         summary.addView(status);
@@ -208,6 +217,9 @@ public final class MainActivity extends Activity implements WirelessScanner.List
                 new LinearLayout.LayoutParams(0, dp(43), 1f));
         advancedPanel.addView(space(8));
         advancedPanel.addView(action("탐색 진단 보고서(.txt) 저장", false, this::exportReport),
+                new LinearLayout.LayoutParams(-1, dp(43)));
+        advancedPanel.addView(space(8));
+        advancedPanel.addView(action("검증 기준 기기 등록 · 정확한 주소/ID", false, this::editKnownTargets),
                 new LinearLayout.LayoutParams(-1, dp(43)));
         advancedPanel.addView(space(8));
         advancedPanel.addView(action("저장된 탐지 기록 전체 삭제", false, this::confirmDelete),
@@ -463,6 +475,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         counter.setText(getString(R.string.counter_summary, store.countLiveRadioEndpoints(),
                 store.countLiveNetworkServices(), store.total()));
         renderCoverage();
+        updateTargetCoverage();
         list.removeAllViews();
         int shown = 0;
         int matching = 0;
@@ -551,6 +564,14 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         TextView meta = text(badge + "  ·  " + timestampLabel
                 + "  ·  수집 " + d.observations + "회", 11, d.live ? ACCENT : SUBTLE, false);
         container.addView(meta);
+        container.setOnClickListener(v -> new AlertDialog.Builder(this)
+                .setTitle(d.name)
+                .setMessage(d.protocol + " / " + d.address + "\n" + d.details
+                        + "\n\n이 주소를 검증 기준으로 등록하면 다음 탐색에서 관찰 여부를 확인할 수 있습니다."
+                        + "\nBLE 주소 임의화 등으로 같은 기기라도 식별자가 바뀔 수 있습니다.")
+                .setPositiveButton("검증 기준에 등록", (dialog, which) -> addKnownTarget(d))
+                .setNegativeButton("닫기", (dialog, which) -> { })
+                .show());
         container.setOnLongClickListener(v -> {
             ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
             if (clipboard != null) {
@@ -585,14 +606,97 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         coverage.setText(b.toString().trim());
     }
 
+    /** Exact benchmark only; names do not establish device identity. */
+    private Set<String> sessionKeys() {
+        Set<String> keys = new HashSet<>();
+        for (DeviceRecord d : store.all()) if (d.live) keys.add(d.key);
+        return keys;
+    }
+
+    private void updateTargetCoverage() {
+        if (targetSummary == null) return;
+        int expectedCount = knownTargets == null ? 0 : knownTargets.targets.size();
+        if (expectedCount == 0) {
+            targetSummary.setVisibility(View.GONE);
+            return;
+        }
+        int matched = KnownTargetCoverage.matchedCount(knownTargets.targets, sessionKeys());
+        targetSummary.setText("검증 기준 " + expectedCount + "개 중 이번 탐색 " + matched
+                + "개 관찰 · 미관찰은 부재 증거가 아닙니다");
+        targetSummary.setVisibility(View.VISIBLE);
+    }
+
+    private void addKnownTarget(DeviceRecord d) {
+        String nextLine = d.protocol + "," + d.address + ","
+                + ObservationRules.sanitize(d.name.replace(',', ' '), 70);
+        String candidate = knownTargetInput.isEmpty()
+                ? nextLine : knownTargetInput + "\n" + nextLine;
+        KnownTargetCoverage.Result parsed = KnownTargetCoverage.parse(candidate);
+        if (!parsed.errors.isEmpty()) {
+            Toast.makeText(this, parsed.errors.get(0), Toast.LENGTH_LONG).show();
+            return;
+        }
+        saveKnownTargets(candidate, parsed);
+        Toast.makeText(this, "검증 기준에 등록됨 · 다음 탐색에서 확인하세요", Toast.LENGTH_LONG).show();
+    }
+
+    private void saveKnownTargets(String raw, KnownTargetCoverage.Result parsed) {
+        knownTargetInput = raw;
+        knownTargets = parsed;
+        getPreferences(MODE_PRIVATE).edit().putString("known_targets", raw).apply();
+        updateTargetCoverage();
+    }
+
+    private void editKnownTargets() {
+        EditText input = new EditText(this);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        input.setText(knownTargetInput);
+        input.setTextSize(13);
+        input.setTextColor(WHITE);
+        input.setHintTextColor(SUBTLE);
+        input.setHint("BLE,AA:BB:CC:DD:EE:FF,내 비콘\n"
+                + "WIFI,11:22:33:44:55:66,테스트 공유기\n"
+                + "NSD,_ipp._tcp./프린터명,프린터 서비스");
+        input.setMinLines(5);
+        input.setMaxLines(11);
+        input.setPadding(dp(14), dp(10), dp(14), dp(10));
+        LinearLayout wrapper = new LinearLayout(this);
+        wrapper.setPadding(dp(16), dp(5), dp(16), dp(5));
+        wrapper.addView(input, new LinearLayout.LayoutParams(-1, -2));
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("검증 기준 엔드포인트")
+                .setMessage("줄마다 프로토콜,정확한 주소/서비스 ID,설명 순서로 입력합니다."
+                        + "\n지원: BLE, BT, WIFI, P2P, NSD, UPNP. 최대 60개."
+                        + "\n등록은 로컬에만 저장되며 탐색 성능 시험 기준입니다.")
+                .setView(wrapper)
+                .setNegativeButton("취소", (d, which) -> { })
+                .setPositiveButton("저장", null)
+                .create();
+        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                .setOnClickListener(v -> {
+                    String raw = input.getText().toString();
+                    KnownTargetCoverage.Result parsed = KnownTargetCoverage.parse(raw);
+                    if (!parsed.errors.isEmpty()) {
+                        input.setError(parsed.errors.get(0));
+                        return;
+                    }
+                    saveKnownTargets(raw, parsed);
+                    dialog.dismiss();
+                }));
+        dialog.show();
+    }
+
     private void confirmDelete() {
         new AlertDialog.Builder(this)
                 .setTitle("탐지 기록 전체 삭제")
-                .setMessage("저장된 모든 주소·서비스 탐지 이력이 삭제됩니다. 복구할 수 없습니다.")
+                .setMessage("저장된 모든 탐지 기록과 등록한 검증 기준 주소를 삭제합니다. 복구할 수 없습니다.")
                 .setNegativeButton("취소", (dialog, which) -> { })
                 .setPositiveButton("모두 삭제", (dialog, which) -> {
                     if (scanner.isRunning()) stopSession();
                     store.clear();
+                    knownTargetInput = "";
+                    knownTargets = KnownTargetCoverage.parse("");
+                    getPreferences(MODE_PRIVATE).edit().remove("known_targets").apply();
                     render();
                     Toast.makeText(this, "저장된 탐지 기록을 삭제했습니다",
                             Toast.LENGTH_LONG).show();
@@ -646,6 +750,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
                         store.total(), store.sharedBluetoothAddressCandidates(), radioStates,
                         "Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")",
                         extendedLan);
+                content += "\n" + KnownTargetCoverage.report(knownTargets.targets, sessionKeys());
             } else {
                 content = exportingJson ? store.asJson() : store.asCsv();
             }
