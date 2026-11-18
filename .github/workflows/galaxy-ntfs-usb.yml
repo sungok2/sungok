@@ -1,0 +1,74 @@
+name: Galaxy NTFS USB APK
+on:
+  push:
+    branches: [galaxy-ntfs-usb-1.0.0]
+    paths:
+      - ".github/workflows/galaxy-ntfs-usb.yml"
+      - "ntfs-usb/**"
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out build recipe
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Android SDK and native toolchains
+        uses: android-actions/setup-android@v3
+
+      - name: Check out pinned NTFS engine source
+        run: |
+          git clone https://github.com/moylali/OTGMaster.git otg-source
+          git -C otg-source checkout 765d4fee3379d29773207dcc456117ba86f27039
+          git -C otg-source apply "$GITHUB_WORKSPACE/ntfs-usb/galaxy-ntfs.patch"
+          git -C otg-source diff --check
+          cp "$GITHUB_WORKSPACE/ntfs-usb/README_KO.md" otg-source/GALAXY_NTFS_README_KO.md
+
+      - name: Install NDK and CMake
+        run: sdkmanager "ndk;26.1.10909125" "cmake;3.22.1"
+
+      - name: Build Android APK
+        working-directory: otg-source
+        run: ./gradlew --no-daemon :app:assembleDebug
+
+      - name: Verify APK package and signature
+        working-directory: otg-source
+        run: |
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee "$GITHUB_WORKSPACE/apk-badging.txt"
+          grep -F "package: name='com.sungok.galaxy.ntfsusb' versionCode='1' versionName='1.0.0'" "$GITHUB_WORKSPACE/apk-badging.txt"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          cp "$APK" "$GITHUB_WORKSPACE/dist/Galaxy_NTFS_USB_1.0.0_debug.apk"
+          sha256sum "$GITHUB_WORKSPACE/dist/Galaxy_NTFS_USB_1.0.0_debug.apk" > "$GITHUB_WORKSPACE/dist/SHA256SUMS.txt"
+
+      - name: Package corresponding GPL source
+        run: |
+          cd otg-source
+          zip -qr "$GITHUB_WORKSPACE/dist/Galaxy_NTFS_USB_1.0.0_SOURCE.zip" . \
+            -x ".git/*" ".gradle/*" "app/build/*" "**/build/*"
+          cd "$GITHUB_WORKSPACE"
+          cp ntfs-usb/galaxy-ntfs.patch dist/
+          cp ntfs-usb/README_KO.md dist/
+
+      - name: Upload installable APK and source
+        uses: actions/upload-artifact@v4
+        with:
+          name: Galaxy_NTFS_USB_1.0.0
+          path: |
+            dist/Galaxy_NTFS_USB_1.0.0_debug.apk
+            dist/Galaxy_NTFS_USB_1.0.0_SOURCE.zip
+            dist/SHA256SUMS.txt
+            dist/galaxy-ntfs.patch
+            dist/README_KO.md
+          if-no-files-found: error
+          retention-days: 30

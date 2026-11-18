@@ -1,0 +1,101 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index d06b7db..88412b7 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -36,14 +36,14 @@ android {
+     ndkVersion = "26.1.10909125"
+ 
+     defaultConfig {
+-        applicationId = "app.fayaz.otgmaster"
++        applicationId = "com.sungok.galaxy.ntfsusb"
+         minSdk = 26
+         targetSdk = 36
+         // Static literals, not computed at build time — F-Droid's checkupdates tool statically
+         // parses this file's text per-tag and can't resolve a dynamic expression. Bump via
+         // scripts/bump-version.sh as part of cutting a release, before tagging.
+-        versionCode = 53
+-        versionName = "0.5.4"
++        versionCode = 1
++        versionName = "1.0.0"
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+         externalNativeBuild {
+             cmake {
+diff --git a/app/src/main/java/app/fayaz/otgmaster/MainActivity.kt b/app/src/main/java/app/fayaz/otgmaster/MainActivity.kt
+index c097a73..eac3e52 100644
+--- a/app/src/main/java/app/fayaz/otgmaster/MainActivity.kt
++++ b/app/src/main/java/app/fayaz/otgmaster/MainActivity.kt
+@@ -1719,7 +1719,7 @@ class MainActivity : AppCompatActivity() {
+ 
+                 OtgMasterState.addDrive(mountedDrive)
+                 mountedDrive.readOnlyReason?.let { reason ->
+-                    withContext(Dispatchers.Main) { appendLog("${mountedDrive.name} is read-only: $reason") }
++                    withContext(Dispatchers.Main) { appendLog("${mountedDrive.name}: 읽기 전용으로 연결됨 — $reason") }
+                 }
+                 contentResolver.notifyChange(
+                     android.provider.DocumentsContract.buildRootsUri(app.fayaz.otgmaster.provider.VeraCryptDocumentProvider.AUTHORITY), null
+@@ -2758,7 +2758,7 @@ class MainActivity : AppCompatActivity() {
+                 )
+                 OtgMasterState.addDrive(mountedDrive)
+                 mountedDrive.readOnlyReason?.let { reason ->
+-                    withContext(Dispatchers.Main) { appendLog("${mountedDrive.name} is read-only: $reason") }
++                    withContext(Dispatchers.Main) { appendLog("${mountedDrive.name}: 읽기 전용으로 연결됨 — $reason") }
+                 }
+                 contentResolver.notifyChange(
+                     android.provider.DocumentsContract.buildRootsUri(app.fayaz.otgmaster.provider.VeraCryptDocumentProvider.AUTHORITY), null
+diff --git a/app/src/main/java/app/fayaz/otgmaster/ntfs/NtfsFileSystem.kt b/app/src/main/java/app/fayaz/otgmaster/ntfs/NtfsFileSystem.kt
+index 9892175..b3037ec 100644
+--- a/app/src/main/java/app/fayaz/otgmaster/ntfs/NtfsFileSystem.kt
++++ b/app/src/main/java/app/fayaz/otgmaster/ntfs/NtfsFileSystem.kt
+@@ -131,12 +131,11 @@ class NtfsFileSystem private constructor(
+             val reason = when (NtfsNative.readOnlyReason(handle)) {
+                 NtfsNative.READ_ONLY_NONE -> null
+                 NtfsNative.READ_ONLY_HIBERNATED ->
+-                    "Windows left it hibernated or with Fast Startup metadata cached. " +
+-                        "Shut Windows down fully (not Fast Startup) before writing to it."
++                    "Windows 최대 절전 모드 또는 빠른 시작 메타데이터가 남아 있습니다. " +
++                        "Windows에서 빠른 시작을 끄고 완전히 종료한 뒤 다시 연결하세요."
+                 NtfsNative.READ_ONLY_UNCLEAN ->
+-                    "it was not safely removed from Windows, and its journal has changes " +
+-                        "not yet applied. Reconnect it to Windows and eject it properly " +
+-                        "before writing to it."
++                    "Windows에서 안전하게 제거되지 않아 NTFS 기록에 적용되지 않은 변경이 있습니다. " +
++                        "PC에 연결해 검사한 뒤 안전하게 꺼내고 다시 연결하세요."
+                 else -> MOUNTED_READ_ONLY
+             }
+             return NtfsFileSystem(device, handle, reason)
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index ff015f9..6a6f2bd 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -1,5 +1,5 @@
+ <resources>
+-    <string name="app_name">OTG Master</string>
++    <string name="app_name">Galaxy NTFS USB</string>
+ 
+     <!-- Top bar / global -->
+     <string name="cd_settings">Settings</string>
+@@ -158,13 +158,13 @@
+     <string name="hidden_protection_triggered_notification">%1$s is write-protected until it is unmounted. Open OTG Master for details.</string>
+     <string name="log_volume_write_protected">%1$s stopped taking writes until it is unmounted.</string>
+     <string name="action_unavailable_hidden">Not available for a hidden or protected outer volume</string>
+-    <string name="read_only_mode_title">Read-only mode</string>
++    <string name="read_only_mode_title">읽기 전용 모드</string>
+     <string name="backups_disable_title">Disable backups</string>
+     <string name="backups_enable_title">Enable backups?</string>
+     <string name="backups_enable_text">Backups are disabled in Settings. Enable them to back up this drive?</string>
+     <string name="backups_enable_confirm">Enable</string>
+     <string name="backups_disable_description">Hides the backup reminder icon, the Backups tab, Manage backups and each drive\'s list of backups. Backups you have already scheduled keep running.</string>
+-    <string name="read_only_mode_description">Mount encrypted partitions read-only by default</string>
++    <string name="read_only_mode_description">암호화된 파티션을 기본적으로 읽기 전용으로 연결합니다</string>
+     <string name="auto_mount_clear_credentials">Clear all cached credentials</string>
+     <string name="log_auto_mount_credentials_cleared">All Auto mount cached credentials cleared.</string>
+ 
+@@ -280,7 +280,7 @@
+     <string name="format_drive_menu">Format</string>
+     <string name="encrypt_drive_menu">Encrypt</string>
+     <string name="format_unavailable_fs">Not yet supported for %1$s</string>
+-    <string name="action_unavailable_read_only">Mounted read-only</string>
++    <string name="action_unavailable_read_only">읽기 전용으로 연결됨</string>
+     <string name="encrypt_unavailable_bounds">Partition bounds unknown</string>
+     <string name="encrypt_unavailable_sector">Needs 512-byte sectors</string>
+     <string name="erase_detail_device">Drive</string>
