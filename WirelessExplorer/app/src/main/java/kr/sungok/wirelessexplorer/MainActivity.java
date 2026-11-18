@@ -472,8 +472,11 @@ public final class MainActivity extends Activity implements WirelessScanner.List
 
     private void render() {
         if (counter == null || list == null) return;
-        counter.setText(getString(R.string.counter_summary, store.countLiveRadioEndpoints(),
-                store.countLiveNetworkServices(), store.total()));
+        String countText = getString(R.string.counter_summary, store.countLiveRadioEndpoints(),
+                store.countLiveNetworkServices(), store.total());
+        int overlap = store.sharedBluetoothAddressCandidates();
+        counter.setText(countText + (overlap > 0
+                ? "\nBT/BLE 동일 주소 후보 " + overlap + "쌍 (기기 수 미확정)" : ""));
         renderCoverage();
         updateTargetCoverage();
         list.removeAllViews();
@@ -546,6 +549,11 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         container.addView(space(5));
         TextView detail = text(d.details, 12, SUBTLE, false);
         container.addView(detail);
+        if (store.hasSharedBluetoothAddressCandidate(d)) {
+            container.addView(space(6));
+            container.addView(text("BLE/일반 BT 주소 동일 후보 · 동일 물리기기 여부 미확인",
+                    11, ACCENT, false));
+        }
         if (SignalTrend.sampleCount(d.signalTrace) >= 2) {
             container.addView(space(8));
             TextView trend = text("신호 변화  " + SignalTrend.render(d.signalTrace)
