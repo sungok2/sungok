@@ -17,6 +17,8 @@ import android.graphics.Insets;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
+import android.net.ConnectivityManager;
+import android.net.NetworkCapabilities;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -391,8 +393,24 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         boolean wifiPermission = Build.VERSION.SDK_INT < 33
                 || checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES)
                 == PackageManager.PERMISSION_GRANTED;
+        boolean activeWifi = false;
+        boolean activeVpn = false;
+        try {
+            ConnectivityManager connectivity = (ConnectivityManager)
+                    getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (connectivity != null && connectivity.getActiveNetwork() != null) {
+                NetworkCapabilities capabilities = connectivity.getNetworkCapabilities(
+                        connectivity.getActiveNetwork());
+                if (capabilities != null) {
+                    activeWifi = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI);
+                    activeVpn = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN);
+                }
+            }
+        } catch (RuntimeException ignored) { }
         readiness.setText(ScanReadiness.describe(hasBluetooth, bluetoothOn, hasWifi,
-                wifiOn, locationOn, fine, btPermission, wifiPermission));
+                wifiOn, locationOn, fine, btPermission, wifiPermission)
+                + "\n활성 LAN 연결: " + (activeVpn ? "VPN 연결 · LAN 조사 제한"
+                : activeWifi ? "Wi-Fi 연결됨" : "Wi-Fi 활성 연결 없음 · LAN 조사 불가"));
     }
 
     private void requestAndStart() {
