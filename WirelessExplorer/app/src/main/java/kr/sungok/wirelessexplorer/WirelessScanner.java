@@ -14,7 +14,6 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.nsd.NsdManager;
 import android.net.nsd.NsdServiceInfo;
-import android.net.wifi.ScanResult.InformationElement;
 import android.net.wifi.WifiManager;
 import android.net.wifi.p2p.WifiP2pDevice;
 import android.net.wifi.p2p.WifiP2pManager;
@@ -51,6 +50,7 @@ public final class WirelessScanner {
     private final Context context;
     private final Listener listener;
     private final Handler main = new Handler(Looper.getMainLooper());
+    private final ObservationThrottle bleGate = new ObservationThrottle();
     private BluetoothAdapter bluetooth;
     private BluetoothLeScanner ble;
     private WifiManager wifi;
@@ -61,15 +61,16 @@ public final class WirelessScanner {
     private NsdManager nsd;
     private NsdManager.DiscoveryListener activeNsd;
     private boolean nsdStopping;
+    private int nsdStopRetries;
     private int pendingNsdIndex = -1;
     private ScanCallback bleCallback;
     private BroadcastReceiver receiver;
-    private boolean running;
+    private volatile boolean running;
     private boolean bleScanning;
     private boolean classicPhase;
     private boolean extendedLan;
     private SsdpDiscovery ssdp;
-    private int generation;
+    private volatile int generation;
 
     public WirelessScanner(Context context, Listener listener) {
         this.context = context.getApplicationContext();
@@ -87,6 +88,7 @@ public final class WirelessScanner {
         if (running) return;
         running = true;
         generation++;
+        bleGate.clear();
         sessionStartedElapsedUs = SystemClock.elapsedRealtimeNanos() / 1000L;
         report("탐색 시작 · BLE/Classic 분리 및 Wi-Fi·LAN 증거 수집 (180초)");
         registerEvents();
@@ -130,6 +132,7 @@ public final class WirelessScanner {
         running = false;
         generation++;
         main.removeCallbacksAndMessages(null);
+        bleGate.clear();
         classicPhase = false;
         bleScanning = false;
         if (ssdp != null) ssdp.stop();
@@ -208,10 +211,12 @@ public final class WirelessScanner {
                 }
 
                 @Override public void onScanFailed(int errorCode) {
-                    if (callbackGeneration != generation) return;
-                    bleScanning = false;
-                    radio("BLE", "실패 / 코드 " + errorCode);
-                    report("BLE 스캔 실패 · Android 오류 코드 " + errorCode);
+                    main.post(() -> {
+                        if (callbackGeneration != generation || !running) return;
+                        bleScanning = false;
+                        radio("BLE", "실패 / 코드 " + errorCode);
+                        report("BLE 스캔 실패 · Android 오류 코드 " + errorCode);
+                    });
                 }
             };
             scanBle(ScanSettings.SCAN_MODE_LOW_LATENCY);
@@ -306,6 +311,8 @@ public final class WirelessScanner {
             if (name == null || name.isEmpty()) name = device.getName();
             StringBuilder detail = new StringBuilder("BLE 광고");
             if (record != null) {
+                int tx = record.getTxPowerLevel();
+                if (tx != Integer.MIN_VALUE) detail.append(" · 광고 TX ").append(tx).append(" dBm");
                 SparseArray<byte[]> manufacturers = record.getManufacturerSpecificData();
                 if (manufacturers != null && manufacturers.size() > 0) {
                     detail.append(" · 제조사 ID:");
@@ -322,7 +329,10 @@ public final class WirelessScanner {
                     }
                 }
             }
-            publish("BLE", name, address, detail.toString(), result.getRssi(), true);
+            String evidence = detail.toString();
+            if (bleGate.accept(address, name, evidence, SystemClock.elapsedRealtime())) {
+                publish("BLE", name, address, evidence, result.getRssi(), true);
+            }
         } catch (SecurityException ignored) {
             report("BLE 기기 정보 접근 권한이 부족합니다");
         }
@@ -482,30 +492,43 @@ public final class WirelessScanner {
                 if (activeNsd != this) return;
                 activeNsd = null;
                 nsdStopping = false;
+                nsdStopRetries = 0;
                 int nextIndex = pendingNsdIndex;
                 pendingNsdIndex = -1;
-                if (running && generation == callbackGeneration && nextIndex >= 0)
-                    main.post(() -> startNsdCycle(nextIndex));
+                // A stop from an older scan can finish after a user restarts.
+                // Start the new session's pending index, not the old token.
+                if (running && nextIndex >= 0)
+                    main.post(() -> { if (running) startNsdCycle(nextIndex); });
             }
 
             @Override public void onStartDiscoveryFailed(String serviceType, int errorCode) {
-                if (activeNsd != this || generation != callbackGeneration) return;
+                if (activeNsd != this) return;
                 activeNsd = null;
                 nsdStopping = false;
-                radio("NSD", "서비스 검색 시작 실패 · " + errorCode);
+                int next = pendingNsdIndex;
+                pendingNsdIndex = -1;
+                if (running && generation == callbackGeneration)
+                    radio("NSD", "서비스 검색 시작 실패 · " + errorCode);
+                if (running && next >= 0) main.post(() -> startNsdCycle(next));
             }
 
             @Override public void onStopDiscoveryFailed(String serviceType, int errorCode) {
-                if (activeNsd != this || generation != callbackGeneration) return;
-                // An old listener may still be active. Fail closed instead of
-                // opening another discovery session and hitting NSD limits.
+                if (activeNsd != this) return;
                 nsdStopping = false;
-                pendingNsdIndex = -1;
-                radio("NSD", "이전 검색 종료 실패 · " + errorCode);
+                // Retry a bounded number of times. Do not overlap discoveries.
+                if (++nsdStopRetries <= 2) {
+                    main.postDelayed(() -> {
+                        if (activeNsd == this) stopNsd();
+                    }, 1800L);
+                } else {
+                    pendingNsdIndex = -1;
+                    if (running) radio("NSD", "이전 검색 종료 실패 · " + errorCode);
+                }
             }
         };
         try {
             activeNsd = discovery;
+            nsdStopRetries = 0;
             nsd.discoverServices(type, NsdManager.PROTOCOL_DNS_SD, discovery);
         } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
             if (activeNsd == discovery) activeNsd = null;
@@ -529,16 +552,24 @@ public final class WirelessScanner {
     private void publish(String protocol, String name, String id,
                          String details, int rssi, boolean fresh) {
         if (id == null || id.isEmpty()) return;
+        final int token = generation;
         main.post(() -> {
-            if (running) listener.onDevice(protocol, name, id, details, rssi, fresh);
+            if (running && generation == token)
+                listener.onDevice(protocol, name, id, details, rssi, fresh);
         });
     }
 
     private void report(String message) {
-        main.post(() -> listener.onStatus(message));
+        final int token = generation;
+        main.post(() -> {
+            if (generation == token) listener.onStatus(message);
+        });
     }
 
     private void radio(String protocol, String state) {
-        main.post(() -> listener.onRadioState(protocol, state));
+        final int token = generation;
+        main.post(() -> {
+            if (generation == token) listener.onRadioState(protocol, state);
+        });
     }
 }
