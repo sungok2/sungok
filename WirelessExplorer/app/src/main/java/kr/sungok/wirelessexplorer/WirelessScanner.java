@@ -353,8 +353,15 @@ public final class WirelessScanner {
                 if (manufacturers != null && manufacturers.size() > 0) {
                     detail.append(" · 제조사 ID:");
                     for (int i = 0; i < Math.min(manufacturers.size(), 5); i++) {
-                        detail.append(' ').append(String.format(Locale.ROOT, "0x%04X",
-                                manufacturers.keyAt(i)));
+                        int id = manufacturers.keyAt(i);
+                        detail.append(' ').append(String.format(Locale.ROOT, "0x%04X", id));
+                        String company = BleCompanyNames.forId(id);
+                        if (!company.isEmpty()) {
+                            detail.append(" (").append(company)
+                                    .append(" 광고 회사 ID · 기기 제조사 확정 아님)");
+                            if (name == null || name.isEmpty())
+                                name = "광고 회사 ID: " + company;
+                        }
                     }
                 }
                 if (record.getServiceUuids() != null && !record.getServiceUuids().isEmpty()) {
