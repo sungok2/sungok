@@ -456,10 +456,23 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         for (String[] choice : choices) {
             String id = choice[0];
             boolean selected = id.equals(filter);
-            TextView chip = text(choice[1], 13, selected ? BG : SUBTLE, selected);
+            int matchingRecords = 0;
+            for (DeviceRecord record : store.all()) {
+                if ((!sessionOnly || record.live)
+                        && ("ALL".equals(id) || id.equals(record.protocol)))
+                    matchingRecords++;
+            }
+            TextView chip = text(choice[1] + " " + matchingRecords,
+                    12, selected ? BG : SUBTLE, selected);
             chip.setGravity(Gravity.CENTER);
             chip.setPadding(dp(13), dp(9), dp(13), dp(9));
-            chip.setBackground(shape(selected ? ACCENT : SURFACE, 999, selected ? ACCENT : BORDER));
+            chip.setBackground(new android.graphics.drawable.RippleDrawable(
+                    ColorStateList.valueOf(BORDER),
+                    shape(selected ? ACCENT : SURFACE, 999, selected ? ACCENT : BORDER), null));
+            chip.setClickable(true);
+            chip.setFocusable(true);
+            chip.setContentDescription(choice[1] + " 기록 " + matchingRecords
+                    + "건 필터" + (selected ? ", 선택됨" : ""));
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, dp(37));
             lp.rightMargin = dp(7);
             filterBar.addView(chip, lp);
@@ -643,6 +656,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
     @Override public void onStatus(String message) {
         if (status != null) status.setText(message);
         if (scanner != null && !scanner.isRunning() && scanButton != null) {
+            if ("탐색 중지".contentEquals(scanButton.getText())) feedback.finish(scanButton);
             scanButton.setText("탐색 시작");
             if (radar != null) radar.setScanning(false);
             if (lanToggle != null) lanToggle.setEnabled(true);
