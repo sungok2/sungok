@@ -18,9 +18,23 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+    signingConfigs {
+        if (System.getenv('WE_RELEASE_KEYSTORE_PATH')) {
+            production {
+                storeFile file(System.getenv('WE_RELEASE_KEYSTORE_PATH'))
+                storePassword System.getenv('WE_RELEASE_STORE_PASSWORD')
+                keyAlias System.getenv('WE_RELEASE_KEY_ALIAS')
+                keyPassword System.getenv('WE_RELEASE_KEY_PASSWORD')
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
+            // Only owner-signed releases use a persistent private key; regular CI stays debug-only.
+            if (signingConfigs.findByName('production') != null) {
+                signingConfig signingConfigs.production
+            }
         }
     }
     testOptions {
