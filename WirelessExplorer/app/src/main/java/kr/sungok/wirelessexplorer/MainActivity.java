@@ -183,7 +183,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         soundButton.setTextSize(12);
         soundButton.setContentDescription("탐색 음향 피드백 "
                 + (feedback.soundEnabled() ? "사용 중, 탭하여 끄기" : "사용 안 함, 탭하여 켜기"));
-        toolbar.addView(soundButton, new LinearLayout.LayoutParams(dp(79), dp(43)));
+        toolbar.addView(soundButton, new LinearLayout.LayoutParams(dp(84), dp(48)));
         page.addView(space(12));
 
         LinearLayout summary = panel();
@@ -233,6 +233,8 @@ public final class MainActivity extends Activity implements WirelessScanner.List
 
         coverageToggle = text("진단 보기  ·  BLE / Wi-Fi / LAN 상태", 12, BLUE, true);
         coverageToggle.setPadding(0, dp(8), 0, dp(8));
+        coverageToggle.setMinHeight(dp(48));
+        coverageToggle.setGravity(Gravity.CENTER_VERTICAL);
         coverageToggle.setContentDescription("탐색 방식별 상태 및 권한 진단 펼치기");
         coverageToggle.setOnClickListener(v -> {
             coverageExpanded = !coverageExpanded;
@@ -287,7 +289,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         });
         lanProbeToggle.setContentDescription("선택 기능: 연결된 허가된 사설 Wi-Fi LAN에서 "
                 + "제한된 TCP 및 UPnP 탐색 요청 전송");
-        lanRow.addView(lanProbeToggle, new LinearLayout.LayoutParams(0, dp(45), 1f));
+        lanRow.addView(lanProbeToggle, new LinearLayout.LayoutParams(0, dp(48), 1f));
         TextView lanInfo = text("유·무선 포함 · 선택", 11, MUTED, false);
         lanRow.addView(lanInfo);
         page.addView(space(16));
@@ -338,11 +340,11 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         sortRecent = sortButton("최신순", 0);
         sortStrong = sortButton("신호순", 1);
         sortName = sortButton("이름순", 2);
-        sortingRow.addView(sortRecent, new LinearLayout.LayoutParams(0, dp(42), 1f));
+        sortingRow.addView(sortRecent, new LinearLayout.LayoutParams(0, dp(48), 1f));
         addHorizontalSpace(sortingRow, 6);
-        sortingRow.addView(sortStrong, new LinearLayout.LayoutParams(0, dp(42), 1f));
+        sortingRow.addView(sortStrong, new LinearLayout.LayoutParams(0, dp(48), 1f));
         addHorizontalSpace(sortingRow, 6);
-        sortingRow.addView(sortName, new LinearLayout.LayoutParams(0, dp(42), 1f));
+        sortingRow.addView(sortName, new LinearLayout.LayoutParams(0, dp(48), 1f));
         page.addView(space(9));
 
         LinearLayout toggleRow = new LinearLayout(this);
@@ -354,7 +356,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
             render();
         });
         sessionButton.setTextSize(12);
-        toggleRow.addView(sessionButton, new LinearLayout.LayoutParams(0, dp(40), 1f));
+        toggleRow.addView(sessionButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
         addHorizontalSpace(toggleRow, 8);
         unknownButton = action("미확인만: 끔", false, () -> {
             unknownOnly = !unknownOnly;
@@ -363,7 +365,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
             render();
         });
         unknownButton.setTextSize(12);
-        toggleRow.addView(unknownButton, new LinearLayout.LayoutParams(0, dp(40), 1f));
+        toggleRow.addView(unknownButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
         page.addView(space(12));
 
         list = new LinearLayout(this);
@@ -377,7 +379,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
             toolToggle.setText(toolsExpanded
                     ? "기록 · 검증 · 고급 설정  ▴" : "기록 · 검증 · 고급 설정  ▾");
         });
-        page.addView(toolToggle, new LinearLayout.LayoutParams(-1, dp(46)));
+        page.addView(toolToggle, new LinearLayout.LayoutParams(-1, dp(48)));
         advancedPanel = new LinearLayout(this);
         advancedPanel.setOrientation(LinearLayout.VERTICAL);
         advancedPanel.setVisibility(View.GONE);
@@ -396,24 +398,24 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         LinearLayout exportRow = new LinearLayout(this);
         exportRow.setOrientation(LinearLayout.HORIZONTAL);
         exportRow.addView(action("JSON 백업", false, () -> export(true)),
-                new LinearLayout.LayoutParams(0, dp(47), 1f));
+                new LinearLayout.LayoutParams(0, dp(48), 1f));
         addHorizontalSpace(exportRow, 8);
         exportRow.addView(action("TXT 진단 보고서", false, this::exportReport),
-                new LinearLayout.LayoutParams(0, dp(47), 1f));
+                new LinearLayout.LayoutParams(0, dp(48), 1f));
         advancedPanel.addView(exportRow);
         advancedPanel.addView(space(8));
         advancedPanel.addView(action("JSON 기록 복원", false, this::importHistory),
-                new LinearLayout.LayoutParams(-1, dp(47)));
+                new LinearLayout.LayoutParams(-1, dp(48)));
         advancedPanel.addView(space(8));
         advancedPanel.addView(action("검증 기준 기기 관리", false, this::editKnownTargets),
-                new LinearLayout.LayoutParams(-1, dp(47)));
+                new LinearLayout.LayoutParams(-1, dp(48)));
         advancedPanel.addView(space(8));
         advancedPanel.addView(action("위치 서비스 설정", false,
                 () -> startActivity(new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))),
-                new LinearLayout.LayoutParams(-1, dp(47)));
+                new LinearLayout.LayoutParams(-1, dp(48)));
         advancedPanel.addView(space(8));
         advancedPanel.addView(action("모든 탐지 기록 삭제", false, this::confirmDelete),
-                new LinearLayout.LayoutParams(-1, dp(47)));
+                new LinearLayout.LayoutParams(-1, dp(48)));
 
         page.addView(space(17));
         TextView footer = text("탐색은 앱이 열려 있는 동안에만 진행합니다.\n"
@@ -465,7 +467,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
             TextView chip = text(choice[1] + " " + matchingRecords,
                     12, selected ? BG : SUBTLE, selected);
             chip.setGravity(Gravity.CENTER);
-            chip.setPadding(dp(13), dp(9), dp(13), dp(9));
+            chip.setPadding(dp(14), dp(9), dp(14), dp(9));
             chip.setBackground(new android.graphics.drawable.RippleDrawable(
                     ColorStateList.valueOf(BORDER),
                     shape(selected ? ACCENT : SURFACE, 999, selected ? ACCENT : BORDER), null));
@@ -473,7 +475,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
             chip.setFocusable(true);
             chip.setContentDescription(choice[1] + " 기록 " + matchingRecords
                     + "건 필터" + (selected ? ", 선택됨" : ""));
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, dp(37));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, dp(48));
             lp.rightMargin = dp(7);
             filterBar.addView(chip, lp);
             chip.setOnClickListener(v -> {
@@ -1209,7 +1211,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         view.setGravity(Gravity.CENTER);
         view.setClickable(true);
         view.setFocusable(true);
-        view.setMinHeight(dp(44));
+        view.setMinHeight(dp(48));
         view.setBackground(new android.graphics.drawable.RippleDrawable(
                 ColorStateList.valueOf(primary ? Color.rgb(70, 158, 139) : BORDER),
                 shape(primary ? ACCENT : SURFACE, 12, primary ? ACCENT : BORDER),
