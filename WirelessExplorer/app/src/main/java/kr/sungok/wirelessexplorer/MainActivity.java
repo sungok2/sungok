@@ -595,6 +595,9 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         sessionButton.setText("과거 포함");
         sessionButton.setBackground(shape(SURFACE, 14, BORDER));
         scanner.start();
+        radar.setScanning(true);
+        feedback.start(scanButton);
+        sessionProgress.setProgress(0);
         scanButton.setText("탐색 중지");
         status.setText("탐색 중 · 검색 결과 누적 수집");
         refreshReadiness();
@@ -604,6 +607,8 @@ public final class MainActivity extends Activity implements WirelessScanner.List
 
     private void stopSession() {
         scanner.stop();
+        radar.setScanning(false);
+        feedback.finish(scanButton);
         main.removeCallbacks(countdownTick);
         scanButton.setText("탐색 시작");
         lanToggle.setEnabled(true);
@@ -615,7 +620,9 @@ public final class MainActivity extends Activity implements WirelessScanner.List
 
     @Override public void onDevice(String protocol, String name, String id,
                                    String details, int rssi, boolean fresh) {
+        boolean newEvidence = fresh && !store.wasLiveThisSession(protocol, id);
         store.observe(protocol, name, id, details, rssi, fresh);
+        if (newEvidence) feedback.foundNewEndpoint();
         if (!persistScheduled) {
             persistScheduled = true;
             main.postDelayed(() -> {
@@ -629,7 +636,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
             main.postDelayed(() -> {
                 refreshScheduled = false;
                 render();
-            }, 1600);
+            }, 2300);
         }
     }
 
@@ -637,6 +644,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         if (status != null) status.setText(message);
         if (scanner != null && !scanner.isRunning() && scanButton != null) {
             scanButton.setText("탐색 시작");
+            if (radar != null) radar.setScanning(false);
             if (lanToggle != null) lanToggle.setEnabled(true);
             if (lanProbeToggle != null) lanProbeToggle.setEnabled(true);
             if (store != null && !store.save()) status.setText(store.lastPersistenceError());
@@ -894,12 +902,17 @@ public final class MainActivity extends Activity implements WirelessScanner.List
     private void updateProgress() {
         if (progress == null || scanner == null) return;
         if (!scanner.isRunning()) {
-            progress.setText("탐색 종료 · 기록을 다시 확인하거나 보고서로 저장하세요");
+            progress.setText("탐색 종료 · 발견 기록을 확인하거나 내보내세요");
+            if (sessionProgress != null) sessionProgress.setProgress(180);
+            if (radar != null) radar.setScanning(false);
             return;
         }
         long elapsed = Math.max(0L, SystemClock.elapsedRealtime() - sessionStartElapsed);
         long secondsLeft = Math.max(0L, (ScanPlan.SESSION_MS - elapsed) / 1000L);
-        progress.setText(getString(R.string.progress_remaining, secondsLeft));
+        progress.setText("탐색 중  ·  " + secondsLeft + "초 남음  /  180초");
+        if (sessionProgress != null)
+            sessionProgress.setProgress((int) Math.min(180L, elapsed / 1000L));
+        main.removeCallbacks(countdownTick);
         main.postDelayed(countdownTick, 1000L);
     }
 
@@ -995,6 +1008,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
 
     @Override protected void onStop() {
         if (scanner != null && scanner.isRunning()) scanner.stop();
+        if (radar != null) radar.setScanning(false);
         if (lanProbeToggle != null) lanProbeToggle.setEnabled(true);
         main.removeCallbacks(countdownTick);
         if (store != null) store.save();
@@ -1004,6 +1018,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
     @Override protected void onDestroy() {
         main.removeCallbacksAndMessages(null);
         if (scanner != null) scanner.stop();
+        if (feedback != null) feedback.close();
         super.onDestroy();
     }
 
@@ -1026,8 +1041,17 @@ public final class MainActivity extends Activity implements WirelessScanner.List
     private TextView action(String label, boolean primary, Runnable run) {
         TextView view = text(label, 14, primary ? BG : WHITE, true);
         view.setGravity(Gravity.CENTER);
-        view.setBackground(shape(primary ? ACCENT : SURFACE, 13, primary ? ACCENT : BORDER));
-        view.setOnClickListener(v -> run.run());
+        view.setClickable(true);
+        view.setFocusable(true);
+        view.setMinHeight(dp(44));
+        view.setBackground(new android.graphics.drawable.RippleDrawable(
+                ColorStateList.valueOf(primary ? Color.rgb(70, 158, 139) : BORDER),
+                shape(primary ? ACCENT : SURFACE, 12, primary ? ACCENT : BORDER),
+                null));
+        view.setOnClickListener(v -> {
+            if (feedback != null && view != scanButton) feedback.haptic(view);
+            run.run();
+        });
         return view;
     }
 
