@@ -22,7 +22,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
-      - name: Install Android API 35 and signing tools
+      - name: Install Android API 36 and signing tools
         run: |
           SDKMGR="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)"
           test -n "$SDKMGR"
