@@ -1,6 +1,6 @@
 # Wireless Explorer for Galaxy
 
-**Version:** 0.8.0 (design-polished field-test build; release signing not yet configured)  
+**Version:** 0.9.0 (Google Play API36-compatible unsigned/debug QA candidate; owner signing and Galaxy field acceptance pending)  
 **Package ID:** kr.sungok.wirelessexplorer  
 **Requirements:** Android 8.0+ (API 26), Bluetooth/Wi-Fi hardware for the corresponding scans.  
 **Status:** Source implementation and GitHub Actions APK build workflow. An actual Galaxy hardware test is required before any production claim.
@@ -75,7 +75,7 @@ Catalog as many **detectable nearby wireless endpoints** as Android public APIs 
 
 ## Build
 
-GitHub > Actions > **Wireless Explorer Android APK** > select a successful run > Artifacts > **WirelessExplorer-v0.8.0-debug-apk**.
+GitHub > Actions > **Wireless Explorer Android APK** > select a successful run > Artifacts > **WirelessExplorer-v0.9.0-debug-apk**.
 Unzip and install app-debug.apk on your Galaxy (allow installation from that source if prompted). Each CI run uses GitHub's temporary debug key. Uninstalling a previous build may be required before installing a build signed with a different key; uninstalling removes the app's local history, so export it first.
 
 To build with Android Studio, open **WirelessExplorer/** as its own project, use JDK 17, Android SDK platform 35, Android Gradle Plugin 8.9.2 and Gradle 8.11.1. A Gradle wrapper is not committed; GitHub Actions provisions Gradle.
@@ -106,6 +106,14 @@ To build with Android Studio, open **WirelessExplorer/** as its own project, use
 - The UPnP checkbox initiates *only* UDP discovery on the connected LAN; it is disabled by default and cannot examine devices on unrelated networks.
 - Android 17 (API 37) local network permission policies will require another compatibility review if a future app update targets API 37+.
 - On recent Android versions, local-network permission policy may evolve; test on the actual device/OS.
+
+## v0.9 store-readiness changes (2026-11)
+- Google Play submission requires Android 16 API 36 for regular phone apps; now compileSdk/targetSdk 36 using AGP 8.11.2 + Gradle 8.13.
+- GitHub CI verifies targetSdk 36 inside the compiled debug APK and creates an *unsigned structural* release App Bundle (AAB), in addition to unit, lint and Android 13/15/16 emulator instrumentation.
+- Owner-secret-protected release workflow creates and verifies BOTH a persistently signed APK and AAB; it cannot execute successfully without the owner's four GitHub Actions signing secrets.
+- First-run prominent disclosure explains nearby identifiers and location permission before any Android permission prompt. LAN TCP/UPnP scanning requires a separate explicit authorized-network consent.
+- Leaving the app during discovery now resets the stale "stop scanning" UI and records the stopped session; the app remains foreground-only and offline-first.
+- Google Play privacy, store submission checklist and honest feature limitations documented; no claim that approval, monetization or field RF acceptance has occurred.
 
 ## v0.8 product experience and visual design
 
