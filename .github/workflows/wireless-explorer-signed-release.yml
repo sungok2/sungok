@@ -47,7 +47,7 @@ jobs:
           WE_RELEASE_KEY_ALIAS: ${{ secrets.WE_RELEASE_KEY_ALIAS }}
           WE_RELEASE_KEY_PASSWORD: ${{ secrets.WE_RELEASE_KEY_PASSWORD }}
         run: gradle --no-daemon :app:testDebugUnitTest :app:lintRelease :app:assembleRelease :app:bundleRelease
-      - name: Verify APK signature and checksum
+      - name: Verify APK and AAB signatures and checksums
         run: |
           APK=app/build/outputs/apk/release/app-release.apk
           test -s "$APK"
@@ -58,7 +58,7 @@ jobs:
           unzip -t "$AAB" >/dev/null
           jarsigner -verify "$AAB"
           sha256sum "$AAB" > "$AAB.sha256"
-      - name: Publish signed APK artifact
+      - name: Publish signed APK and Google Play App Bundle
         uses: actions/upload-artifact@v4
         with:
           name: WirelessExplorer-v0.9.0-owner-signed-release
