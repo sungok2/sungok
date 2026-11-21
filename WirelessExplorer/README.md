@@ -1,6 +1,6 @@
 # Wireless Explorer for Galaxy
 
-**Version:** 0.7.0 (engineering prototype)  
+**Version:** 0.8.0 (design-polished field-test build; release signing not yet configured)  
 **Package ID:** kr.sungok.wirelessexplorer  
 **Requirements:** Android 8.0+ (API 26), Bluetooth/Wi-Fi hardware for the corresponding scans.  
 **Status:** Source implementation and GitHub Actions APK build workflow. An actual Galaxy hardware test is required before any production claim.
@@ -75,7 +75,7 @@ Catalog as many **detectable nearby wireless endpoints** as Android public APIs 
 
 ## Build
 
-GitHub > Actions > **Wireless Explorer Android APK** > select a successful run > Artifacts > **WirelessExplorer-v0.7.0-debug-apk**.
+GitHub > Actions > **Wireless Explorer Android APK** > select a successful run > Artifacts > **WirelessExplorer-v0.8.0-debug-apk**.
 Unzip and install app-debug.apk on your Galaxy (allow installation from that source if prompted). Each CI run uses GitHub's temporary debug key. Uninstalling a previous build may be required before installing a build signed with a different key; uninstalling removes the app's local history, so export it first.
 
 To build with Android Studio, open **WirelessExplorer/** as its own project, use JDK 17, Android SDK platform 35, Android Gradle Plugin 8.9.2 and Gradle 8.11.1. A Gradle wrapper is not committed; GitHub Actions provisions Gradle.
@@ -106,6 +106,19 @@ To build with Android Studio, open **WirelessExplorer/** as its own project, use
 - The UPnP checkbox initiates *only* UDP discovery on the connected LAN; it is disabled by default and cannot examine devices on unrelated networks.
 - Android 17 (API 37) local network permission policies will require another compatibility review if a future app update targets API 37+.
 - On recent Android versions, local-network permission policy may evolve; test on the actual device/OS.
+
+## v0.8 product experience and visual design
+
+Inspired by familiar interaction patterns (not copied artwork or source) from Fing's device-centric network list, WiFiman's connection/signal dashboards and nRF Connect's BLE evidence, with a native, offline-first Android implementation:
+
+- Redesigned dark, contrast-oriented dashboard with an animated decorative scan ring **clearly not a radar map**; compact RF/LAN/services indicators and timed progress bar.
+- Result-first hierarchy: one large scan action, one export action, exact LAN opt-in, search, per-protocol count chips, session/unknown filters, and recent/signal/name sorting.
+- Compact device cards expand only when needed to show precise metadata, evidence source, verified timestamps, same-address warnings and a real bounded RSSI trend rendered as a native Canvas line graph.
+- Opt-in low-volume Android system tones for start, finish and at most eight new devices per session, with an 8.5-second cooldown. Sound is **OFF by default** and respects the notification audio stream. Haptic button feedback is optional by device settings.
+- Accessibility: minimum 44dp tap targets, high-contrast tags and readable type, content descriptions for the animated ring and chart, visual cues independent of audio, and Android reduced-motion preference.
+- Native source assets and no external graphic, font or audio licensing dependencies.
+- Android 13/15 instrumentation UI tests verify the controls, disclosure, sound switch and drawing without claiming hardware RF capture.
+- Intentional limits: Android 8+/API26 baseline, target SDK35, **debug signing from ephemeral CI**; production signing, Galaxy real-device RF field acceptance, and Play Store publication are separate release gates.
 
 ## Verification checklist (physical Galaxy)
 

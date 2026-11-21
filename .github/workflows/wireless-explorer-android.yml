@@ -49,7 +49,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: WirelessExplorer-v0.7.0-lint-report
+          name: WirelessExplorer-v0.8.0-lint-report
           path: |
             WirelessExplorer/app/build/reports/lint-results-debug.html
             WirelessExplorer/app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt
@@ -62,7 +62,7 @@ jobs:
       - name: Upload installable APK and checksum
         uses: actions/upload-artifact@v4
         with:
-          name: WirelessExplorer-v0.7.0-debug-apk
+          name: WirelessExplorer-v0.8.0-debug-apk
           path: |
             WirelessExplorer/app/build/outputs/apk/debug/app-debug.apk
             WirelessExplorer/app/build/outputs/apk/debug/app-debug.apk.sha256
@@ -116,6 +116,8 @@ jobs:
             cd WirelessExplorer
             && gradle --no-daemon :app:connectedDebugAndroidTest
             && adb install -r app/build/outputs/apk/debug/app-debug.apk
+            && adb exec-out cat /sdcard/Download/WirelessExplorer-UI-view.png > ../WirelessExplorer-UI-view.png
+            && test -s ../WirelessExplorer-UI-view.png
             && adb shell am start -n kr.sungok.wirelessexplorer/.MainActivity
             && sleep 2
             && adb exec-out screencap -p > ../WirelessExplorer-UI-emulator.png
@@ -125,9 +127,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: WirelessExplorer-v0.7.0-emulator-qa-api${{ matrix.api }}
+          name: WirelessExplorer-v0.8.0-emulator-qa-api${{ matrix.api }}
           path: |
             WirelessExplorer-UI-emulator.png
+            WirelessExplorer-UI-view.png
             WirelessExplorer/app/build/reports/androidTests/
             WirelessExplorer/app/build/outputs/androidTest-results/
           if-no-files-found: warn

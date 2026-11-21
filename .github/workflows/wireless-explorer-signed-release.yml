@@ -1,0 +1,67 @@
+name: Wireless Explorer Signed Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  signed-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: WirelessExplorer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Install Android API 35 and signing tools
+        run: |
+          SDKMGR="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)"
+          test -n "$SDKMGR"
+          "$SDKMGR" --install "platforms;android-35" "build-tools;35.0.0"
+      - name: Require private signing credentials
+        env:
+          B64: ${{ secrets.WE_RELEASE_KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.WE_RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.WE_RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.WE_RELEASE_KEY_PASSWORD }}
+        run: |
+          test -n "$B64" || { echo "Missing private release signing key"; exit 1; }
+          test -n "$STORE_PASSWORD" || exit 1
+          test -n "$KEY_ALIAS" || exit 1
+          test -n "$KEY_PASSWORD" || exit 1
+          printf '%s' "$B64" | base64 -d > "$RUNNER_TEMP/we-release.jks"
+          test -s "$RUNNER_TEMP/we-release.jks"
+      - name: Unit tests, lint and persistently signed release
+        env:
+          WE_RELEASE_KEYSTORE_PATH: ${{ runner.temp }}/we-release.jks
+          WE_RELEASE_STORE_PASSWORD: ${{ secrets.WE_RELEASE_STORE_PASSWORD }}
+          WE_RELEASE_KEY_ALIAS: ${{ secrets.WE_RELEASE_KEY_ALIAS }}
+          WE_RELEASE_KEY_PASSWORD: ${{ secrets.WE_RELEASE_KEY_PASSWORD }}
+        run: gradle --no-daemon :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
+      - name: Verify APK signature and checksum
+        run: |
+          APK=app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          sha256sum "$APK" > "$APK.sha256"
+      - name: Publish signed APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WirelessExplorer-v0.8.0-owner-signed-release
+          path: |
+            WirelessExplorer/app/build/outputs/apk/release/app-release.apk
+            WirelessExplorer/app/build/outputs/apk/release/app-release.apk.sha256
+          if-no-files-found: error
+          retention-days: 30
+      - name: Remove runner copy of private key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/we-release.jks"

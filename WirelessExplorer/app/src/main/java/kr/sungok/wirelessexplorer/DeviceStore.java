@@ -86,6 +86,13 @@ public final class DeviceStore {
         return list;
     }
 
+    /** Used only for low-frequency audio: newly encountered session evidence. */
+    public boolean wasLiveThisSession(String protocol, String rawId) {
+        String key = protocol + "|" + ObservationRules.normalizedId(protocol, rawId);
+        DeviceRecord found = records.get(key);
+        return found != null && found.live;
+    }
+
     public int countThisSession() {
         int total = 0;
         for (DeviceRecord d : records.values()) if (d.live) total++;
