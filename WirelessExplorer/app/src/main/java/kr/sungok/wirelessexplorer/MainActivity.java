@@ -286,6 +286,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
                 lanProbeEnabled = false;
                 return;
             }
+            if (lanProbeEnabled) return;
             // Active network ownership is not observable through Android APIs.
             // Require explicit informed authorization before traffic is generated.
             lanProbeToggle.setChecked(false);
