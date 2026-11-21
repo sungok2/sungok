@@ -8,6 +8,8 @@ permissions:
 
 jobs:
   signed-release:
+    # Never expose private signing credentials to an unreviewed feature branch.
+    if: github.ref == 'refs/heads/master' && github.repository == 'sungok2/sungok'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     defaults:
