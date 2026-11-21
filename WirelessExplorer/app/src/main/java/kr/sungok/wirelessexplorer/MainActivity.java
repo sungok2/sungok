@@ -277,7 +277,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         lanRow.setBackground(shape(SURFACE, 12, BORDER));
         page.addView(lanRow);
         lanProbeToggle = new CheckBox(this);
-        lanProbeToggle.setText("연결된 LAN도 조사");
+        lanProbeToggle.setText(R.string.lan_probe_toggle);
         lanProbeToggle.setTextColor(WHITE);
         lanProbeToggle.setTextSize(13);
         lanProbeToggle.setButtonTintList(ColorStateList.valueOf(ACCENT));
@@ -1106,7 +1106,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         }
         long elapsed = Math.max(0L, SystemClock.elapsedRealtime() - sessionStartElapsed);
         long secondsLeft = Math.max(0L, (ScanPlan.SESSION_MS - elapsed) / 1000L);
-        progress.setText("탐색 중  ·  " + secondsLeft + "초 남음  /  180초");
+        progress.setText(getString(R.string.scan_progress_active, secondsLeft));
         if (sessionProgress != null)
             sessionProgress.setProgress((int) Math.min(180L, elapsed / 1000L));
         main.removeCallbacks(countdownTick);
