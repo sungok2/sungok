@@ -53,6 +53,11 @@ jobs:
           test -s "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
           sha256sum "$APK" > "$APK.sha256"
+          AAB=app/build/outputs/bundle/release/app-release.aab
+          test -s "$AAB"
+          unzip -t "$AAB" >/dev/null
+          jarsigner -verify "$AAB"
+          sha256sum "$AAB" > "$AAB.sha256"
       - name: Publish signed APK artifact
         uses: actions/upload-artifact@v4
         with:
@@ -60,6 +65,8 @@ jobs:
           path: |
             WirelessExplorer/app/build/outputs/apk/release/app-release.apk
             WirelessExplorer/app/build/outputs/apk/release/app-release.apk.sha256
+            WirelessExplorer/app/build/outputs/bundle/release/app-release.aab
+            WirelessExplorer/app/build/outputs/bundle/release/app-release.aab.sha256
           if-no-files-found: error
           retention-days: 30
       - name: Remove runner copy of private key
