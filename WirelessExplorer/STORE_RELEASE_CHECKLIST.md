@@ -1,4 +1,4 @@
-# Wireless Explorer v0.9.0 — Store Release Acceptance Gate
+# Wireless Explorer v0.9.1 — Store Release Acceptance Gate
 
 **Status: NOT YET APPROVED FOR COMMERCIAL SALES.** Code/CI improvements are verifiable, but owner signing, actual Galaxy radio reception testing and store approval cannot be inferred from emulators.
 
