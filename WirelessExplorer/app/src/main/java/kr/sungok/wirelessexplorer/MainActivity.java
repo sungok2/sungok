@@ -134,6 +134,9 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(BG);
+        // Opt out of OEM/Android automatic color transforms for this intentional
+        // dark design. Android Force Dark should not wash navy panels into gray.
+        if (Build.VERSION.SDK_INT >= 29) root.setForceDarkAllowed(false);
         root.setPadding(dp(16), dp(14), dp(16), dp(16));
         if (Build.VERSION.SDK_INT >= 35) {
             root.setOnApplyWindowInsetsListener((view, windowInsets) -> {
@@ -148,10 +151,12 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         scroller.setFillViewport(true);
         scroller.setVerticalScrollBarEnabled(false);
         scroller.setBackgroundColor(BG);
+        if (Build.VERSION.SDK_INT >= 29) scroller.setForceDarkAllowed(false);
         root.addView(scroller, new LinearLayout.LayoutParams(-1, -1));
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
         page.setBackgroundColor(BG);
+        if (Build.VERSION.SDK_INT >= 29) page.setForceDarkAllowed(false);
         scroller.addView(page);
 
         boolean landscape = getResources().getConfiguration().orientation
@@ -1290,6 +1295,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         p.setOrientation(LinearLayout.VERTICAL);
         p.setPadding(dp(16), dp(16), dp(16), dp(16));
         p.setBackground(shape(SURFACE, 17, BORDER));
+        if (Build.VERSION.SDK_INT >= 29) p.setForceDarkAllowed(false);
         return p;
     }
 
