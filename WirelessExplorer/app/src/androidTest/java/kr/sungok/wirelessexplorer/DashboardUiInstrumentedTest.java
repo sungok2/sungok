@@ -14,6 +14,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import java.util.concurrent.atomic.AtomicReference;
+import java.io.File;
+import java.io.FileOutputStream;
 
 import static org.junit.Assert.*;
 
@@ -73,6 +75,30 @@ public class DashboardUiInstrumentedTest {
                 .getInstrumentation().waitForIdleSync();
         assertTrue(sound.getText().toString().contains("소리 "));
         activityRule.runOnUiThread(sound::performClick);
+    }
+
+    @Test public void snapshotActualAppViewWithoutEmulatorLauncher() throws Throwable {
+        MainActivity activity = activityRule.getActivity();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        activityRule.runOnUiThread(() -> {
+            try {
+                View decor = activity.getWindow().getDecorView();
+                int width = decor.getWidth(), height = decor.getHeight();
+                assertTrue("view must be laid out", width > 0 && height > 0);
+                Bitmap image = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+                decor.draw(new Canvas(image));
+                File out = new File(activity.getFilesDir(), "wireless-ui-view.png");
+                try (FileOutputStream stream = new FileOutputStream(out)) {
+                    assertTrue("PNG serialization failed",
+                            image.compress(Bitmap.CompressFormat.PNG, 100, stream));
+                }
+                assertTrue(out.length() > 1000L);
+                image.recycle();
+            } catch (Throwable t) { failure.set(t); }
+        });
+        androidx.test.platform.app.InstrumentationRegistry
+                .getInstrumentation().waitForIdleSync();
+        if (failure.get() != null) throw new AssertionError(failure.get());
     }
 
     @Test public void scannerAndRssiGraphicsDrawWithoutLocationSimulation() throws Throwable {
