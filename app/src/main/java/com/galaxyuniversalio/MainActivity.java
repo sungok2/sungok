@@ -613,14 +613,14 @@ public final class MainActivity extends Activity {
         super.onStop();
     }
 
-    private void refreshInventory() {
+    private boolean refreshInventory() {
         if (usbManager == null) {
             displayedDevices.clear();
             latestReport = "USB Host 서비스를 사용할 수 없습니다.\n";
             reportView.setText(latestReport);
             statusView.setText("USB Host 서비스 없음");
             updateDeviceSpinner();
-            return;
+            return false;
         }
 
         List<UsbDevice> devices;
@@ -634,7 +634,7 @@ public final class MainActivity extends Activity {
             reportView.setText(latestReport);
             statusView.setText("장치 검색 실패");
             updateDeviceSpinner();
-            return;
+            return false;
         }
         displayedDevices.clear();
         displayedDevices.addAll(devices);
@@ -650,6 +650,7 @@ public final class MainActivity extends Activity {
         if (!notice.isEmpty()) status += "\n" + notice;
         if (!catalogWarning.isEmpty()) status += "\n" + catalogWarning;
         statusView.setText(status);
+        return true;
     }
 
     private void updateDeviceSpinner() {
@@ -974,10 +975,23 @@ public final class MainActivity extends Activity {
     }
 
     private void checkUsbPrinter() {
-        refreshInventory();
-        if (usbManager == null) return;
+        if (!refreshInventory()) {
+            new AlertDialog.Builder(this).setTitle("USB 목록 조회 실패")
+                    .setMessage(latestReport).setPositiveButton("확인", null).show();
+            return;
+        }
         if (displayedDevices.isEmpty()) {
-            statusView.setText("Android USB 목록에 장치가 없습니다. 프린터 전원과 PC 연결용 USB 포트, 데이터용 OTG 어댑터를 확인하세요.");
+            boolean hostSupported = getPackageManager().hasSystemFeature(PackageManager.FEATURE_USB_HOST);
+            String host = hostSupported ? "Android에 USB 호스트 기능이 등록되어 있습니다."
+                    : "Android에 USB 호스트 기능이 등록되어 있지 않습니다.";
+            statusView.setText("Android USB 목록 0개 · 연결부터 확인하세요.");
+            new AlertDialog.Builder(this).setTitle("USB 장치 미감지")
+                    .setMessage(host + " 현재 Android가 보고한 USB 장치는 0개입니다.\n\n"
+                            + "1. 전원이 켜진 WF-C5390의 뒷면 PC 연결용 USB 포트에 데이터 케이블을 연결하세요.\n"
+                            + "2. 프린터 설정에서 ‘USB를 통한 PC 연결’을 ‘사용’으로 확인하세요.\n"
+                            + "3. 같은 OTG 어댑터로 USB 마우스를 연결해 보세요. 마우스도 감지되지 않으면 휴대전화·어댑터 쪽을 먼저 확인하세요. 마우스만 감지되면 프린터 케이블·포트·설정을 확인하세요.")
+                    .setNegativeButton("닫기", null)
+                    .setPositiveButton("다시 확인", (dialog, which) -> checkUsbPrinter()).show();
             return;
         }
         UsbDevice selected = selectedDevice();

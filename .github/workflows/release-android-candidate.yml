@@ -51,8 +51,8 @@ jobs:
           cp "$APK" release-artifact/app-release-unsigned.apk
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee release-badging.txt
           grep -F "package: name='com.galaxyuniversalio'" release-badging.txt
-          grep -F "versionCode='15'" release-badging.txt
-          grep -F "versionName='0.12.2'" release-badging.txt
+          grep -F "versionCode='16'" release-badging.txt
+          grep -F "versionName='0.12.3'" release-badging.txt
           if grep -Fq 'application-debuggable' release-badging.txt; then
             echo 'Release manifest must not be debuggable' >&2
             exit 1
