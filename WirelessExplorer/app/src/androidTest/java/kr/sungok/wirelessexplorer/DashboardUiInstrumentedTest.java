@@ -16,6 +16,12 @@ import org.junit.runner.RunWith;
 import java.util.concurrent.atomic.AtomicReference;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.OutputStream;
+import android.os.Build;
+import android.os.Environment;
+import android.provider.MediaStore;
+import android.content.ContentValues;
+import android.net.Uri;
 
 import static org.junit.Assert.*;
 
@@ -87,12 +93,27 @@ public class DashboardUiInstrumentedTest {
                 assertTrue("view must be laid out", width > 0 && height > 0);
                 Bitmap image = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
                 decor.draw(new Canvas(image));
-                File out = new File(activity.getFilesDir(), "wireless-ui-view.png");
-                try (FileOutputStream stream = new FileOutputStream(out)) {
-                    assertTrue("PNG serialization failed",
-                            image.compress(Bitmap.CompressFormat.PNG, 100, stream));
+                if (Build.VERSION.SDK_INT >= 29) {
+                    ContentValues values = new ContentValues();
+                    values.put(MediaStore.Downloads.DISPLAY_NAME, "WirelessExplorer-UI-view.png");
+                    values.put(MediaStore.Downloads.MIME_TYPE, "image/png");
+                    values.put(MediaStore.Downloads.RELATIVE_PATH,
+                            Environment.DIRECTORY_DOWNLOADS);
+                    Uri uri = activity.getContentResolver().insert(
+                            MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+                    assertNotNull("MediaStore item must be creatable", uri);
+                    try (OutputStream stream = activity.getContentResolver().openOutputStream(uri)) {
+                        assertNotNull(stream);
+                        assertTrue("PNG serialization failed",
+                                image.compress(Bitmap.CompressFormat.PNG, 100, stream));
+                    }
+                } else {
+                    File out = new File(activity.getFilesDir(), "wireless-ui-view.png");
+                    try (FileOutputStream stream = new FileOutputStream(out)) {
+                        assertTrue(image.compress(Bitmap.CompressFormat.PNG, 100, stream));
+                    }
+                    assertTrue(out.length() > 1000L);
                 }
-                assertTrue(out.length() > 1000L);
                 image.recycle();
             } catch (Throwable t) { failure.set(t); }
         });
