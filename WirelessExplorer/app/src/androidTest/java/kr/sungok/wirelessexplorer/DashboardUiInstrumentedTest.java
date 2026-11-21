@@ -30,6 +30,7 @@ public class DashboardUiInstrumentedTest {
         if (root instanceof TextView) {
             TextView t = (TextView) root;
             if (t.getText() != null && t.getText().toString().contains(part)) return t;
+            if (t.getHint() != null && t.getHint().toString().contains(part)) return t;
         }
         if (root instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) root;
