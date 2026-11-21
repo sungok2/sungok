@@ -1,4 +1,4 @@
-# Wireless Explorer — Privacy and Permissions (v0.9.0)
+# Wireless Explorer — Privacy and Permissions (v0.9.1)
 
 ## Data processed
 The app uses Android public BLE, Bluetooth Classic, Wi-Fi, Wi-Fi Direct and local network discovery APIs. It may show names, addresses, service identifiers, RSSI, advertisement company IDs and timestamps. Such identifiers can be sensitive. Records are stored locally in Android app-private storage unless users explicitly export them.
