@@ -1125,7 +1125,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
     private void showPrivacy() {
         new AlertDialog.Builder(this)
                 .setTitle("개인정보 · 탐색 기능 안내")
-                .setMessage("Wireless Explorer v0.9.0\n\n"
+                .setMessage("Wireless Explorer v0.9.1\n\n"
                         + "• BLE·Bluetooth·Wi-Fi 주소와 기기명, RSSI, 검색 시각을 기기 내부에 저장합니다.\n"
                         + "• 서버·광고·계정·원격 분석 기능이 없습니다.\n"
                         + "• 위치 권한은 Android 무선 검색 API에 필요합니다. GPS 좌표를 저장하거나 전송하지 않습니다.\n"
