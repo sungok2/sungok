@@ -653,28 +653,48 @@ public final class MainActivity extends Activity implements WirelessScanner.List
 
     private void render() {
         if (counter == null || list == null) return;
-        String countText = getString(R.string.counter_dashboard,
-                store.countLiveRadioEndpoints(), store.countLiveLanHosts(),
-                store.countLiveNetworkServices(), store.total());
+        int rf = store.countLiveRadioEndpoints();
+        int lan = store.countLiveLanHosts();
+        int services = store.countLiveNetworkServices();
+        heroNumber.setText(String.valueOf(rf));
+        String countText = "LAN " + lan + "  ·  서비스 " + services
+                + "  ·  누적 " + store.total();
         int overlap = store.sharedBluetoothAddressCandidates();
         counter.setText(overlap > 0
-                ? getString(R.string.counter_with_candidate, countText, overlap)
+                ? countText + "\nBT/BLE 같은 주소 " + overlap + "쌍 · 동일 기기 미확정"
                 : countText);
+        if (radar != null) radar.setScanning(scanner != null && scanner.isRunning());
         renderCoverage();
         updateTargetCoverage();
+        buildFilters();
+
+        List<DeviceRecord> devices = store.all();
+        if (sortMode == 1) {
+            Collections.sort(devices, (a, b) -> {
+                int signalA = a.rssi < 0 ? a.rssi : -999;
+                int signalB = b.rssi < 0 ? b.rssi : -999;
+                int order = Integer.compare(signalB, signalA);
+                return order != 0 ? order : Long.compare(b.lastSeen, a.lastSeen);
+            });
+        } else if (sortMode == 2) {
+            Collections.sort(devices, (a, b) -> {
+                int compare = a.name.compareToIgnoreCase(b.name);
+                return compare != 0 ? compare : Long.compare(b.lastSeen, a.lastSeen);
+            });
+        }
         list.removeAllViews();
-        int shown = 0;
-        int matching = 0;
-        for (DeviceRecord item : store.all()) {
+        int shown = 0, matching = 0;
+        for (DeviceRecord item : devices) {
             if (sessionOnly && !item.live) continue;
-            if (!filter.equals("ALL") && !item.protocol.equals(filter)) continue;
-            if (unknownOnly && !"이름 없는 기기".equals(item.name)
-                    && !"숨김 Wi-Fi".equals(item.name)
-                    && !SignalRules.category(item.protocol, item.name).contains("미분류")) continue;
+            if (!"ALL".equals(filter) && !filter.equals(item.protocol)) continue;
+            if (unknownOnly && !item.name.equals("이름 없는 기기")
+                    && !item.name.equals("숨김 Wi-Fi")
+                    && !SignalRules.category(item.protocol, item.name).contains("미분류"))
+                continue;
             if (!search.isEmpty()) {
-                String index = (item.name + " " + item.address + " " + item.details
-                        + " " + item.protocol).toLowerCase(Locale.ROOT);
-                if (!index.contains(search)) continue;
+                String searchIndex = (item.name + " " + item.address + " "
+                        + item.details + " " + item.protocol).toLowerCase(Locale.ROOT);
+                if (!searchIndex.contains(search)) continue;
             }
             matching++;
             if (shown >= visibleLimit) continue;
@@ -683,98 +703,230 @@ public final class MainActivity extends Activity implements WirelessScanner.List
             shown++;
         }
         if (matching == 0) {
-            LinearLayout panel = panel();
-            TextView t = text("탐지 결과가 없습니다.\n\n기기와 Wi-Fi·블루투스·위치 서비스를 켜고 탐색하세요. "
-                    + "일부 기기는 검색 신호를 송출하지 않습니다.", 14, SUBTLE, false);
-            t.setLineSpacing(dp(5), 1.05f);
-            panel.addView(t);
-            list.addView(panel);
+            LinearLayout empty = panel();
+            empty.setGravity(Gravity.CENTER_HORIZONTAL);
+            empty.setPadding(dp(22), dp(24), dp(22), dp(24));
+            TextView icon = text("◎", 40, BLUE, false);
+            icon.setGravity(Gravity.CENTER);
+            empty.addView(icon);
+            empty.addView(space(8));
+            TextView heading = text("조건에 맞는 항목이 없습니다", 16, WHITE, true);
+            heading.setGravity(Gravity.CENTER);
+            empty.addView(heading);
+            empty.addView(space(9));
+            String explanation = "검색 조건을 초기화하거나 새 탐색을 시작하세요. "
+                    + "모든 기기가 무선 광고를 보내는 것은 아닙니다.";
+            if ("WIFI".equals(filter))
+                explanation = "Wi-Fi 스캔 결과가 제한됐을 수 있습니다. "
+                        + "연결된 공유기 정보를 확인하고 '진단 보기'에서 AP 목록·요청·알림을 점검하세요.";
+            else if ("LAN".equals(filter))
+                explanation = "현재 Wi-Fi에 연결한 뒤 '연결된 LAN도 조사'를 켜세요. "
+                        + "TCP 응답이 없는 기기는 표시되지 않습니다.";
+            else if ("BT".equals(filter))
+                explanation = "일반 블루투스 검색은 기기가 검색 가능한 상태여야 결과가 나타날 수 있습니다.";
+            TextView hint = text(explanation, 12, SUBTLE, false);
+            hint.setGravity(Gravity.CENTER);
+            hint.setLineSpacing(dp(3), 1.08f);
+            empty.addView(hint);
+            list.addView(empty);
         } else if (matching > shown) {
             final int remaining = matching - shown;
             if (visibleLimit < 400) {
-                TextView showMore = action("추가 60개 표시 · 남은 " + remaining + "개", false,
-                        () -> { visibleLimit = Math.min(400, visibleLimit + 60); render(); });
-                list.addView(showMore, new LinearLayout.LayoutParams(-1, dp(44)));
+                TextView more = action("더 보기  ·  " + remaining + "건 남음", false, () -> {
+                    visibleLimit = Math.min(400, visibleLimit + 60);
+                    render();
+                });
+                list.addView(more, new LinearLayout.LayoutParams(-1, dp(46)));
                 list.addView(space(6));
             }
-            if (visibleLimit >= 400) list.addView(text(
-                    "화면 표시 상한 400건 · 모든 결과는 CSV/JSON으로 내보낼 수 있습니다.",
-                    12, SUBTLE, false));
+            if (visibleLimit >= 400)
+                list.addView(text("화면에는 최대 400건을 표시합니다. 전체는 CSV/JSON으로 저장하세요.",
+                        12, SUBTLE, false));
+        }
+    }
+
+    private int protocolTint(String protocol) {
+        if ("BLE".equals(protocol)) return ACCENT;
+        if ("WIFI".equals(protocol) || "P2P".equals(protocol)) return BLUE;
+        if ("LAN".equals(protocol)) return GOLD;
+        if ("BT".equals(protocol)) return Color.rgb(174, 155, 238);
+        return MUTED;
+    }
+
+    private String displayProtocol(String protocol) {
+        switch (protocol) {
+            case "BLE": return "BLE 광고";
+            case "BT": return "Bluetooth";
+            case "WIFI": return "Wi-Fi AP";
+            case "LAN": return "LAN TCP";
+            case "P2P": return "Wi-Fi Direct";
+            case "NSD": return "mDNS 서비스";
+            case "UPNP": return "UPnP 서비스";
+            default: return protocol;
+        }
+    }
+
+    private String protocolMonogram(String protocol) {
+        switch (protocol) {
+            case "BLE": return "B";
+            case "BT": return "BT";
+            case "WIFI": return "W";
+            case "LAN": return "IP";
+            case "P2P": return "P";
+            case "NSD": return "D";
+            case "UPNP": return "U";
+            default: return "•";
+        }
+    }
+
+    private void copyDevice(DeviceRecord d) {
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(
+                Context.CLIPBOARD_SERVICE);
+        if (clipboard != null) {
+            clipboard.setPrimaryClip(ClipData.newPlainText(
+                    "Wireless Explorer: " + d.name, d.name + "\n" + d.protocol + " / "
+                            + d.address + "\n" + d.details));
+            Toast.makeText(this, "기기 정보가 복사됐습니다", Toast.LENGTH_SHORT).show();
         }
     }
 
     private View card(DeviceRecord d) {
         LinearLayout container = panel();
-        container.setPadding(dp(15), dp(13), dp(15), dp(14));
-        LinearLayout top = new LinearLayout(this);
-        top.setOrientation(LinearLayout.HORIZONTAL);
-        top.setGravity(Gravity.CENTER_VERTICAL);
-        container.addView(top);
+        container.setPadding(dp(14), dp(13), dp(14), dp(13));
+        container.setClickable(true);
+        container.setFocusable(true);
+        container.setBackground(new android.graphics.drawable.RippleDrawable(
+                ColorStateList.valueOf(BORDER), shape(SURFACE, 17, BORDER), null));
+        boolean expanded = expandedKeys.contains(d.key);
+        int tint = protocolTint(d.protocol);
 
-        LinearLayout titleStack = new LinearLayout(this);
-        titleStack.setOrientation(LinearLayout.VERTICAL);
-        top.addView(titleStack, new LinearLayout.LayoutParams(0, -2, 1f));
-        TextView kind = text(d.protocol + "  /  " + SignalRules.category(d.protocol, d.name),
-                11, ACCENT, true);
-        titleStack.addView(kind);
-        titleStack.addView(space(5));
-        TextView title = text(d.name, 17, WHITE, true);
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        container.addView(header);
+
+        TextView icon = text(protocolMonogram(d.protocol), 13, tint, true);
+        icon.setGravity(Gravity.CENTER);
+        icon.setBackground(shape(Color.rgb(28, 44, 63), 13, BORDER));
+        header.addView(icon, new LinearLayout.LayoutParams(dp(43), dp(43)));
+        addHorizontalSpace(header, 11);
+
+        LinearLayout naming = new LinearLayout(this);
+        naming.setOrientation(LinearLayout.VERTICAL);
+        header.addView(naming, new LinearLayout.LayoutParams(0, -2, 1f));
+        TextView category = text(displayProtocol(d.protocol), 11, tint, true);
+        naming.addView(category);
+        naming.addView(space(4));
+        String displayedName = ("이름 없는 기기".equals(d.name)) ? "이름 미확인" : d.name;
+        TextView title = text(displayedName, 15, WHITE, true);
         title.setMaxLines(2);
-        titleStack.addView(title);
-        TextView signal = text(d.rssi < 0 ? d.rssi + " dBm\n" + SignalRules.strength(d.rssi) : "신호 미제공",
-                12, d.rssi < 0 ? ACCENT : SUBTLE, true);
-        signal.setGravity(Gravity.END);
-        top.addView(signal);
-        container.addView(space(10));
+        title.setEllipsize(TextUtils.TruncateAt.END);
+        naming.addView(title);
+        naming.addView(space(4));
         TextView address = text(d.address, 12, SUBTLE, false);
-        address.setTextIsSelectable(true);
-        container.addView(address);
-        container.addView(space(5));
-        TextView detail = text(d.details, 12, SUBTLE, false);
-        container.addView(detail);
-        if (store.hasSharedBluetoothAddressCandidate(d)) {
-            container.addView(space(6));
-            container.addView(text("BLE/일반 BT 주소 동일 후보 · 동일 물리기기 여부 미확인",
-                    11, ACCENT, false));
-        }
-        if (SignalTrend.sampleCount(d.signalTrace) >= 2) {
-            container.addView(space(8));
-            TextView trend = text("신호 변화  " + SignalTrend.render(d.signalTrace)
-                    + "  ·  최근 " + SignalTrend.sampleCount(d.signalTrace) + "회 / 거리 아님",
-                    11, ACCENT, false);
-            trend.setContentDescription("최근 수신 신호 강도 변화. 위치 및 거리를 뜻하지 않습니다.");
-            container.addView(trend);
-        }
-        container.addView(space(8));
-        String badge = d.live ? "이번 탐색에서 확인" :
-                (d.confirmed ? "이전 탐색에서 확인" : "캐시 정보 · 현재 주변 미확인");
-        String timestampLabel = d.lastConfirmedAt > 0L
-                ? "최종 실탐지 " + time.format(new Date(d.lastConfirmedAt))
-                : d.confirmed ? "과거 실탐지 시각 미검증(v0.2 이전)"
-                : "캐시 수집 " + time.format(new Date(d.lastSeen));
-        TextView meta = text(badge + "  ·  " + timestampLabel
-                + "  ·  수집 " + d.observations + "회", 11, d.live ? ACCENT : SUBTLE, false);
-        container.addView(meta);
-        if (d.imported) {
+        address.setMaxLines(1);
+        address.setEllipsize(TextUtils.TruncateAt.MIDDLE);
+        naming.addView(address);
+
+        LinearLayout signalColumn = new LinearLayout(this);
+        signalColumn.setOrientation(LinearLayout.VERTICAL);
+        signalColumn.setGravity(Gravity.END);
+        header.addView(signalColumn);
+        TextView strength = text(d.rssi < 0 ? d.rssi + " dBm" : "—",
+                13, d.rssi < 0 ? tint : SUBTLE, true);
+        strength.setGravity(Gravity.END);
+        signalColumn.addView(strength);
+        signalColumn.addView(space(3));
+        TextView level = text(d.rssi < 0 ? SignalRules.strength(d.rssi) : "신호 미제공",
+                11, SUBTLE, false);
+        level.setGravity(Gravity.END);
+        signalColumn.addView(level);
+
+        container.addView(space(10));
+        LinearLayout foot = new LinearLayout(this);
+        foot.setGravity(Gravity.CENTER_VERTICAL);
+        foot.setOrientation(LinearLayout.HORIZONTAL);
+        container.addView(foot);
+        String evidence = d.live ? "● 이번 탐색" :
+                d.imported ? "○ 가져온 기록" :
+                d.confirmed ? "○ 과거 관찰" : "○ 캐시 · 미확인";
+        TextView provenance = text(evidence, 11, d.live ? ACCENT : SUBTLE, true);
+        foot.addView(provenance, new LinearLayout.LayoutParams(0, -2, 1f));
+        TextView trailing = text(expanded ? "상세 접기  ⌃" : "상세 보기  ⌄",
+                11, BLUE, true);
+        foot.addView(trailing);
+
+        if (expanded) {
+            View divider = new View(this);
+            divider.setBackgroundColor(BORDER);
+            LinearLayout.LayoutParams divLp = new LinearLayout.LayoutParams(-1, dp(1));
+            divLp.topMargin = dp(13);
+            divLp.bottomMargin = dp(12);
+            container.addView(divider, divLp);
+
+            container.addView(text("탐지 증거", 11, tint, true));
             container.addView(space(5));
-            container.addView(text("외부 JSON에서 가져온 기록 · 수신 사실은 독립 검증되지 않음",
-                    11, SUBTLE, false));
-        }
-        container.setOnClickListener(v -> new AlertDialog.Builder(this)
-                .setTitle(d.name)
-                .setMessage(d.protocol + " / " + d.address + "\n" + d.details
-                        + "\n\n이 주소를 검증 기준으로 등록하면 다음 탐색에서 관찰 여부를 확인할 수 있습니다."
-                        + "\nBLE 주소 임의화 등으로 같은 기기라도 식별자가 바뀔 수 있습니다.")
-                .setPositiveButton("검증 기준에 등록", (dialog, which) -> addKnownTarget(d))
-                .setNegativeButton("닫기", (dialog, which) -> { })
-                .show());
-        container.setOnLongClickListener(v -> {
-            ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-            if (clipboard != null) {
-                clipboard.setPrimaryClip(ClipData.newPlainText("무선기기", d.name + "\n"
-                        + d.protocol + " / " + d.address + "\n" + d.details));
-                Toast.makeText(this, "기기 정보 복사됨", Toast.LENGTH_SHORT).show();
+            TextView details = text(d.details, 12, SUBTLE, false);
+            details.setTextIsSelectable(true);
+            details.setLineSpacing(dp(4), 1.1f);
+            container.addView(details);
+
+            if (store.hasSharedBluetoothAddressCandidate(d)) {
+                container.addView(space(8));
+                container.addView(text("BLE/일반 BT 주소 동일 후보 · 같은 물리 기기인지는 미확인",
+                        11, GOLD, false));
             }
+
+            if (SignalTrend.sampleCount(d.signalTrace) >= 2) {
+                container.addView(space(12));
+                container.addView(text("최근 RSSI  ·  "
+                        + SignalTrend.sampleCount(d.signalTrace) + "개 샘플",
+                        11, WHITE, true));
+                container.addView(space(7));
+                SignalPlotView plot = new SignalPlotView(this);
+                plot.setColors(tint, BORDER);
+                plot.setHistory(d.signalTrace);
+                container.addView(plot, new LinearLayout.LayoutParams(-1, dp(56)));
+                container.addView(space(4));
+                container.addView(text("상대적인 신호 변화입니다. 거리·방향 아님",
+                        11, MUTED, false));
+            }
+
+            container.addView(space(11));
+            String when = d.lastConfirmedAt > 0L
+                    ? "확인 시각  " + time.format(new Date(d.lastConfirmedAt))
+                    : d.confirmed ? "과거 관찰 시간 미검증"
+                    : "캐시 기록  " + time.format(new Date(d.lastSeen));
+            container.addView(text(when + "  ·  관찰 " + d.observations + "회",
+                    11, SUBTLE, false));
+            if (d.imported) {
+                container.addView(space(5));
+                container.addView(text("외부 JSON에서 가져옴 · 현재 존재 여부는 확인되지 않음",
+                        11, GOLD, false));
+            }
+            container.addView(space(12));
+
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            container.addView(row);
+            TextView copy = action("정보 복사", false, () -> copyDevice(d));
+            copy.setTextSize(12);
+            row.addView(copy, new LinearLayout.LayoutParams(0, dp(45), 1f));
+            addHorizontalSpace(row, 9);
+            TextView pin = action("검증 기준 등록", false, () -> addKnownTarget(d));
+            pin.setTextSize(12);
+            row.addView(pin, new LinearLayout.LayoutParams(0, dp(45), 1f));
+        }
+        container.setContentDescription(displayProtocol(d.protocol) + ", " + displayedName
+                + ", 주소 " + d.address + ", "
+                + (d.live ? "이번 탐색에서 관찰" : "현재 탐색에서 미확인")
+                + ", " + (expanded ? "상세 접기" : "상세 펼치기"));
+        container.setOnClickListener(v -> {
+            if (!expandedKeys.add(d.key)) expandedKeys.remove(d.key);
+            render();
+        });
+        container.setOnLongClickListener(v -> {
+            copyDevice(d);
             return true;
         });
         return container;
