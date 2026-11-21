@@ -122,6 +122,16 @@ public class DashboardUiInstrumentedTest {
         if (failure.get() != null) throw new AssertionError(failure.get());
     }
 
+    @Test public void appDisablesAutomaticForceDarkOnCustomScreen() {
+        MainActivity activity = activityRule.getActivity();
+        if (Build.VERSION.SDK_INT < 29) return;
+        ViewGroup content = activity.findViewById(android.R.id.content);
+        View root = content.getChildAt(0);
+        assertNotNull(root);
+        assertFalse("custom screen must preserve its intentionally dark palette",
+                root.isForceDarkAllowed());
+    }
+
     @Test public void scannerAndRssiGraphicsDrawWithoutLocationSimulation() throws Throwable {
         MainActivity activity = activityRule.getActivity();
         AtomicReference<Throwable> failure = new AtomicReference<>();

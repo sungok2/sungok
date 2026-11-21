@@ -8,6 +8,8 @@ permissions:
 
 jobs:
   signed-release:
+    # Never expose private signing credentials to an unreviewed feature branch.
+    if: github.ref == 'refs/heads/master' && github.repository == 'sungok2/sungok'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     defaults:
@@ -21,12 +23,12 @@ jobs:
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.11.1'
-      - name: Install Android API 35 and signing tools
+          gradle-version: '8.13'
+      - name: Install Android API 36 and signing tools
         run: |
           SDKMGR="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)"
           test -n "$SDKMGR"
-          "$SDKMGR" --install "platforms;android-35" "build-tools;35.0.0"
+          "$SDKMGR" --install "platforms;android-36" "build-tools;35.0.0"
       - name: Require private signing credentials
         env:
           B64: ${{ secrets.WE_RELEASE_KEYSTORE_B64 }}
@@ -46,20 +48,27 @@ jobs:
           WE_RELEASE_STORE_PASSWORD: ${{ secrets.WE_RELEASE_STORE_PASSWORD }}
           WE_RELEASE_KEY_ALIAS: ${{ secrets.WE_RELEASE_KEY_ALIAS }}
           WE_RELEASE_KEY_PASSWORD: ${{ secrets.WE_RELEASE_KEY_PASSWORD }}
-        run: gradle --no-daemon :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
-      - name: Verify APK signature and checksum
+        run: gradle --no-daemon :app:testDebugUnitTest :app:lintRelease :app:assembleRelease :app:bundleRelease
+      - name: Verify APK and AAB signatures and checksums
         run: |
           APK=app/build/outputs/apk/release/app-release.apk
           test -s "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
           sha256sum "$APK" > "$APK.sha256"
-      - name: Publish signed APK artifact
+          AAB=app/build/outputs/bundle/release/app-release.aab
+          test -s "$AAB"
+          unzip -t "$AAB" >/dev/null
+          jarsigner -verify "$AAB"
+          sha256sum "$AAB" > "$AAB.sha256"
+      - name: Publish signed APK and Google Play App Bundle
         uses: actions/upload-artifact@v4
         with:
-          name: WirelessExplorer-v0.8.0-owner-signed-release
+          name: WirelessExplorer-v0.9.1-owner-signed-release
           path: |
             WirelessExplorer/app/build/outputs/apk/release/app-release.apk
             WirelessExplorer/app/build/outputs/apk/release/app-release.apk.sha256
+            WirelessExplorer/app/build/outputs/bundle/release/app-release.aab
+            WirelessExplorer/app/build/outputs/bundle/release/app-release.aab.sha256
           if-no-files-found: error
           retention-days: 30
       - name: Remove runner copy of private key

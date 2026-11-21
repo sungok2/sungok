@@ -134,6 +134,9 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(BG);
+        // Opt out of OEM/Android automatic color transforms for this intentional
+        // dark design. Android Force Dark should not wash navy panels into gray.
+        if (Build.VERSION.SDK_INT >= 29) root.setForceDarkAllowed(false);
         root.setPadding(dp(16), dp(14), dp(16), dp(16));
         if (Build.VERSION.SDK_INT >= 35) {
             root.setOnApplyWindowInsetsListener((view, windowInsets) -> {
@@ -148,10 +151,12 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         scroller.setFillViewport(true);
         scroller.setVerticalScrollBarEnabled(false);
         scroller.setBackgroundColor(BG);
+        if (Build.VERSION.SDK_INT >= 29) scroller.setForceDarkAllowed(false);
         root.addView(scroller, new LinearLayout.LayoutParams(-1, -1));
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
         page.setBackgroundColor(BG);
+        if (Build.VERSION.SDK_INT >= 29) page.setForceDarkAllowed(false);
         scroller.addView(page);
 
         boolean landscape = getResources().getConfiguration().orientation
@@ -282,10 +287,27 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         lanProbeToggle.setTextSize(13);
         lanProbeToggle.setButtonTintList(ColorStateList.valueOf(ACCENT));
         lanProbeToggle.setOnCheckedChangeListener((button, checked) -> {
-            lanProbeEnabled = checked;
-            if (checked) Toast.makeText(this,
-                    "허가받은 사설 Wi-Fi만 검색합니다. 제한된 TCP/UPnP 요청을 보냅니다.",
-                    Toast.LENGTH_LONG).show();
+            if (!checked) {
+                lanProbeEnabled = false;
+                return;
+            }
+            if (lanProbeEnabled) return;
+            // Active network ownership is not observable through Android APIs.
+            // Require explicit informed authorization before traffic is generated.
+            lanProbeToggle.setChecked(false);
+            new AlertDialog.Builder(this)
+                    .setTitle("LAN 탐색 권한 확인")
+                    .setMessage("현재 연결된 Wi-Fi의 사설 IP 주소 최대 253개에 "
+                            + "제한된 TCP 연결 요청 및 UPnP 탐색 요청을 전송합니다.\n\n"
+                            + "네트워크에 기기 검색 트래픽이 발생합니다. "
+                            + "본인이 소유하거나 조사 허가를 받은 네트워크에서만 사용하세요. "
+                            + "TCP 응답이 없는 기기는 표시되지 않을 수 있습니다.")
+                    .setNegativeButton("취소", (d, w) -> { })
+                    .setPositiveButton("허가된 네트워크 · 활성화", (d, w) -> {
+                        lanProbeEnabled = true;
+                        lanProbeToggle.setChecked(true);
+                    })
+                    .show();
         });
         lanProbeToggle.setContentDescription("선택 기능: 연결된 허가된 사설 Wi-Fi LAN에서 "
                 + "제한된 TCP 및 UPnP 탐색 요청 전송");
@@ -391,7 +413,24 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         lanToggle.setTextSize(13);
         lanToggle.setTextColor(SUBTLE);
         lanToggle.setButtonTintList(ColorStateList.valueOf(ACCENT));
-        lanToggle.setOnCheckedChangeListener((button, checked) -> extendedLan = checked);
+        lanToggle.setOnCheckedChangeListener((button, checked) -> {
+            if (!checked) {
+                extendedLan = false;
+                return;
+            }
+            if (extendedLan) return;
+            lanToggle.setChecked(false);
+            new AlertDialog.Builder(this)
+                    .setTitle("UPnP 요청 전송 확인")
+                    .setMessage("현재 연결된 허가된 Wi-Fi LAN에 SSDP 서비스 탐색 메시지를 "
+                            + "전송합니다. 다른 네트워크의 허가 없이 사용하면 안 됩니다.")
+                    .setNegativeButton("취소", (d, w) -> { })
+                    .setPositiveButton("허가된 LAN · 활성화", (d, w) -> {
+                        extendedLan = true;
+                        lanToggle.setChecked(true);
+                    })
+                    .show();
+        });
         lanToggle.setContentDescription("선택 기능: 연결된 사설 Wi-Fi에서 UPnP 서비스 검색 요청");
         advancedPanel.addView(lanToggle);
         advancedPanel.addView(space(8));
@@ -569,6 +608,27 @@ public final class MainActivity extends Activity implements WirelessScanner.List
     }
 
     private void requestAndStart() {
+        if (!getPreferences(MODE_PRIVATE).getBoolean("scan_disclosure_ack_v1", false)) {
+            new AlertDialog.Builder(this)
+                    .setTitle("무선기기 탐색 · 개인정보 안내")
+                    .setMessage("탐색하려면 Android의 블루투스·Wi-Fi 및 정확한 위치 권한이 필요할 수 있습니다.\n\n"
+                            + "이 앱은 주변에서 방송된 기기 이름, 블루투스/Wi-Fi 주소, "
+                            + "수신 신호 강도, 발견 시각을 내 휴대전화에 기록합니다. "
+                            + "주소는 주변 사람의 기기를 가리킬 수 있는 민감한 정보입니다.\n\n"
+                            + "위치 권한은 Android 무선 검색을 위해 요청하며, GPS 좌표는 저장하지 않습니다. "
+                            + "기본 탐색은 외부 서버로 데이터를 전송하지 않습니다.\n\n"
+                            + "LAN TCP/UPnP 조사는 기본 꺼짐이고 별도로 선택해야 합니다. "
+                            + "파일 내보내기는 사용자가 직접 결정합니다.")
+                    .setNegativeButton("나중에", (dialog, which) ->
+                            status.setText("권한 사전 안내 확인 전 · 탐색 시작 취소"))
+                    .setPositiveButton("이해하고 계속", (dialog, which) -> {
+                        getPreferences(MODE_PRIVATE).edit()
+                                .putBoolean("scan_disclosure_ack_v1", true).apply();
+                        requestAndStart();
+                    })
+                    .show();
+            return;
+        }
         refreshReadiness();
         List<String> missing = new ArrayList<>();
         if (Build.VERSION.SDK_INT >= 31) {
@@ -1065,7 +1125,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
     private void showPrivacy() {
         new AlertDialog.Builder(this)
                 .setTitle("개인정보 · 탐색 기능 안내")
-                .setMessage("Wireless Explorer v0.8.0\n\n"
+                .setMessage("Wireless Explorer v0.9.1\n\n"
                         + "• BLE·Bluetooth·Wi-Fi 주소와 기기명, RSSI, 검색 시각을 기기 내부에 저장합니다.\n"
                         + "• 서버·광고·계정·원격 분석 기능이 없습니다.\n"
                         + "• 위치 권한은 Android 무선 검색 API에 필요합니다. GPS 좌표를 저장하거나 전송하지 않습니다.\n"
@@ -1074,6 +1134,9 @@ public final class MainActivity extends Activity implements WirelessScanner.List
                         + "• CSV·JSON 내보내기는 사용자가 고른 파일에만 기록됩니다.\n"
                         + "• 외부로 내보낸 기록은 주소 등의 민감정보를 포함할 수 있으므로 공유에 주의하세요.\n"
                         + "• 실제 물리적 기기 수, 위치, 전수 탐지 여부는 확인하지 않습니다.")
+                .setNeutralButton("전체 개인정보처리방침", (dialog, which) ->
+                        startActivity(new Intent(Intent.ACTION_VIEW,
+                                Uri.parse("https://github.com/sungok2/sungok/blob/master/WirelessExplorer/PRIVACY_KO.md"))))
                 .setPositiveButton("확인", (dialog, which) -> { })
                 .show();
     }
@@ -1204,11 +1267,19 @@ public final class MainActivity extends Activity implements WirelessScanner.List
     }
 
     @Override protected void onStop() {
-        if (scanner != null && scanner.isRunning()) scanner.stop();
+        boolean wasScanning = scanner != null && scanner.isRunning();
+        if (wasScanning) scanner.stop();
         if (radar != null) radar.setScanning(false);
+        if (wasScanning && scanButton != null) {
+            scanButton.setText("탐색 시작");
+            if (progress != null)
+                progress.setText("앱이 백그라운드로 이동해 탐색을 종료했습니다");
+        }
+        if (lanToggle != null) lanToggle.setEnabled(true);
         if (lanProbeToggle != null) lanProbeToggle.setEnabled(true);
         main.removeCallbacks(countdownTick);
-        if (store != null) store.save();
+        if (store != null && !store.save() && status != null)
+            status.setText(store.lastPersistenceError());
         super.onStop();
     }
 
@@ -1224,6 +1295,7 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         p.setOrientation(LinearLayout.VERTICAL);
         p.setPadding(dp(16), dp(16), dp(16), dp(16));
         p.setBackground(shape(SURFACE, 17, BORDER));
+        if (Build.VERSION.SDK_INT >= 29) p.setForceDarkAllowed(false);
         return p;
     }
 

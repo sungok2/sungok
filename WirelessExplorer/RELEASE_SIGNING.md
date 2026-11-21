@@ -1,6 +1,6 @@
 # Owner-Signed Production Release Gate (Wireless Explorer)
 
-The standard CI artifact is a DEBUG-signed test APK. GitHub runners can generate different debug signing keys, so it may not install over a previous APK. Export a JSON backup before uninstalling a version.
+The standard CI artifact is a DEBUG-signed test APK, plus an unsigned AAB structure validation. Neither artifact is store-sale ready. GitHub runners can generate different debug signing keys, so it may not install over a previous APK. Export a JSON backup before uninstalling a version.
 
 ## Required owner action
 
@@ -11,9 +11,9 @@ Generate a persistent Android signing key on a trusted local computer, back it u
 - WE_RELEASE_KEY_ALIAS — signing key alias
 - WE_RELEASE_KEY_PASSWORD — signing key password
 
-Run the manually triggered GitHub workflow “Wireless Explorer Signed Release” on a reviewed commit. It will fail if secrets are not present, use Gradle to run tests/lint and build an APK, verify the package signature, publish the signed APK artifact, and delete its runner-local keystore copy.
+Run the manually triggered GitHub workflow “Wireless Explorer Signed Release” on a reviewed commit. It will fail if secrets are not present, use Gradle to run tests/lint and build a persistently signed APK and Android App Bundle (AAB), verify signatures and SHA-256 checksums for both, publish both artifacts, and delete its runner-local keystore copy.
 
-Never commit the private .jks file or passwords. Store an independently encrypted offline backup. The exact SAME key is needed to distribute upgrades without uninstalling.
+Never commit the private .jks file or passwords. Store an independently encrypted offline backup. Direct APK updates require the same app-signing certificate. For Google Play, the Android App Bundle is signed with the *upload key* while Google Play App Signing normally manages the final user-device app-signing key. If the upload key differs from the Play-managed app-signing key, a directly installed APK cannot necessarily update a Play-installed app or vice versa. Plan the rollout before customers install APKs.
 
 ## Additional release acceptance criteria
 
@@ -23,6 +23,6 @@ Never commit the private .jks file or passwords. Store an independently encrypte
 - Verify public privacy policy, advertised hardware support and any applicable distribution-channel requirements.
 - Do not claim total nearby physical wireless-device coverage, because Android public APIs do not expose all radios.
 
-Reference: https://developer.android.com/studio/publish/app-signing
+References: https://developer.android.com/studio/publish/app-signing and https://support.google.com/googleplay/android-developer/answer/9842756
 
-Current state: secure release workflow prepared, but a stable owner signing key has not been configured or used in this session. Only debug APK CI has been verified.
+Current state: secure release workflow prepared, but a stable owner signing key has not been configured or used in this session. Standard CI builds and emulator tests are verifiable; the owner-signed workflow is intentionally blocked until the private secrets exist.

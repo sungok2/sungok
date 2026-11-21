@@ -35,26 +35,32 @@ jobs:
         run: |
           SDKMGR="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -1)"
           test -n "$SDKMGR"
-          "$SDKMGR" --install "platforms;android-35" "build-tools;35.0.0"
+          "$SDKMGR" --install "platforms;android-36" "build-tools;35.0.0"
 
-      - name: Gradle 8.11.1
+      - name: Gradle 8.13
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.11.1'
+          gradle-version: '8.13'
 
       - name: Unit tests and debug APK
-        run: gradle --no-daemon --stacktrace :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+        run: gradle --no-daemon --stacktrace :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:bundleRelease
 
       - name: Upload Android Lint diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: WirelessExplorer-v0.8.0-lint-report
+          name: WirelessExplorer-v0.9.1-lint-report
           path: |
             WirelessExplorer/app/build/reports/lint-results-debug.html
             WirelessExplorer/app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Enforce Google Play API 36 compatibility and unsigned AAB structure
+        run: |
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | grep "targetSdkVersion:'36'"
+          test -s app/build/outputs/bundle/release/app-release.aab
+          unzip -t app/build/outputs/bundle/release/app-release.aab >/dev/null
 
       - name: APK integrity hash
         run: sha256sum app/build/outputs/apk/debug/app-debug.apk > app/build/outputs/apk/debug/app-debug.apk.sha256
@@ -62,7 +68,7 @@ jobs:
       - name: Upload installable APK and checksum
         uses: actions/upload-artifact@v4
         with:
-          name: WirelessExplorer-v0.8.0-debug-apk
+          name: WirelessExplorer-v0.9.0-debug-apk
           path: |
             WirelessExplorer/app/build/outputs/apk/debug/app-debug.apk
             WirelessExplorer/app/build/outputs/apk/debug/app-debug.apk.sha256
@@ -81,6 +87,8 @@ jobs:
             image: aosp_atd
           - api: 35
             image: google_apis
+          - api: 36
+            image: google_apis
     timeout-minutes: 40
     steps:
       - name: Checkout source
@@ -95,7 +103,7 @@ jobs:
       - name: Gradle 8.11.1
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.11.1'
+          gradle-version: '8.13'
 
       - name: Enable KVM for Android emulator
         run: |
@@ -127,7 +135,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: WirelessExplorer-v0.8.0-emulator-qa-api${{ matrix.api }}
+          name: WirelessExplorer-v0.9.0-emulator-qa-api${{ matrix.api }}
           path: |
             WirelessExplorer-UI-emulator.png
             WirelessExplorer-UI-view.png
