@@ -1,6 +1,6 @@
 # Wireless Explorer for Galaxy
 
-**Version:** 0.9.0 (Google Play API36-compatible unsigned/debug QA candidate; owner signing and Galaxy field acceptance pending)  
+**Version:** 0.9.1 (Google Play API36-compatible unsigned/debug QA candidate; owner signing and Galaxy field acceptance pending)  
 **Package ID:** kr.sungok.wirelessexplorer  
 **Requirements:** Android 8.0+ (API 26), Bluetooth/Wi-Fi hardware for the corresponding scans.  
 **Status:** Source implementation and GitHub Actions APK build workflow. An actual Galaxy hardware test is required before any production claim.
@@ -75,7 +75,7 @@ Catalog as many **detectable nearby wireless endpoints** as Android public APIs 
 
 ## Build
 
-GitHub > Actions > **Wireless Explorer Android APK** > select a successful run > Artifacts > **WirelessExplorer-v0.9.0-debug-apk**.
+GitHub > Actions > **Wireless Explorer Android APK** > select a successful run > Artifacts > **WirelessExplorer-v0.9.1-debug-apk**.
 Unzip and install app-debug.apk on your Galaxy (allow installation from that source if prompted). Each CI run uses GitHub's temporary debug key. Uninstalling a previous build may be required before installing a build signed with a different key; uninstalling removes the app's local history, so export it first.
 
 To build with Android Studio, open **WirelessExplorer/** as its own project, use JDK 17, Android SDK platform 35, Android Gradle Plugin 8.9.2 and Gradle 8.11.1. A Gradle wrapper is not committed; GitHub Actions provisions Gradle.
