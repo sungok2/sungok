@@ -116,7 +116,7 @@ jobs:
             cd WirelessExplorer
             && gradle --no-daemon :app:connectedDebugAndroidTest
             && adb install -r app/build/outputs/apk/debug/app-debug.apk
-            && adb exec-out run-as kr.sungok.wirelessexplorer cat files/wireless-ui-view.png > ../WirelessExplorer-UI-view.png
+            && adb exec-out cat /sdcard/Download/WirelessExplorer-UI-view.png > ../WirelessExplorer-UI-view.png
             && test -s ../WirelessExplorer-UI-view.png
             && adb shell am start -n kr.sungok.wirelessexplorer/.MainActivity
             && sleep 2
