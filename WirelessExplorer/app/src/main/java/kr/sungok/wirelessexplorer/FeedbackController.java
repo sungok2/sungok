@@ -13,12 +13,14 @@ import android.view.View;
  */
 public final class FeedbackController {
     private ToneGenerator tones;
+    private final AudioManager audio;
     private boolean soundEnabled;
     private boolean hapticsEnabled;
     private long lastDiscoveryTone;
     private int tonesThisSession;
 
     public FeedbackController(Context context) {
+        audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
         soundEnabled = context.getSharedPreferences("discovery-ui", Context.MODE_PRIVATE)
                 .getBoolean("sound", false);
         hapticsEnabled = context.getSharedPreferences("discovery-ui", Context.MODE_PRIVATE)
@@ -51,7 +53,7 @@ public final class FeedbackController {
 
     public void foundNewEndpoint() {
         long now = SystemClock.elapsedRealtime();
-        if (tonesThisSession >= 8 || now - lastDiscoveryTone < 8500L)
+        if (tonesThisSession >= 8 || (tonesThisSession > 0 && now - lastDiscoveryTone < 8500L))
             return;
         lastDiscoveryTone = now;
         tonesThisSession++;
@@ -70,6 +72,9 @@ public final class FeedbackController {
 
     private void tone(int kind, int duration) {
         if (!soundEnabled) return;
+        // Never override the phone's silent/vibrate or notification volume policy.
+        if (audio == null || audio.getRingerMode() != AudioManager.RINGER_MODE_NORMAL
+                || audio.getStreamVolume(AudioManager.STREAM_NOTIFICATION) <= 0) return;
         try {
             if (tones == null) tones = new ToneGenerator(AudioManager.STREAM_NOTIFICATION, 40);
             tones.startTone(kind, duration);
