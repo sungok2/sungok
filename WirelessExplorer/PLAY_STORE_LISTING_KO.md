@@ -30,7 +30,7 @@ Android가 접근할 수 없는 무선 방식, 광고하지 않는 기기, 검�
 
 ## 필수 Play Console 입력 — 저장소 코드만으로 처리 불가
 - 유료 앱 판매 국가, 판매가, 개발자 계정 및 대금 수령 프로필
-- 공개 개인정보처리방침 URL: https://github.com/sungok2/sungok/blob/master/WirelessExplorer/PRIVACY.md (병합 이후 공개 확인)
+- 공개 개인정보처리방침 URL: https://github.com/sungok2/sungok/blob/master/WirelessExplorer/PRIVACY_KO.md (병합 이후 공개 확인)
 - 실제 개발자 고객지원 연락처 및 필요한 법정 사업자 정보
 - 데이터 보안(Data safety): 최종 빌드·권한·공유 방식과 Play 정의를 검증해 작성
 - 정식 스크린샷(실제 앱 UI, 허위 무선 탐지 데이터 아님), 512px 앱 아이콘, 1024×500 주요 그래픽 등 최신 업로드 요건
