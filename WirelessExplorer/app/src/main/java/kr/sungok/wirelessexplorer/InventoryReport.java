@@ -22,7 +22,7 @@ public final class InventoryReport {
         b.append("WIRELESS EXPLORER · 무선 탐색 점검 보고서\n");
         b.append("생성 시각: ").append(generatedAt).append('\n');
         b.append("실행 환경: ").append(platform).append('\n');
-        b.append("앱 버전: 0.8.0\n\n");
+        b.append("앱 버전: 0.9.0\n\n");
         b.append("[탐지 항목]\n");
         b.append("이번 탐색 무선 주소/접속점: ").append(radio).append("건\n");
         b.append("이번 탐색 LAN TCP 응답 주소: ").append(lan).append("건 (유·무선 구분 불가)\n");
