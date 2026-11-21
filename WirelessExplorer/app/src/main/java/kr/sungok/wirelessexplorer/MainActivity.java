@@ -395,6 +395,16 @@ public final class MainActivity extends Activity implements WirelessScanner.List
         lanToggle.setContentDescription("선택 기능: 연결된 사설 Wi-Fi에서 UPnP 서비스 검색 요청");
         advancedPanel.addView(lanToggle);
         advancedPanel.addView(space(8));
+        CheckBox haptics = new CheckBox(this);
+        haptics.setText("버튼 진동 피드백");
+        haptics.setTextSize(13);
+        haptics.setTextColor(SUBTLE);
+        haptics.setButtonTintList(ColorStateList.valueOf(ACCENT));
+        haptics.setChecked(feedback.hapticsEnabled());
+        haptics.setOnCheckedChangeListener((button, checked) ->
+                feedback.setHapticsEnabled(this, checked));
+        advancedPanel.addView(haptics, new LinearLayout.LayoutParams(-1, dp(48)));
+        advancedPanel.addView(space(8));
         LinearLayout exportRow = new LinearLayout(this);
         exportRow.setOrientation(LinearLayout.HORIZONTAL);
         exportRow.addView(action("JSON 백업", false, () -> export(true)),
@@ -415,6 +425,9 @@ public final class MainActivity extends Activity implements WirelessScanner.List
                 new LinearLayout.LayoutParams(-1, dp(48)));
         advancedPanel.addView(space(8));
         advancedPanel.addView(action("모든 탐지 기록 삭제", false, this::confirmDelete),
+                new LinearLayout.LayoutParams(-1, dp(48)));
+        advancedPanel.addView(space(8));
+        advancedPanel.addView(action("개인정보 · 탐색 권한 안내", false, this::showPrivacy),
                 new LinearLayout.LayoutParams(-1, dp(48)));
 
         page.addView(space(17));
@@ -1047,6 +1060,22 @@ public final class MainActivity extends Activity implements WirelessScanner.List
                     dialog.dismiss();
                 }));
         dialog.show();
+    }
+
+    private void showPrivacy() {
+        new AlertDialog.Builder(this)
+                .setTitle("개인정보 · 탐색 기능 안내")
+                .setMessage("Wireless Explorer v0.8.0\n\n"
+                        + "• BLE·Bluetooth·Wi-Fi 주소와 기기명, RSSI, 검색 시각을 기기 내부에 저장합니다.\n"
+                        + "• 서버·광고·계정·원격 분석 기능이 없습니다.\n"
+                        + "• 위치 권한은 Android 무선 검색 API에 필요합니다. GPS 좌표를 저장하거나 전송하지 않습니다.\n"
+                        + "• LAN TCP/UPnP 탐색은 사용자가 직접 켠 경우에만 허가된 사설 Wi-Fi에 요청을 보냅니다.\n"
+                        + "• 소리 알림은 기본 꺼짐입니다. 무음 모드를 존중하고 새 발견 알림을 제한합니다.\n"
+                        + "• CSV·JSON 내보내기는 사용자가 고른 파일에만 기록됩니다.\n"
+                        + "• 외부로 내보낸 기록은 주소 등의 민감정보를 포함할 수 있으므로 공유에 주의하세요.\n"
+                        + "• 실제 물리적 기기 수, 위치, 전수 탐지 여부는 확인하지 않습니다.")
+                .setPositiveButton("확인", (dialog, which) -> { })
+                .show();
     }
 
     private void confirmDelete() {
