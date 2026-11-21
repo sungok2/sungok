@@ -1129,6 +1129,9 @@ public final class MainActivity extends Activity implements WirelessScanner.List
                         + "• CSV·JSON 내보내기는 사용자가 고른 파일에만 기록됩니다.\n"
                         + "• 외부로 내보낸 기록은 주소 등의 민감정보를 포함할 수 있으므로 공유에 주의하세요.\n"
                         + "• 실제 물리적 기기 수, 위치, 전수 탐지 여부는 확인하지 않습니다.")
+                .setNeutralButton("전체 개인정보처리방침", (dialog, which) ->
+                        startActivity(new Intent(Intent.ACTION_VIEW,
+                                Uri.parse("https://github.com/sungok2/sungok/blob/master/WirelessExplorer/PRIVACY_KO.md"))))
                 .setPositiveButton("확인", (dialog, which) -> { })
                 .show();
     }
