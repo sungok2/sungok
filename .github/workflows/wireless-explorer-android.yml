@@ -116,6 +116,8 @@ jobs:
             cd WirelessExplorer
             && gradle --no-daemon :app:connectedDebugAndroidTest
             && adb install -r app/build/outputs/apk/debug/app-debug.apk
+            && adb exec-out run-as kr.sungok.wirelessexplorer cat files/wireless-ui-view.png > ../WirelessExplorer-UI-view.png
+            && test -s ../WirelessExplorer-UI-view.png
             && adb shell am start -n kr.sungok.wirelessexplorer/.MainActivity
             && sleep 2
             && adb exec-out screencap -p > ../WirelessExplorer-UI-emulator.png
@@ -128,6 +130,7 @@ jobs:
           name: WirelessExplorer-v0.8.0-emulator-qa-api${{ matrix.api }}
           path: |
             WirelessExplorer-UI-emulator.png
+            WirelessExplorer-UI-view.png
             WirelessExplorer/app/build/reports/androidTests/
             WirelessExplorer/app/build/outputs/androidTest-results/
           if-no-files-found: warn
