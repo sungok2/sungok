@@ -1,4 +1,4 @@
-# Wireless Explorer — Google Play 등록 초안 (한국어)
+# Wireless Explorer — Google Play 등록 초안 (한국어, v0.9.1)
 
 > **등록 전 필수 확인:** 실제 Galaxy 성능 시험, 개인정보처리방침 URL, 고객지원 연락처, 서명키, Play Console 유료 앱 판매 설정과 해당 계정의 테스트 요건을 충족해야 합니다. 검증되지 않은 성능·숫자·지원 모델을 상품 설명에 넣지 마세요.
 
