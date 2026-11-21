@@ -396,13 +396,18 @@ public final class MainActivity extends Activity {
         printPanel = vertical();
         LinearLayout systemPrintCard = card();
         addText(systemPrintCard, "PDF 인쇄", 21, INK, true, 5);
-        addText(systemPrintCard, "Android 시스템 인쇄로 전달합니다. USB OTG를 지원하는 제조사 인쇄 서비스가 설치·활성화되어 있으면 해당 드라이버를 선택하세요. 지원 여부는 프린터 모델과 서비스에 따라 다릅니다.",
+        addText(systemPrintCard, "USB 케이블로 인쇄하려면 연결 확인부터 시작하세요. 설치된 인쇄 서비스는 Android 인쇄 메뉴에서 사용할 수 있습니다.",
                 13, MUTED, false, 12);
         Button pdfPrint = new Button(this);
         pdfPrint.setText("제조사 드라이버로 PDF 인쇄");
         styleButton(pdfPrint, true);
         pdfPrint.setOnClickListener(v -> choosePdfForSystemPrint());
         addButton(systemPrintCard, pdfPrint);
+        Button checkUsb = new Button(this);
+        checkUsb.setText("USB 연결 확인");
+        styleButton(checkUsb, true);
+        checkUsb.setOnClickListener(v -> checkUsbPrinter());
+        addButton(systemPrintCard, checkUsb);
         Button printSettings = new Button(this);
         printSettings.setText("Android 인쇄 서비스 설정 열기");
         styleButton(printSettings, false);
@@ -429,7 +434,7 @@ public final class MainActivity extends Activity {
         addButton(systemPrintCard, vendorHelp);
         addCard(printPanel, systemPrintCard);
         LinearLayout directPrintCard = card();
-        addText(directPrintCard, "고급 USB 직접 인쇄", 17, INK, true, 5);
+        addText(directPrintCard, "USB 직접 인쇄", 17, INK, true, 5);
         addText(directPrintCard, "USB 장치를 선택하고 권한을 허용한 뒤 이용하세요. 전송 성공과 실제 용지 출력은 다릅니다.",
                 13, MUTED, false, 8);
         printerProbeButton = new Button(this);
@@ -447,11 +452,6 @@ public final class MainActivity extends Activity {
         styleButton(ippPdfButton, false);
         ippPdfButton.setOnClickListener(v -> chooseUsbIppPdf());
         addButton(directPrintCard, ippPdfButton);
-        Button checkUsb = new Button(this);
-        checkUsb.setText("USB 연결 확인");
-        styleButton(checkUsb, true);
-        checkUsb.setOnClickListener(v -> checkUsbPrinter());
-        addButton(directPrintCard, checkUsb);
         Button epsonSetup = new Button(this);
         epsonSetup.setText("WF-C5390 프린터 설정 확인");
         styleButton(epsonSetup, false);
