@@ -29,11 +29,11 @@ tap_text() {
 capture "devices-initial"
 python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-initial-window.xml "USB 인쇄 · 스캔"
 python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-initial-window.xml "USB 장치"
-python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-initial-window.xml "연결된 USB 장치가 없습니다."
+python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-initial-window.xml "연결된 USB 장치가 없습니다. OTG 케이블 및 전원을 확인하세요."
 tap_text "스캔" "devices-initial"
 capture "scan"
 python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/scan-window.xml "문서 스캔"
-python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/scan-window.xml "네트워크 스캔 → PDF 저장"
+python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/scan-window.xml "스캐너에서 문서를 가져와 PDF로 저장합니다."
 python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/scan-window.xml "같은 Wi-Fi에서 스캐너 찾기"
 tap_text "같은 Wi-Fi에서 스캐너 찾기" "scan"
 sleep 9
@@ -52,7 +52,7 @@ fi
 tap_text "인쇄" "scan-discovery"
 capture "print"
 python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/print-window.xml "PDF 인쇄"
-python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/print-window.xml "PDF 파일 선택 후 인쇄"
+python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/print-window.xml "제조사 드라이버로 PDF 인쇄"
 if ! python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/print-window.xml "USB 연결 확인"; then
   adb shell input swipe 160 565 160 350 400
   capture "print"
