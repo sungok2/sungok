@@ -150,7 +150,7 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
         }
     }
     private void render(){stopCinema();root=column();root.setBackgroundColor(BG);setContentView(root);
-        LinearLayout title=column();title.setPadding(dp(18),dp(12),dp(18),dp(10));add(title,label("STORY / ENGLISH",15,GOLD,true),0);add(title,label("CINEMATIC AUDIO LAB · 3.7.4 · OFFLINE PREVIEW",11,MUTED,false),5);root.addView(title);
+        LinearLayout title=column();title.setPadding(dp(18),dp(12),dp(18),dp(10));add(title,label("STORY / ENGLISH",15,GOLD,true),0);add(title,label("CINEMATIC AUDIO LAB · 3.7.7 · OFFLINE EVALUATION",11,MUTED,false),5);root.addView(title);
         ScrollView scroll=new ScrollView(this);body=column();body.setPadding(dp(18),0,dp(18),dp(32));scroll.addView(body);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         if(!canShowAdult){ageGate();return;}
         if(tab==0)home();else if(tab==1)learning();else if(tab==2)shadowing();else if(tab==3)progress();else if(tab==4)settings();else novelStudy();
@@ -184,7 +184,7 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
     private void cinematicLesson(){
         if(scene!=3)return;
         add(body,label("CINEMATIC LISTENING  ·  A Quiet Evening",15,ROSE,true),14);
-        add(body,label("25초 · 영어/한국어 자막 · 합성 영어 대사 · 직접 제작한 배경음",13,MUTED,false),6);
+        add(body,label("25초 · 영어/한국어 자막 · 오프라인 MP4",13,MUTED,false),6);
         if(!cinemaOpen){
             add(body,button("▶ 영상 학습 열기",()->{
                 if(lab!=null)lab.stop();
@@ -194,32 +194,80 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
         }
         VideoView video=new VideoView(this);
         cinematicVideo=video;
+        final boolean[] ready={false},playRequested={false};
         video.setBackgroundColor(BG);
-        video.setContentDescription("합의된 성인 간 친밀감을 키스 직전 장면과 페이드아웃으로 암시한 시네마틱 학습 영상. 영어 및 한국어 자막 포함.");
-        LinearLayout.LayoutParams vp=new LinearLayout.LayoutParams(-1,dp(222));vp.topMargin=dp(12);
+        video.setKeepScreenOn(true);
+        video.setContentDescription("영어 및 한국어 자막이 있는 25초 영어 학습 영상");
+        LinearLayout.LayoutParams vp=new LinearLayout.LayoutParams(-1,dp(235));
+        vp.topMargin=dp(12);
         body.addView(video,vp);
-        video.setVideoURI(Uri.parse("android.resource://"+getPackageName()+"/"+R.raw.scene_quiet_evening));
         MediaController controller=new MediaController(this);
-        controller.setAnchorView(video);
         video.setMediaController(controller);
-        video.setOnPreparedListener(mp->{mp.setLooping(false);});
-        video.setOnCompletionListener(mp->{releaseAudioFocus();setCinemaStage(2);});
+        controller.setAnchorView(video);
+        final TextView state=label("영상 준비 중…",14,BLUE,false);
+        state.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        add(body,state,8);
+        video.setOnPreparedListener(mp->{
+            if(cinematicVideo!=video)return;
+            ready[0]=true;
+            mp.setLooping(false);
+            state.setText("영상 준비 완료 · 재생 버튼을 누르세요");
+            if(playRequested[0]&&requestAudioFocus()){
+                if(lab!=null)lab.stop();
+                video.start();
+                state.setText("재생 중 · 화면을 누르면 탐색할 수 있습니다");
+            }
+        });
+        video.setOnCompletionListener(mp->{
+            if(cinematicVideo!=video)return;
+            releaseAudioFocus();
+            playRequested[0]=false;
+            state.setText("재생 완료 · 처음부터 다시 볼 수 있습니다");
+            setCinemaStage(2);
+        });
         video.setOnErrorListener((mp,what,extra)->{
-            new AlertDialog.Builder(this).setMessage("영상을 재생할 수 없습니다. 저장 공간 또는 미디어 코덱을 확인해 주세요.")
-                .setPositiveButton("확인",null).show();
+            if(cinematicVideo!=video)return true;
+            ready[0]=false;playRequested[0]=false;
+            releaseAudioFocus();
+            state.setText("재생 오류 ("+what+"/"+extra+") · 다시 불러오기를 시도하세요");
             return true;
         });
+        final Uri resource=Uri.parse("android.resource://"+getPackageName()+"/"+R.raw.scene_quiet_evening);
+        // Register all callbacks before asynchronously starting source preparation.
+        video.setVideoURI(resource);
         add(body,button("▶ 재생 / 일시정지",()->{
-            if(video.isPlaying()){video.pause();releaseAudioFocus();}
-            else if(requestAudioFocus()){if(lab!=null)lab.stop();video.start();}
+            if(cinematicVideo!=video)return;
+            if(video.isPlaying()){
+                video.pause();playRequested[0]=false;releaseAudioFocus();
+                state.setText("일시정지 · 재생 버튼으로 이어보기");
+                return;
+            }
+            playRequested[0]=true;
+            if(!ready[0]){state.setText("디코더 준비 중 · 준비되면 자동 재생");return;}
+            if(requestAudioFocus()){
+                if(lab!=null)lab.stop();
+                video.start();
+                state.setText("재생 중");
+            }
         },true),10);
         add(body,button("↻ 처음부터 다시 보기",()->{
-            if(requestAudioFocus()){if(lab!=null)lab.stop();video.seekTo(0);video.start();}
+            if(cinematicVideo!=video)return;
+            playRequested[0]=true;
+            if(ready[0]){
+                video.seekTo(0);
+                if(requestAudioFocus()){if(lab!=null)lab.stop();video.start();state.setText("처음부터 재생 중");}
+            }else state.setText("준비 중 · 완료 후 자동 재생합니다");
         },false),9);
+        add(body,button("영상 오류 시 다시 불러오기",()->{
+            if(cinematicVideo!=video)return;
+            ready[0]=false;playRequested[0]=true;
+            video.stopPlayback();
+            state.setText("영상 다시 준비 중…");
+            video.setVideoURI(resource);
+        },false),8);
         add(body,button("영상 닫기",()->{stopCinema();releaseAudioFocus();cinemaOpen=false;render();},false),8);
         add(body,label("학습 표현: I want to be closer to you. / Is this okay? / Let's take our time. / We can stop whenever you want.",14,MUTED,false),12);
-        if(cinemaStage==1)add(body,label("영상 종료 후 의미 이해 단계가 활성화됩니다.",13,BLUE,true),9);
-        add(body,label("이 영상은 정지 이미지에 화면 이동과 장면 전환을 더한 교육용 편집물입니다. 실제 성우·배우 촬영 영상이 아닙니다.",12,MUTED,false),8);
+        add(body,label("이 영상은 기존 정지 이미지 기반 교육용 편집물입니다. 전문 배우나 성우가 출연한 영상이 아닙니다.",12,MUTED,false),8);
     }
 
     /** Read-only selection of licensed or learner-authored English TXT via the Android system picker. */
@@ -455,6 +503,26 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
         setting("sounds","유사도별 효과음",true);
         setting("large","글자 확대",false);
         setting("reduce_motion","시각적 움직임 최소화",false);
+        add(body,card("영어 발음 음성",lab==null?"음성 엔진 준비 중":lab.activeVoiceName()+
+            "\n최고 품질의 설치된 오프라인 영어 음성을 우선합니다. 자연스러움은 기기 음성 엔진에 따라 달라집니다."),14);
+        add(body,button("영어 음성 선택 / 시험 듣기",()->{
+            if(lab==null)return;
+            String[] choices=lab.offlineVoiceNames();
+            if(choices.length==0){
+                new AlertDialog.Builder(this).setTitle("오프라인 영어 음성이 없습니다")
+                    .setMessage("휴대폰 설정의 텍스트 음성 변환(TTS)에서 영어 음성을 설치하고 앱을 다시 실행하세요.")
+                    .setPositiveButton("확인",null).show();
+            }else{
+                new AlertDialog.Builder(this).setTitle("영어 음성 선택")
+                    .setItems(choices,(d,idx)->{
+                        if(lab.selectOfflineVoice(idx)){
+                            lab.playTextRepeats("Hello. It's nice to see you again. How was your day?",1,0);
+                            new AlertDialog.Builder(this).setMessage("새 음성이 설정되었습니다. 다시 설정을 열면 현재 음성명을 확인할 수 있습니다.")
+                                .setPositiveButton("확인",null).show();
+                        }
+                    }).setNegativeButton("취소",null).show();
+            }
+        },false),12);
         add(body,button("학습 기록 보기",()->go(3),false),12);
         add(body,button("성인소설 원문 읽기 →",()->go(5),false),10);
         add(body,card("개인정보","마이크로 녹음한 실제 PCM은 메모리에서 분석한 뒤 폐기하며 파일로 저장하거나 업로드하지 않습니다. 기기에는 반복 설정, 완료 횟수, 최고 음향 유사도만 보관합니다."),18);
