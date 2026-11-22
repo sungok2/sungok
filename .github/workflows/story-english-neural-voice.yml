@@ -1,0 +1,55 @@
+name: Story English Neural Voice Assets
+on:
+  push:
+    branches: [story-english-neural-voice-studio]
+    paths:
+      - "story-english-neural-studio/**"
+      - ".github/workflows/story-english-neural-voice.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  synthesize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install G2P system requirements
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq espeak-ng
+      - name: Install CPU neural voice stack
+        run: |
+          python -m pip install --disable-pip-version-check --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --disable-pip-version-check --no-cache-dir "kokoro==0.9.4" soundfile numpy
+      - name: Render original dialogue with alternate voices
+        env:
+          HF_HUB_DISABLE_TELEMETRY: "1"
+          OMP_NUM_THREADS: "2"
+        run: |
+          python story-english-neural-studio/generate.py
+      - name: Verify output wave files and attribution
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib,wave
+          p=pathlib.Path('story-english-neural-studio/dist')
+          d=json.loads((p/'manifest.json').read_text())
+          assert len(d['items'])==27
+          for row in d['items']:
+            with wave.open(str(p/row['filename'])) as w:
+              assert w.getnchannels()==1 and w.getframerate()==24000 and w.getnframes()>24000
+          print('27 verified neural voice clips')
+          PY
+          cd story-english-neural-studio/dist
+          sha256sum *.wav > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: STORY-ENGLISH-27-NEURAL-VOICES
+          path: story-english-neural-studio/dist/
+          if-no-files-found: error
+          retention-days: 30
