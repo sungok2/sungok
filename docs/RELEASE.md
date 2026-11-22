@@ -1,4 +1,4 @@
-# Android 배포 안내 — v0.12.5
+# Android 배포 안내 — v0.13.0
 
 ## 제품 목적
 
@@ -27,7 +27,7 @@ PDF 인쇄는 Android `PrintManager`와 USB 직접 인쇄 두 경로로 구분�
 ## 버전
 
 - 앱 ID: `com.galaxyuniversalio`
-- 버전: `0.12.5`, versionCode `18`
+- 버전: `0.13.0`, versionCode `19`
 - 최소 Android: API 26
 - 배포 형식: 서명된 직접 설치 APK. Google Play 업로드용 AAB와 Play App Signing은 별도입니다.
 
