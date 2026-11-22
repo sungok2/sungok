@@ -749,7 +749,7 @@ public final class MainActivity extends Activity {
     private void showPage(int page) {
         int destination = Math.max(0, Math.min(2, page));
         boolean changed = destination != activePage;
-        if (changed && statusView != null) {
+        if (changed && statusView != null && activePage >= 0 && activePage < pageStatus.length) {
             pageStatus[activePage] = statusView.getText().toString();
         }
         activePage = destination;
