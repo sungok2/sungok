@@ -78,6 +78,39 @@ sleep 1
 capture "devices-details"
 python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-details-window.xml "장치 기술 진단"
 
+# The navigation dock must stay visible while long technical details scroll.
+python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-details-window.xml "장치 · 진단"
+python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-details-window.xml "인쇄"
+python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-details-window.xml "스캔"
+
+# Find preferences without assuming a fixed screen height or font scale.
+for attempt in $(seq 1 7); do
+  adb shell input swipe 170 535 170 180 350
+  sleep 1
+  capture "preferences"
+  if python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/preferences-window.xml "작업 완료 · 오류 효과음" > /dev/null 2>&1; then
+    break
+  fi
+done
+python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/preferences-window.xml "작업 완료 · 오류 효과음"
+tap_text "작업 완료 · 오류 효과음" "preferences"
+capture "sound-enabled"
+python3 tests/ui_nav_assert.py checked "$EVIDENCE_DIR"/sound-enabled-window.xml "작업 완료 · 오류 효과음"
+
+# Preference must survive process restart, not just Activity re-creation.
+adb shell am force-stop "$PKG"
+adb shell am start -W -n "$PKG/com.galaxyuniversalio.MainActivity" > "$EVIDENCE_DIR"/relaunch.txt
+sleep 2
+for attempt in $(seq 1 7); do
+  adb shell input swipe 170 535 170 180 350
+  sleep 1
+  capture "settings-restored"
+  if python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/settings-restored-window.xml "작업 완료 · 오류 효과음" > /dev/null 2>&1; then
+    break
+  fi
+done
+python3 tests/ui_nav_assert.py checked "$EVIDENCE_DIR"/settings-restored-window.xml "작업 완료 · 오류 효과음"
+
 if adb logcat -d -t 5000 | grep -A15 'FATAL EXCEPTION' | grep -q "$PKG"; then
   echo 'Fatal exception detected in app process' >&2
   exit 1
