@@ -10,6 +10,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.speech.tts.TextToSpeech;
+import android.speech.tts.Voice;
 import android.speech.tts.UtteranceProgressListener;
 
 import java.io.ByteArrayOutputStream;
@@ -38,6 +39,61 @@ public final class SpeechLab {
     private final Listener listener;
     private TextToSpeech tts;
     private volatile boolean ready=false;
+    private final java.util.ArrayList<Voice> englishVoices = new java.util.ArrayList<>();
+    private volatile String activeVoiceName = "기기 기본 음성";
+    public String activeVoiceName(){ return activeVoiceName; }
+    public String[] offlineVoiceNames(){
+        java.util.ArrayList<String> labels=new java.util.ArrayList<>();
+        for(Voice v:englishVoices){
+            labels.add(v.getName()+" · "+v.getLocale().toLanguageTag()+" · 품질 "+v.getQuality());
+        }
+        return labels.toArray(new String[0]);
+    }
+    public boolean selectOfflineVoice(int position){
+        if(tts==null || position<0 || position>=englishVoices.size()) return false;
+        Voice voice=englishVoices.get(position);
+        stop();
+        int result=tts.setVoice(voice);
+        if(result!=TextToSpeech.SUCCESS)return false;
+        context.getSharedPreferences("adult_learning_preview",Context.MODE_PRIVATE)
+            .edit().putString("preferred_voice",voice.getName()).apply();
+        activeVoiceName=voice.getName();
+        postStatus("영어 음성 변경: "+activeVoiceName);
+        return true;
+    }
+    private void configureBestOfflineVoice(){
+        englishVoices.clear();
+        java.util.Set<Voice> all=tts.getVoices();
+        if(all!=null)for(Voice v:all){
+            if(v==null||v.getLocale()==null||!"en".equals(v.getLocale().getLanguage())||
+               v.isNetworkConnectionRequired())continue;
+            java.util.Set<String> features=v.getFeatures();
+            if(features!=null&&features.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED))continue;
+            englishVoices.add(v);
+        }
+        java.util.Collections.sort(englishVoices,(a,b)->{
+            int quality=Integer.compare(b.getQuality(),a.getQuality());
+            if(quality!=0)return quality;
+            boolean aUs=Locale.US.getCountry().equals(a.getLocale().getCountry());
+            boolean bUs=Locale.US.getCountry().equals(b.getLocale().getCountry());
+            if(aUs!=bUs)return aUs?-1:1;
+            return Integer.compare(a.getLatency(),b.getLatency());
+        });
+        String preferred=context.getSharedPreferences("adult_learning_preview",Context.MODE_PRIVATE)
+            .getString("preferred_voice","");
+        Voice selected=null;
+        for(Voice v:englishVoices)if(preferred.equals(v.getName())){selected=v;break;}
+        if(selected==null&&!englishVoices.isEmpty())selected=englishVoices.get(0);
+        if(selected!=null && tts.setVoice(selected)==TextToSpeech.SUCCESS){
+            ready=true;activeVoiceName=selected.getName();
+        }else{
+            Voice def=tts.getVoice();
+            ready=def!=null&&!def.isNetworkConnectionRequired()&&
+                def.getLocale()!=null&&"en".equals(def.getLocale().getLanguage());
+            activeVoiceName=ready?def.getName():"영어 오프라인 음성 없음";
+        }
+        if(ready){tts.setPitch(1.0f);tts.setSpeechRate(1.0f);}
+    }
     private volatile short[] referencePcm;
     private volatile String referencePhrase=null;
     private volatile int referenceVariant=-1;
@@ -60,8 +116,10 @@ public final class SpeechLab {
         tts=new TextToSpeech(context,status->{
             if(status==TextToSpeech.SUCCESS&&tts!=null){
                 int lang=tts.setLanguage(Locale.US);
-                ready=(lang!=TextToSpeech.LANG_NOT_SUPPORTED&&lang!=TextToSpeech.LANG_MISSING_DATA);
-                postStatus(ready?"영어 기준 음성을 준비할 수 있습니다.":"기기에 영어 TTS 음성이 설치되지 않았습니다.");
+                if(lang!=TextToSpeech.LANG_NOT_SUPPORTED && lang!=TextToSpeech.LANG_MISSING_DATA)
+                    configureBestOfflineVoice();
+                else ready=false;
+                postStatus(ready?"영어 음성: "+activeVoiceName+" · 오프라인 최고 품질 우선":"기기에 영어 오프라인 TTS 음성이 설치되지 않았습니다.");
                 if(ready)main.post(()->{
                     if(queuedPhrase!=null && epoch==queuedEpoch){
                         String phrase=queuedPhrase;int variant=queuedVariant,count=queuedCount,gap=queuedGap;
@@ -111,7 +169,7 @@ public final class SpeechLab {
         try {
             referenceFile=new File(context.getCacheDir(),"story_ref_"+version+".wav");
             synchronized(byteLock){ttsEpoch=version;ttsBytes=null;ttsRate=0;ttsEncoding=0;ttsChannels=0;}
-            tts.setPitch(variant%2==0?1.05f:0.92f);tts.setSpeechRate(0.91f);
+            tts.setPitch(1.0f);tts.setSpeechRate(1.0f);
             int result=tts.synthesizeToFile(phrase,new Bundle(),referenceFile,"ref:"+version);
             postStatus(result==TextToSpeech.SUCCESS?"기준 음성 합성 중…":"TTS 파일 합성 요청이 실패했습니다.");
         }catch(Exception e){postStatus("TTS 기준 음성 준비 오류");}
@@ -254,7 +312,7 @@ public final class SpeechLab {
         int count=Math.max(1,Math.min(10,repetitions));
         int gap=Math.max(0,Math.min(10,gapSeconds));
         int generation=epoch;
-        tts.setSpeechRate(0.92f);
+        tts.setSpeechRate(1.0f);
         lastDialogueId="novel-reading:"+(count-1)+":"+generation;
         for(int i=0;i<count;i++){
             final String id="novel-reading:"+i+":"+generation;
@@ -268,14 +326,14 @@ public final class SpeechLab {
         if(!ready||tts==null){postStatus("영어 TTS 음성을 준비할 수 없습니다.");return;}
         stopPlaybackAndRecording();
         tts.stop();
-        tts.setSpeechRate(0.92f);
+        tts.setSpeechRate(1.0f);
         final int dialogueEpoch=epoch;
         lastDialogueId="dialogue:"+(lines.length-1)+":"+dialogueEpoch;
         for(int i=0;i<lines.length;i++){
-            tts.setPitch(i%2==0?1.05f:0.92f);
+            tts.setPitch(1.0f);
             tts.speak(lines[i], i==0?TextToSpeech.QUEUE_FLUSH:TextToSpeech.QUEUE_ADD,new Bundle(),"dialogue:"+i+":"+dialogueEpoch);
         }
-        postStatus("성인 대화 음성을 재생합니다. 기기 합성음이므로 실제 성우 원음은 아닙니다.");
+        postStatus("오프라인 음성 "+activeVoiceName+" 재생 중 · 실제 배우 음성은 아닙니다.");
     }
     public void beginCountdown(){
         if(referencePcm==null){postStatus("기준 음성 준비가 필요합니다.");return;}
