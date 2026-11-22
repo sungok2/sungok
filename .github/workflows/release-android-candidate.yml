@@ -6,6 +6,7 @@ on:
       - 'app/**'
       - 'docs/RELEASE.md'
       - 'tests/ci-emulator-smoke.sh'
+      - 'tests/ui_nav_assert.py'
       - '.github/workflows/release-android-candidate.yml'
   workflow_dispatch:
 permissions:
