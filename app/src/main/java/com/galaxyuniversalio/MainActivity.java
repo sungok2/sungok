@@ -5,6 +5,10 @@ import android.app.AlertDialog;
 import android.app.PendingIntent;
 import android.content.res.ColorStateList;
 import android.graphics.Typeface;
+import android.media.AudioManager;
+import android.media.ToneGenerator;
+import android.view.HapticFeedbackConstants;
+import android.view.SoundEffectConstants;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.widget.ProgressBar;
@@ -143,6 +147,12 @@ public final class MainActivity extends Activity {
     private boolean receiverRegistered;
     private Integer pendingPrinterProbeId;
     private String pendingAttachedDeviceName;
+    private String lastInventorySignature;
+    private TextView connectionStageView;
+    private boolean soundEnabled;
+    private boolean hapticsEnabled;
+    private ToneGenerator feedbackTone;
+    private static final String UI_PREFERENCES = "ui_presentation";
 
     private final BroadcastReceiver usbReceiver = new BroadcastReceiver() {
         @Override
@@ -188,6 +198,10 @@ public final class MainActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         usbManager = (UsbManager) getSystemService(Context.USB_SERVICE);
+        soundEnabled = getSharedPreferences(UI_PREFERENCES, Context.MODE_PRIVATE)
+                .getBoolean("sound", false);
+        hapticsEnabled = getSharedPreferences(UI_PREFERENCES, Context.MODE_PRIVATE)
+                .getBoolean("haptics", true);
         try {
             wfC5390Profile = UsbPrinterProfile.loadBundled(this);
         } catch (IOException e) {
@@ -264,11 +278,11 @@ public final class MainActivity extends Activity {
         return true;
     }
 
-    private static final int INK = 0xFF152641;
-    private static final int MUTED = 0xFF57677D;
-    private static final int PRIMARY = 0xFF2058D4;
-    private static final int BORDER = 0xFFDFE7F2;
-    private static final int PALE = 0xFFF3F6FB;
+    private static final int INK = 0xFF14233B;
+    private static final int MUTED = 0xFF52647C;
+    private static final int PRIMARY = 0xFF1856CD;
+    private static final int BORDER = 0xFFDEE7F2;
+    private static final int PALE = 0xFFF4F7FC;
     private static final int WHITE = 0xFFFFFFFF;
 
     private GradientDrawable rounded(int color, int stroke, int radius) {
@@ -287,8 +301,8 @@ public final class MainActivity extends Activity {
 
     private LinearLayout card() {
         LinearLayout box = vertical();
-        box.setPadding(dp(16), dp(16), dp(16), dp(16));
-        box.setBackground(rounded(WHITE, BORDER, 18));
+        box.setPadding(dp(18), dp(18), dp(18), dp(18));
+        box.setBackground(rounded(WHITE, BORDER, 20));
         return box;
     }
 
@@ -303,6 +317,7 @@ public final class MainActivity extends Activity {
         t.setText(content);
         t.setTextSize(size);
         t.setTextColor(color);
+        t.setLineSpacing(dp(2), 1.04f);
         if (bold) t.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         return t;
     }
@@ -317,7 +332,8 @@ public final class MainActivity extends Activity {
     private void styleButton(Button button, boolean important) {
         button.setAllCaps(false);
         button.setTextSize(14);
-        button.setMinHeight(dp(50));
+        button.setMinHeight(dp(54));
+        button.setTypeface(Typeface.DEFAULT, important ? Typeface.BOLD : Typeface.NORMAL);
         // Disabled USB actions must not appear active when no device is present.
         int[][] states = {new int[] {-android.R.attr.state_enabled}, new int[] {}};
         button.setTextColor(new ColorStateList(states,
@@ -334,19 +350,24 @@ public final class MainActivity extends Activity {
 
     private void buildUi() {
         LinearLayout root = vertical();
-        root.setPadding(dp(16), dp(14), dp(16), dp(24));
+        root.setPadding(dp(16), dp(16), dp(16), dp(22));
         root.setBackgroundColor(PALE);
 
         LinearLayout hero = vertical();
-        hero.setPadding(dp(18), dp(18), dp(18), dp(18));
-        hero.setBackground(rounded(0xFF102955, 0, 18));
-        addText(hero, "GALAXY  ·  UNIVERSAL I/O", 12, 0xFFBBD4FF, true, 8);
-        addText(hero, "USB 인쇄 · 스캔", 24, WHITE, true, 5);
-        addText(hero, "제조사 인쇄 서비스 · USB 장치 진단 · 네트워크 스캔", 13, 0xFFD4E3FF, false, 0);
+        hero.setPadding(dp(20), dp(20), dp(20), dp(20));
+        GradientDrawable heroGradient = new GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                new int[]{0xFF102040, 0xFF164D99, 0xFF0E7294});
+        heroGradient.setCornerRadius(dp(22));
+        hero.setBackground(heroGradient);
+        addText(hero, "GALAXY  ·  UNIVERSAL I/O", 12, 0xFFD2E7FF, true, 6);
+        addText(hero, "USB 인쇄 · 스캔", 27, WHITE, true, 6);
+        addText(hero, "케이블 연결부터 PDF 출력과 저장까지", 13, WHITE, false, 12);
+        addText(hero, "USB 직접 연결  ·  오프라인 작업 우선", 12, 0xFFD2F4F0, false, 0);
         addCard(root, hero);
 
         LinearLayout statusCard = card();
-        addText(statusCard, "작업 상태", 12, MUTED, true, 4);
+        addText(statusCard, "연결 및 작업 상태", 13, MUTED, true, 5);
         statusView = text("시작할 준비가 되었습니다.", 14, INK, true);
         statusView.setMinHeight(dp(32));
         statusView.setContentDescription("현재 작업 상태");
@@ -368,13 +389,17 @@ public final class MainActivity extends Activity {
             final int selected = i;
             Button tab = tabs[i];
             tab.setAllCaps(false);
-            tab.setMinHeight(dp(48));
+            tab.setMinHeight(dp(52));
             tab.setTextSize(13);
-            tab.setOnClickListener(v -> showPage(selected));
+            tab.setOnClickListener(v -> {
+                if (activePage != selected) {
+                    showPage(selected);
+                    feedbackTap();
+                }
+            });
             nav.addView(tab, new LinearLayout.LayoutParams(0, -2, 1));
         }
-        addCard(root, nav);
-
+        // The tab bar is mounted after the scrolling content so it remains visible.
         scanPanel = vertical();
         LinearLayout scanCard = card();
         addText(scanCard, "문서 스캔", 21, INK, true, 5);
@@ -530,8 +555,13 @@ public final class MainActivity extends Activity {
         devicePanel = vertical();
         LinearLayout deviceCard = card();
         addText(deviceCard, "USB 장치", 21, INK, true, 5);
-        addText(deviceCard, "연결된 장치를 선택하고 접근 권한을 허용합니다.", 13, MUTED, false, 8);
-        usbHintView = text("USB 연결을 확인하는 중입니다.", 13, MUTED, false);
+        addText(deviceCard, "장치 연결 → 접근 권한 → 인쇄·스캔", 13, MUTED, false, 12);
+        connectionStageView = text("01  장치 연결 확인 중", 15, INK, true);
+        connectionStageView.setPadding(dp(14), dp(14), dp(14), dp(14));
+        connectionStageView.setBackground(rounded(0xFFEAF3FF, 0, 14));
+        deviceCard.addView(connectionStageView);
+        usbHintView = text("Android USB 연결 상태를 확인합니다.", 13, MUTED, false);
+        usbHintView.setPadding(0, dp(12), 0, dp(6));
         deviceCard.addView(usbHintView);
         deviceSpinner = new Spinner(this);
         deviceSpinner.setContentDescription("USB 장치 선택");
@@ -547,6 +577,16 @@ public final class MainActivity extends Activity {
         styleButton(refresh, false);
         refresh.setOnClickListener(v -> { notice = ""; refreshInventory(); });
         addButton(deviceCard, refresh);
+        Button wiredPrint = new Button(this);
+        wiredPrint.setText("PDF 인쇄 화면으로 이동");
+        styleButton(wiredPrint, true);
+        wiredPrint.setOnClickListener(v -> { showPage(1); feedbackTap(); });
+        addButton(deviceCard, wiredPrint);
+        Button wiredScan = new Button(this);
+        wiredScan.setText("문서 스캔 화면으로 이동");
+        styleButton(wiredScan, false);
+        wiredScan.setOnClickListener(v -> { showPage(0); feedbackTap(); });
+        addButton(deviceCard, wiredScan);
         addCard(devicePanel, deviceCard);
 
         LinearLayout imageCard = card();
@@ -559,6 +599,36 @@ public final class MainActivity extends Activity {
         ptpImportButton.setOnClickListener(v -> choosePtpJpegDestination());
         addButton(imageCard, ptpImportButton);
         addCard(devicePanel, imageCard);
+
+        LinearLayout experienceCard = card();
+        addText(experienceCard, "사용 환경", 17, INK, true, 5);
+        addText(experienceCard, "효과음은 기본 꺼짐이며, 무음 모드에서는 재생하지 않습니다.",
+                13, MUTED, false, 6);
+        CheckBox soundOption = new CheckBox(this);
+        soundOption.setText("작업 완료 · 오류 효과음");
+        soundOption.setTextSize(14);
+        soundOption.setMinHeight(dp(50));
+        soundOption.setChecked(soundEnabled);
+        soundOption.setOnCheckedChangeListener((button, checked) -> {
+            soundEnabled = checked;
+            getSharedPreferences(UI_PREFERENCES, Context.MODE_PRIVATE)
+                    .edit().putBoolean("sound", checked).apply();
+            if (checked) feedbackOutcome(true);
+        });
+        experienceCard.addView(soundOption);
+        CheckBox hapticOption = new CheckBox(this);
+        hapticOption.setText("화면 터치 · 결과 진동");
+        hapticOption.setTextSize(14);
+        hapticOption.setMinHeight(dp(50));
+        hapticOption.setChecked(hapticsEnabled);
+        hapticOption.setOnCheckedChangeListener((button, checked) -> {
+            hapticsEnabled = checked;
+            getSharedPreferences(UI_PREFERENCES, Context.MODE_PRIVATE)
+                    .edit().putBoolean("haptics", checked).apply();
+            if (checked) feedbackTap();
+        });
+        experienceCard.addView(hapticOption);
+        addCard(devicePanel, experienceCard);
 
         LinearLayout reportCard = card();
         addText(reportCard, "장치 기술 진단", 17, INK, true, 5);
@@ -601,7 +671,47 @@ public final class MainActivity extends Activity {
         wholePage = new ScrollView(this);
         wholePage.setFillViewport(true);
         wholePage.addView(root);
-        setContentView(wholePage);
+
+        LinearLayout shell = vertical();
+        shell.setBackgroundColor(PALE);
+        shell.addView(wholePage, new LinearLayout.LayoutParams(-1, 0, 1));
+        LinearLayout navigationDock = vertical();
+        navigationDock.setPadding(dp(12), dp(8), dp(12), dp(8));
+        navigationDock.setBackgroundColor(WHITE);
+        navigationDock.addView(nav);
+        shell.addView(navigationDock, new LinearLayout.LayoutParams(-1, -2));
+        // Target SDK 36 draws behind system bars; reserve safe areas on 26+ devices.
+        shell.setOnApplyWindowInsetsListener((view, insets) -> {
+            shell.setPadding(0, insets.getSystemWindowInsetTop(),
+                    0, insets.getSystemWindowInsetBottom());
+            return insets;
+        });
+        setContentView(shell);
+    }
+
+    private void feedbackTap() {
+        if (wholePage == null) return;
+        if (hapticsEnabled) wholePage.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+        if (soundEnabled) wholePage.playSoundEffect(SoundEffectConstants.CLICK);
+    }
+
+    private void feedbackOutcome(boolean success) {
+        if (wholePage != null && hapticsEnabled) {
+            wholePage.performHapticFeedback(success ? HapticFeedbackConstants.CONFIRM
+                    : HapticFeedbackConstants.REJECT);
+        }
+        if (!soundEnabled) return;
+        try {
+            AudioManager audio = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            if (audio == null || audio.getRingerMode() != AudioManager.RINGER_MODE_NORMAL) return;
+            if (feedbackTone == null) {
+                feedbackTone = new ToneGenerator(AudioManager.STREAM_NOTIFICATION, 22);
+            }
+            feedbackTone.startTone(success ? ToneGenerator.TONE_PROP_ACK
+                    : ToneGenerator.TONE_PROP_NACK, success ? 70 : 110);
+        } catch (RuntimeException ignored) {
+            // Audio hardware and notification policy must never block USB work.
+        }
     }
 
     private void showPage(int page) {
@@ -685,19 +795,58 @@ public final class MainActivity extends Activity {
         }
         displayedDevices.clear();
         displayedDevices.addAll(devices);
-        updateDeviceSpinner();
-        updateReport(devices);
+        // Most resume/USB callbacks do not change the attached device set.
+        // Avoid reconstructing spinner and long diagnostic text on every refresh.
+        StringBuilder signature = new StringBuilder();
+        for (UsbDevice device : devices) {
+            signature.append(device.getDeviceId()).append('/')
+                    .append(device.getDeviceName()).append('/')
+                    .append(usbManager.hasPermission(device) ? '1' : '0').append(';');
+        }
+        signature.append("serial=").append(serialCheckbox.isChecked())
+                .append(";probe=").append(latestPrinterProbe.hashCode());
+        String currentSignature = signature.toString();
+        boolean inventoryChanged = !currentSignature.equals(lastInventorySignature);
+        lastInventorySignature = currentSignature;
+        if (inventoryChanged || pendingAttachedDeviceName != null) updateDeviceSpinner();
+        else updatePermissionButton();
+        if (inventoryChanged) updateReport(devices);
+        updateConnectionStage(devices);
 
         String status = devices.isEmpty()
                 ? "USB 장치 미감지 · Android USB 목록 0개\nOTG·데이터 케이블·프린터 후면 PC 포트를 확인하세요."
                 : "USB " + devices.size() + "개 연결 · Android가 장치를 감지했습니다.";
         if (usbHintView != null) usbHintView.setText(devices.isEmpty()
-                ? "Android USB 목록에 장치가 없습니다. 갤럭시 USB 호스트(OTG), 데이터 전송 케이블, 외부 전원과 프린터 후면 PC용 USB 포트를 확인하세요. 프린터의 USB 메모리 포트는 직접 연결용이 아닙니다."
-                : "Android가 USB 장치 " + devices.size() + "개를 열거했습니다. 접근 권한과 인터페이스를 확인하세요.");
+                ? "감지되지 않을 때는 OTG·데이터 케이블·프린터 후면 PC 포트를 확인하세요."
+                : "Android가 USB 장치 " + devices.size() + "개를 열거했습니다. 사용할 장치를 선택하세요.");
         if (!notice.isEmpty()) status += "\n" + notice;
         if (!catalogWarning.isEmpty()) status += "\n" + catalogWarning;
         statusView.setText(status);
         return true;
+    }
+
+    private void updateConnectionStage(List<UsbDevice> devices) {
+        if (connectionStageView == null) return;
+        if (devices.isEmpty()) {
+            connectionStageView.setText("01  USB 케이블을 연결하세요\n"
+                    + "휴대전화 OTG  ·  데이터 케이블  ·  프린터 전원");
+            connectionStageView.setContentDescription("연결 단계 1. USB 장치 감지되지 않음.");
+            return;
+        }
+        UsbDevice selected = selectedDevice();
+        if (selected == null) selected = devices.get(0);
+        boolean granted = false;
+        try { granted = usbManager != null && usbManager.hasPermission(selected); }
+        catch (RuntimeException ignored) { }
+        if (!granted) {
+            connectionStageView.setText("02  USB 접근 권한을 승인하세요\n"
+                    + "장치 " + devices.size() + "개 감지 · Android 권한 승인 필요");
+            connectionStageView.setContentDescription("연결 단계 2. USB 장치 감지됨, 접근 권한 필요.");
+        } else {
+            connectionStageView.setText("03  USB 장치를 열 수 있습니다\n"
+                    + "인쇄·스캔 프로토콜 지원 여부는 별도로 확인");
+            connectionStageView.setContentDescription("연결 단계 3. USB 권한 승인됨. 실제 장치 호환성 확인 필요.");
+        }
     }
 
     private void updateDeviceSpinner() {
@@ -1615,6 +1764,10 @@ public final class MainActivity extends Activity {
         EsclScanClient.Transport transport = activeScanTransport;
         if (transport != null) try { transport.close(); } catch (Exception ignored) { }
         writer.shutdownNow();
+        if (feedbackTone != null) {
+            try { feedbackTone.release(); } catch (RuntimeException ignored) { }
+            feedbackTone = null;
+        }
         super.onDestroy();
     }
 }
