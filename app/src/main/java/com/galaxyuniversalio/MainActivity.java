@@ -715,7 +715,9 @@ public final class MainActivity extends Activity {
     }
 
     private void showPage(int page) {
-        activePage = Math.max(0, Math.min(2, page));
+        int destination = Math.max(0, Math.min(2, page));
+        boolean changed = destination != activePage;
+        activePage = destination;
         if (scanPanel == null) return;
         scanPanel.setVisibility(activePage == 0 ? View.VISIBLE : View.GONE);
         printPanel.setVisibility(activePage == 1 ? View.VISIBLE : View.GONE);
@@ -729,6 +731,12 @@ public final class MainActivity extends Activity {
             tabs[i].setContentDescription(tabs[i].getText() + (selected ? ", 선택됨" : ", 선택 가능"));
         }
         if (wholePage != null) wholePage.scrollTo(0, 0);
+        if (changed && android.animation.ValueAnimator.areAnimatorsEnabled()) {
+            LinearLayout shown = activePage == 0 ? scanPanel
+                    : activePage == 1 ? printPanel : devicePanel;
+            shown.setAlpha(0.88f);
+            shown.animate().alpha(1f).setDuration(160L).start();
+        }
     }
 
     private void setScanUiBusy(boolean busy) {
@@ -848,8 +856,8 @@ public final class MainActivity extends Activity {
                     + "장치 " + devices.size() + "개 감지 · Android 권한 승인 필요");
             connectionStageView.setContentDescription("연결 단계 2. USB 장치 감지됨, 접근 권한 필요.");
         } else {
-            connectionStageView.setText("03  USB 장치를 열 수 있습니다\n"
-                    + "인쇄·스캔 프로토콜 지원 여부는 별도로 확인");
+            connectionStageView.setText("03  USB 접근 권한이 승인되었습니다\n"
+                    + "프린터·스캐너 프로토콜은 별도로 확인");
             connectionStageView.setContentDescription("연결 단계 3. USB 권한 승인됨. 실제 장치 호환성 확인 필요.");
         }
     }
