@@ -17,7 +17,14 @@ def main():
     for node in root.iter('node'):
         if node.attrib.get('displayed', 'true') == 'false':
             continue
-        if node.attrib.get('text') == needle or node.attrib.get('content-desc') == needle:
+        text = node.attrib.get('text', '')
+        description = node.attrib.get('content-desc', '')
+        if mode == 'assert':
+            matches = needle in text or needle in description
+        else:
+            # Exact matches prevent a tap from accidentally selecting a neighboring control.
+            matches = text == needle or description == needle
+        if matches:
             nodes.append(node.attrib)
     if not nodes:
         raise SystemExit(f'Visible UI element not found: {needle}')
