@@ -35,6 +35,22 @@ jobs:
           keytool -genkeypair -noprompt -keystore "$K" -storepass "$PASS" -keypass "$PASS" -alias preview -keyalg RSA -keysize 3072 -validity 4 -dname "CN=STORY ENGLISH Novel Evaluation, O=Evaluation Only, C=KR"
           echo "STORY_KEYSTORE=$K" >> "$GITHUB_ENV"
           echo "STORY_KEYPASS=$PASS" >> "$GITHUB_ENV"
+      - name: Normalize embedded MP4 for Samsung Galaxy decoders
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v ffmpeg >/dev/null || (sudo apt-get update && sudo apt-get install -y ffmpeg)
+          SRC=story-english-preview/app/src/main/res/raw/scene_quiet_evening.mp4
+          TMP="${RUNNER_TEMP}/scene-galaxy-compatible.mp4"
+          ffmpeg -hide_banner -loglevel error -y -i "$SRC" -map 0:v:0 -map 0:a:0? \
+            -c:v libx264 -preset veryfast -crf 22 -profile:v baseline -level:v 3.1 \
+            -pix_fmt yuv420p -color_range tv -r 24 -c:a aac -b:a 128k -movflags +faststart "$TMP"
+          test -s "$TMP"
+          mv "$TMP" "$SRC"
+          ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,pix_fmt,profile \
+            -of default=noprint_wrappers=1 "$SRC" | tee /tmp/video_compatibility.txt
+          grep -F 'codec_name=h264' /tmp/video_compatibility.txt
+          grep -F 'pix_fmt=yuv420p' /tmp/video_compatibility.txt
       - name: Unit tests, lint and signed evaluation APK
         run: |
           gradle -p story-english-preview :app:verifyPreviewRelease :app:testReleaseUnitTest :app:lintRelease :app:assembleRelease --no-daemon --stacktrace
@@ -74,7 +90,7 @@ jobs:
           sha256sum /tmp/embedded_scene.mp4 | tee /tmp/embedded_video_sha256.txt
           mkdir -p dist
           cp "$APK" dist/STORY_ENGLISH_3.7.7_VIDEO_AUDIO_FIX_EVAL.apk
-          cp /tmp/signing.txt /tmp/badging.txt /tmp/manifest.txt /tmp/entries.txt /tmp/embedded_video_sha256.txt dist/
+          cp /tmp/video_compatibility.txt dist/\n          cp /tmp/signing.txt /tmp/badging.txt /tmp/manifest.txt /tmp/entries.txt /tmp/embedded_video_sha256.txt dist/
           sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
           echo "THIS EVALUATION APK IS BASED ON THE LEGACY 3.7.5 SOURCE, NOT THE FULL 4.9.5 PREMIUM QA1 ARCHIVE. Synthetic media; ephemeral signing key; not for resale." > dist/NOT_PRODUCTION_RELEASE.txt
       - uses: actions/upload-artifact@v4
