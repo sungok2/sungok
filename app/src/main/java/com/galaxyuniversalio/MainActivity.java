@@ -857,6 +857,8 @@ public final class MainActivity extends Activity {
     private void updateConnectionStage(List<UsbDevice> devices) {
         if (connectionStageView == null) return;
         if (devices.isEmpty()) {
+            connectionStageView.setBackground(rounded(0xFFFFF4E7, 0, 14));
+            connectionStageView.setTextColor(0xFF774310);
             connectionStageView.setText("01  USB 케이블을 연결하세요\n"
                     + "휴대전화 OTG  ·  데이터 케이블  ·  프린터 전원");
             connectionStageView.setContentDescription("연결 단계 1. USB 장치 감지되지 않음.");
@@ -868,10 +870,14 @@ public final class MainActivity extends Activity {
         try { granted = usbManager != null && usbManager.hasPermission(selected); }
         catch (RuntimeException ignored) { }
         if (!granted) {
+            connectionStageView.setBackground(rounded(0xFFEAF3FF, 0, 14));
+            connectionStageView.setTextColor(0xFF184D95);
             connectionStageView.setText("02  USB 접근 권한을 승인하세요\n"
                     + "장치 " + devices.size() + "개 감지 · Android 권한 승인 필요");
             connectionStageView.setContentDescription("연결 단계 2. USB 장치 감지됨, 접근 권한 필요.");
         } else {
+            connectionStageView.setBackground(rounded(0xFFE6F7F0, 0, 14));
+            connectionStageView.setTextColor(0xFF145C47);
             connectionStageView.setText("03  USB 접근 권한이 승인되었습니다\n"
                     + "프린터·스캐너 프로토콜은 별도로 확인");
             connectionStageView.setContentDescription("연결 단계 3. USB 권한 승인됨. 실제 장치 호환성 확인 필요.");
