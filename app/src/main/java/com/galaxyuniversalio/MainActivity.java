@@ -90,6 +90,7 @@ public final class MainActivity extends Activity {
     private static final String STATE_LAN_ADDRESS = "lan_address";
     private static final String STATE_FEEDER_SELECTED = "feed_selected";
     private static final String STATE_SHOW_REPORT = "show_report";
+    private static final String STATE_SELECTED_USB = "selected_usb_path";
 
 
     private final ExecutorService writer = Executors.newSingleThreadExecutor();
@@ -148,6 +149,7 @@ public final class MainActivity extends Activity {
     private Integer pendingPrinterProbeId;
     private String pendingAttachedDeviceName;
     private String lastInventorySignature;
+    private String selectedDevicePath;
     private TextView connectionStageView;
     private boolean soundEnabled;
     private boolean hapticsEnabled;
@@ -211,6 +213,7 @@ public final class MainActivity extends Activity {
             pendingExportReport = state.getString(STATE_EXPORT_SNAPSHOT);
             activePage = state.getInt(STATE_PAGE);
             reportExpanded = state.getBoolean(STATE_SHOW_REPORT, false);
+            selectedDevicePath = state.getString(STATE_SELECTED_USB);
             pendingPrintDeviceName = state.getString(STATE_PRINT_DEVICE_NAME);
             pendingPrintVid = state.getInt(STATE_PRINT_VID);
             pendingPrintPid = state.getInt(STATE_PRINT_PID);
@@ -664,7 +667,11 @@ public final class MainActivity extends Activity {
 
         deviceSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (position >= 0 && position < displayedDevices.size()) {
+                    selectedDevicePath = displayedDevices.get(position).getDeviceName();
+                }
                 updatePermissionButton();
+                updateConnectionStage(displayedDevices);
             }
             @Override public void onNothingSelected(AdapterView<?> parent) { updatePermissionButton(); }
         });
@@ -873,8 +880,12 @@ public final class MainActivity extends Activity {
         String oldName = oldSelected == null ? null : oldSelected.toString();
         List<String> labels = new ArrayList<>();
         for (UsbDevice device : displayedDevices) {
-            labels.add(String.format(Locale.US, "%04X:%04X · %s",
-                    device.getVendorId(), device.getProductId(), device.getDeviceName()));
+            String product = safeString(device, false);
+            String manufacturer = safeString(device, true);
+            String friendly = !product.startsWith("(") ? product
+                    : !manufacturer.startsWith("(") ? manufacturer + " USB 기기" : "USB 기기";
+            labels.add(String.format(Locale.US, "%s  ·  %04X:%04X",
+                    friendly, device.getVendorId(), device.getProductId()));
         }
         if (labels.isEmpty()) labels.add("연결된 USB 장치 없음");
         ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
@@ -885,7 +896,17 @@ public final class MainActivity extends Activity {
             for (int i = 0; i < displayedDevices.size(); i++) {
                 if (pendingAttachedDeviceName.equals(displayedDevices.get(i).getDeviceName())) {
                     deviceSpinner.setSelection(i);
+                    selectedDevicePath = pendingAttachedDeviceName;
                     pendingAttachedDeviceName = null;
+                    updatePermissionButton();
+                    return;
+                }
+            }
+        }
+        if (selectedDevicePath != null) {
+            for (int i = 0; i < displayedDevices.size(); i++) {
+                if (selectedDevicePath.equals(displayedDevices.get(i).getDeviceName())) {
+                    deviceSpinner.setSelection(i);
                     updatePermissionButton();
                     return;
                 }
@@ -1773,6 +1794,7 @@ public final class MainActivity extends Activity {
         outState.putBoolean(STATE_SERIAL, serialCheckbox.isChecked());
         outState.putInt(STATE_PAGE, activePage);
         outState.putBoolean(STATE_SHOW_REPORT, reportExpanded);
+        outState.putString(STATE_SELECTED_USB, selectedDevicePath);
         outState.putString(STATE_LAN_ADDRESS, lanHostInput.getText().toString());
         outState.putBoolean(STATE_FEEDER_SELECTED, feederCheck.isChecked());
         outState.putString(STATE_PRINT_DEVICE_NAME, pendingPrintDeviceName);
