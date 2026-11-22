@@ -1,3 +1,5 @@
+> **v0.13.0 / 2026-11-22 — UX refresh.** Bottom-anchored Scan/Print/Devices navigation, original gradient visual system, USB connection steps, task shortcuts, optional silent-mode-aware sounds and haptics, motion-preference-aware page transitions, and reduced redundant device inventory UI rebuilds. See [UX quality assessment](docs/UX_QUALITY_V013.md). Actual USB printer/scanner interoperability still requires real Galaxy hardware testing.
+
 > **M1 / v0.12.0 (2026-11-18)** USB-first Galaxy printing and scanning. Android Print Framework can use installed manufacturer PrintServices where their supported transport allows it. For Epson WF-C5390, the app can fetch a constrained model profile and convert PDF to PostScript 3 for USB Printer Class protocol 1/2. The profile is protocol-reviewed, not hardware-tested; a real Galaxy + WF-C5390 print is still required before claiming compatibility. See [manufacturer-driver integration and model limits](docs/VENDOR_DRIVER_INTEGRATION.md). LAN eSCL discovery remains optional.
 
 # Galaxy Universal I/O — Galaxy USB wired print and scan
