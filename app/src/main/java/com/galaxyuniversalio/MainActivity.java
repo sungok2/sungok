@@ -689,8 +689,8 @@ public final class MainActivity extends Activity {
         updateReport(devices);
 
         String status = devices.isEmpty()
-                ? "USB 연결 없음 · LAN 스캔과 시스템 인쇄 메뉴를 사용할 수 있습니다"
-                : "USB " + devices.size() + "개 연결 · 장치 정보를 확인했습니다.";
+                ? "USB 장치 미감지 · Android USB 목록 0개\nOTG·데이터 케이블·프린터 후면 PC 포트를 확인하세요."
+                : "USB " + devices.size() + "개 연결 · Android가 장치를 감지했습니다.";
         if (usbHintView != null) usbHintView.setText(devices.isEmpty()
                 ? "Android USB 목록에 장치가 없습니다. 갤럭시 USB 호스트(OTG), 데이터 전송 케이블, 외부 전원과 프린터 후면 PC용 USB 포트를 확인하세요. 프린터의 USB 메모리 포트는 직접 연결용이 아닙니다."
                 : "Android가 USB 장치 " + devices.size() + "개를 열거했습니다. 접근 권한과 인터페이스를 확인하세요.");
