@@ -102,6 +102,7 @@ public final class MainActivity extends Activity {
     private ProgressBar scanProgress;
     private LinearLayout scanProgressCard;
     private ScrollView wholePage;
+    private LinearLayout heroCard;
     private LinearLayout scanPanel, printPanel, devicePanel;
     private Button scanTabButton, printTabButton, devicesTabButton;
     private TextView usbHintView;
@@ -357,6 +358,7 @@ public final class MainActivity extends Activity {
         root.setBackgroundColor(PALE);
 
         LinearLayout hero = vertical();
+        heroCard = hero;
         hero.setPadding(dp(20), dp(20), dp(20), dp(20));
         GradientDrawable heroGradient = new GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
@@ -732,6 +734,7 @@ public final class MainActivity extends Activity {
         boolean changed = destination != activePage;
         activePage = destination;
         if (scanPanel == null) return;
+        if (heroCard != null) heroCard.setVisibility(activePage == 2 ? View.VISIBLE : View.GONE);
         scanPanel.setVisibility(activePage == 0 ? View.VISIBLE : View.GONE);
         printPanel.setVisibility(activePage == 1 ? View.VISIBLE : View.GONE);
         devicePanel.setVisibility(activePage == 2 ? View.VISIBLE : View.GONE);
