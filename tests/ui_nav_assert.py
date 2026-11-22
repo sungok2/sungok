@@ -9,8 +9,8 @@ import xml.etree.ElementTree as ET
 
 
 def main():
-    if len(sys.argv) != 4 or sys.argv[1] not in ('assert', 'tap'):
-        raise SystemExit('Usage: ui_nav_assert.py assert|tap window.xml exact-visible-text')
+    if len(sys.argv) != 4 or sys.argv[1] not in ('assert', 'tap', 'checked'):
+        raise SystemExit('Usage: ui_nav_assert.py assert|tap|checked window.xml visible-text')
     mode, path, needle = sys.argv[1:]
     root = ET.parse(Path(path)).getroot()
     nodes = []
@@ -30,6 +30,11 @@ def main():
         raise SystemExit(f'Visible UI element not found: {needle}')
     if mode == 'assert':
         print(f'PASS: found visible UI element: {needle}')
+        return
+    if mode == 'checked':
+        if nodes[0].get('checked') != 'true':
+            raise SystemExit(f'Visible preference is not checked: {needle}')
+        print(f'PASS: checked preference persisted: {needle}')
         return
     match = re.fullmatch(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', nodes[0].get('bounds', ''))
     if not match:
