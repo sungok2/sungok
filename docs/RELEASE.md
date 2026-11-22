@@ -1,10 +1,19 @@
-# Android 배포 안내 — v0.12.0
+# Android 배포 안내 — v0.12.5
 
 ## 제품 목적
 
 이 앱의 주 사용 흐름은 Galaxy가 USB Host/OTG 모드로 유선 프린터·스캐너에 연결해 인쇄하거나 스캔하는 것입니다. 네트워크 eSCL 탐색은 부가 기능입니다.
 
 PDF 인쇄는 Android `PrintManager`와 USB 직접 인쇄 두 경로로 구분합니다. WF-C5390은 앱 내장 PDF→PostScript 3 렌더러와 USB Printer Class RAW 전송을 추가했습니다. 모델 프로파일은 GitHub에서 data-only 형식으로 받아 제한된 값만 적용하고, 네트워크가 없으면 APK 내장 프로파일을 사용합니다. 이 프로파일은 Epson의 공개 PDL 사양을 바탕으로 한 protocol-reviewed 상태이며 실물 Galaxy+WF-C5390 시험 전까지 hardware-tested로 표시하지 않습니다. 제조사 PrintService는 그 서비스가 지원하는 연결방식에만 이용됩니다.
+
+## 0.12.5 연결 안정성 개선
+
+- Android가 전달하는 USB 연결 인텐트의 장치 객체를 사용해 신규 장치를 목록에서 우선 선택합니다. 이미 실행 중인 앱의 `onNewIntent` 경로도 처리합니다.
+- 분리 이벤트에서는 대기 중인 선택을 폐기하고 장치 목록을 갱신합니다.
+- USB 장치가 0개이면 Android Host 열거 단계부터 문제를 구별합니다. 갤럭시 OTG/전원/데이터 케이블/프린터 후면 PC용 USB 포트를 안내합니다.
+- `targetSdk 36` 적용. 2026년 8월 31일 이후 Google Play의 Android 16(API 36) 제출 조건을 충족하는 빌드 구성입니다.
+- Android 13 에뮬레이터에서는 USB 연결 인텐트의 장치 객체가 빠진 상황을 오류 없이 처리하는지 확인합니다.
+- 실제 장치가 감지되었다는 것과 USB Printer Class/IPP/eSCL이 호환된다는 것은 **서로 다른 검증 단계**입니다.
 
 ## USB 기능과 실제 범위
 
@@ -18,7 +27,7 @@ PDF 인쇄는 Android `PrintManager`와 USB 직접 인쇄 두 경로로 구분�
 ## 버전
 
 - 앱 ID: `com.galaxyuniversalio`
-- 버전: `0.12.0`, versionCode `13`
+- 버전: `0.12.5`, versionCode `18`
 - 최소 Android: API 26
 - 배포 형식: 서명된 직접 설치 APK. Google Play 업로드용 AAB와 Play App Signing은 별도입니다.
 
