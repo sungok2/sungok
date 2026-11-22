@@ -375,7 +375,8 @@ public final class MainActivity extends Activity {
         addText(statusCard, "연결 및 작업 상태", 13, MUTED, true, 5);
         statusView = text("시작할 준비가 되었습니다.", 14, INK, true);
         statusView.setMinHeight(dp(32));
-        statusView.setContentDescription("현재 작업 상태");
+        // Let TalkBack read the actual dynamic status, not a static accessibility label.
+        statusView.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         statusCard.addView(statusView);
         addCard(root, statusCard);
 
