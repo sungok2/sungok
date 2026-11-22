@@ -150,7 +150,7 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
         }
     }
     private void render(){stopCinema();root=column();root.setBackgroundColor(BG);setContentView(root);
-        LinearLayout title=column();title.setPadding(dp(18),dp(12),dp(18),dp(10));add(title,label("STORY ENGLISH",15,GOLD,true),0);add(title,label("CINEMATIC AUDIO LAB · 3.7.4 · OFFLINE PREVIEW",11,MUTED,false),5);root.addView(title);
+        LinearLayout title=column();title.setPadding(dp(18),dp(12),dp(18),dp(10));add(title,label("STORY / ENGLISH",15,GOLD,true),0);add(title,label("CINEMATIC AUDIO LAB · 3.7.4 · OFFLINE PREVIEW",11,MUTED,false),5);root.addView(title);
         ScrollView scroll=new ScrollView(this);body=column();body.setPadding(dp(18),0,dp(18),dp(32));scroll.addView(body);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         if(!canShowAdult){ageGate();return;}
         if(tab==0)home();else if(tab==1)learning();else if(tab==2)shadowing();else if(tab==3)progress();else if(tab==4)settings();else novelStudy();
@@ -337,20 +337,35 @@ public final class MainActivity extends Activity implements SpeechLab.Listener {
         graphic.setVariant(scene);
         return graphic;
     }
-    private void home(){heading("영어, 더 가까운 대화로.","성인이 실제로 마주하는 친밀한 상황을 듣고 말해 보세요.");
-        add(body,sceneArtwork(),18);
-        immersionCoach();
-        cinematicLesson();
-        add(body,label("MATURE · 비노골적 성인 상황 · 교육용",13,ROSE,true),12);
-        add(body,card("오늘의 장면 · "+TITLES[scene],DESCRIPTIONS[scene]),10);
-        add(body,button("장면 듣고 학습하기  →",()->go(1),true),14);
-        add(body,card("성인소설로 이어지는 영어 학습","이야기를 읽고 실제 원문 표현을 분석한 뒤 듣기·쉐도잉으로 연결합니다."),18);
-        add(body,button("📖 소설 원문으로 학습하기 →",()->go(5),true),12);
-        add(body,label("성인 영어 주제 "+TITLES.length+"개",20,WHITE,true),22);
-        for(int i=0;i<TITLES.length;i++){final int idx=i;
-            add(body,button((i+1)+"  "+TITLES[i]+"  ·  "+FUNCTIONS[i],()->changeScene(idx),false),10);
+    private void home(){
+        add(body,label("PRIVATE · OFFLINE · MATURE ENGLISH",12,GOLD,true),12);
+        add(body,label("English after hours.",29,WHITE,true),10);
+        add(body,label("대화 속 감정을 읽고, 직접 영어로 대답하는 성인 스토리 학습",15,MUTED,false),9);
+        LinearLayout hero=card("TODAY'S SCENE · "+TITLES[scene],
+            DESCRIPTIONS[scene]+"\n\n실제 관계 상황에서 쓸 수 있는 영어 표현을 듣고 따라 말합니다.");
+        add(hero,button("▶  오늘의 이야기 학습",()->go(1),true),12);
+        add(hero,button("장면 선택 · 다른 이야기 보기",()->go(1),false),8);
+        add(body,hero,16);
+        int attempts=prefs.getInt("attempts",0);
+        int best=prefs.getInt("best",-1);
+        LinearLayout progress=card("MY PRACTICE", "쉐도잉 연습 "+attempts+"회  ·  "+(best>=0?"최고 음향 유사도 "+best+"점":"첫 녹음에 도전하세요"));
+        add(progress,button("🎙 따라 말하기 스튜디오",()->{go(2);prepareReference();},true),11);
+        add(progress,button("연습 기록 보기",()->go(3),false),8);
+        add(body,progress,12);
+        LinearLayout cinema=card("CINEMA & EXPRESSION","짧은 영상의 선택과 분위기를 듣고 실제 표현을 연습합니다.");
+        add(cinema,button("A Quiet Evening · 시네마틱 학습",()->changeScene(3),true),12);
+        add(body,cinema,12);
+        LinearLayout novel=card("STORY READER","보유한 영어 TXT를 열어 장면의 어휘를 확인하고 음성으로 듣습니다.");
+        add(novel,button("▤ 성인소설 원문 학습",()->go(5),false),12);
+        add(body,novel,12);
+        add(body,label("CHOOSE YOUR STORY",13,ROSE,true),23);
+        for(int i=0;i<TITLES.length;i++){
+            final int idx=i;
+            LinearLayout item=card((i+1)+" · "+TITLES[i],FUNCTIONS[i]);
+            add(item,button("이 장면 열기 →",()->changeScene(idx),i==scene),9);
+            add(body,item,10);
         }
-        add(body,label("A Quiet Evening에는 합성음성 기반 25초 시네마틱 장면이 포함됩니다. 전문 성우·배우 영상 및 기존 앱 전체 콘텐츠는 제공되지 않습니다.",13,MUTED,false),18);
+        add(body,label("앱 데이터와 녹음은 단말 안에서만 처리합니다. 기준 음성은 기기 TTS 합성음이며 실제 배우 음성이 아닙니다.",12,MUTED,false),16);
     }
     private void learning(){heading(TITLES[scene],"상황을 보고, 실제 대화를 듣고, 필요한 문장을 선택하세요.");
         add(body,sceneArtwork(),12);
