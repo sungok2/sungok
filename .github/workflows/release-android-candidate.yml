@@ -37,7 +37,7 @@ jobs:
           sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
           yes | sdkmanager --licenses > /dev/null || true
       - name: Assemble release variant
-        run: gradle --no-daemon :app:assembleRelease --stacktrace
+        run: gradle --no-daemon :app:assembleRelease :app:bundleRelease --stacktrace
       - name: Validate release package and signing state
         shell: bash
         run: |
@@ -49,6 +49,10 @@ jobs:
           test -n "$APK" && test -s "$APK"
           mkdir -p release-artifact
           cp "$APK" release-artifact/app-release-unsigned.apk
+          AAB="app/build/outputs/bundle/release/app-release.aab"
+          test -s "$AAB"
+          cp "$AAB" release-artifact/app-release-unsigned.aab
+          sha256sum release-artifact/app-release-unsigned.aab | tee release-artifact/app-release-unsigned.aab.sha256
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee release-badging.txt
           grep -F "package: name='com.galaxyuniversalio'" release-badging.txt
           grep -F "versionCode='18'" release-badging.txt
@@ -75,6 +79,12 @@ jobs:
               --out release-artifact/app-release.apk "$APK"
             "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose release-artifact/app-release.apk
             sha256sum release-artifact/app-release.apk | tee release-artifact/app-release.apk.sha256
+            jarsigner -keystore release-signing.p12 -storetype PKCS12 \
+              -storepass "$ANDROID_RELEASE_STORE_PASSWORD" -keypass "$ANDROID_RELEASE_KEY_PASSWORD" \
+              -signedjar release-artifact/app-release.aab \
+              release-artifact/app-release-unsigned.aab "$ANDROID_RELEASE_KEY_ALIAS"
+            jarsigner -verify release-artifact/app-release.aab
+            sha256sum release-artifact/app-release.aab | tee release-artifact/app-release.aab.sha256
             rm -f release-signing.p12
             echo 'RELEASE_APK=release-artifact/app-release.apk' >> "$GITHUB_ENV"
             echo 'RELEASE_SIGNED=true' >> "$GITHUB_ENV"
@@ -132,7 +142,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: GalaxyUniversalIO-M1-release-signed
-          path: release-artifact/app-release.apk*
+          path: |
+            release-artifact/app-release.apk*
+            release-artifact/app-release.aab*
           if-no-files-found: error
           retention-days: 14
       - name: Upload release emulator evidence
