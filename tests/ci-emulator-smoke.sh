@@ -73,17 +73,7 @@ capture "print-return"
 tap_text "장치 · 진단" "print-return"
 capture "devices"
 python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-window.xml "USB 장치"
-adb shell input swipe 170 550 170 200 420
-sleep 1
-capture "devices-details"
-python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-details-window.xml "장치 기술 진단"
-
-# The navigation dock must stay visible while long technical details scroll.
-python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-details-window.xml "장치 · 진단"
-python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-details-window.xml "인쇄"
-python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-details-window.xml "스캔"
-
-# Find preferences without assuming a fixed screen height or font scale.
+# The bottom tab bar must remain visible while long device content scrolls.
 for attempt in $(seq 1 7); do
   adb shell input swipe 170 535 170 180 350
   sleep 1
@@ -93,11 +83,25 @@ for attempt in $(seq 1 7); do
   fi
 done
 python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/preferences-window.xml "작업 완료 · 오류 효과음"
+python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/preferences-window.xml "장치 · 진단"
+python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/preferences-window.xml "인쇄"
+python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/preferences-window.xml "스캔"
 tap_text "작업 완료 · 오류 효과음" "preferences"
 capture "sound-enabled"
 python3 tests/ui_nav_assert.py checked "$EVIDENCE_DIR"/sound-enabled-window.xml "작업 완료 · 오류 효과음"
 
-# Preference must survive process restart, not just Activity re-creation.
+# The technical report must still be reachable beneath optional preferences.
+for attempt in $(seq 1 5); do
+  adb shell input swipe 170 535 170 180 350
+  sleep 1
+  capture "devices-details"
+  if python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-details-window.xml "장치 기술 진단" > /dev/null 2>&1; then
+    break
+  fi
+done
+python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-details-window.xml "장치 기술 진단"
+
+# Preference must survive force stop and cold relaunch.
 adb shell am force-stop "$PKG"
 adb shell am start -W -n "$PKG/com.galaxyuniversalio.MainActivity" > "$EVIDENCE_DIR"/relaunch.txt
 sleep 2
