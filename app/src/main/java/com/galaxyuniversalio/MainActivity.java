@@ -142,6 +142,7 @@ public final class MainActivity extends Activity {
     private String notice = "";
     private boolean receiverRegistered;
     private Integer pendingPrinterProbeId;
+    private String pendingAttachedDeviceName;
 
     private final BroadcastReceiver usbReceiver = new BroadcastReceiver() {
         @Override
@@ -166,6 +167,16 @@ public final class MainActivity extends Activity {
                 }
                 notice = granted ? "USB 접근 권한이 승인되었습니다."
                         : "USB 권한이 없거나 장치가 분리되었습니다.";
+            } else if (intent != null
+                    && UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(intent.getAction())) {
+                rememberAttachedDevice(intent);
+            } else if (intent != null
+                    && UsbManager.ACTION_USB_DEVICE_DETACHED.equals(intent.getAction())) {
+                UsbDevice detached = deviceFromIntent(intent);
+                if (detached != null && detached.getDeviceName().equals(pendingAttachedDeviceName)) {
+                    pendingAttachedDeviceName = null;
+                }
+                notice = "USB 분리 이벤트를 감지했습니다. 연결 상태를 다시 확인합니다.";
             } else {
                 notice = "";
             }
@@ -214,7 +225,43 @@ public final class MainActivity extends Activity {
             lanHostInput.setText(state.getString(STATE_LAN_ADDRESS));
             feederCheck.setChecked(state.getBoolean(STATE_FEEDER_SELECTED, false));
         }
+        if (state == null && rememberAttachedDevice(getIntent())) activePage = 2;
         showPage(activePage);
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        if (rememberAttachedDevice(intent)) {
+            showPage(2);
+            refreshInventory();
+        }
+    }
+
+    private static UsbDevice deviceFromIntent(Intent intent) {
+        if (intent == null) return null;
+        try {
+            return Build.VERSION.SDK_INT >= 33
+                    ? intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice.class)
+                    : intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private boolean rememberAttachedDevice(Intent intent) {
+        if (intent == null || !UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(intent.getAction())) {
+            return false;
+        }
+        UsbDevice attached = deviceFromIntent(intent);
+        if (attached == null) {
+            notice = "USB 연결 알림을 받았지만 Android에서 장치 정보를 전달하지 않았습니다.";
+        } else {
+            pendingAttachedDeviceName = attached.getDeviceName();
+            notice = "새 USB 장치를 감지했습니다. Android 장치 목록과 접근 권한을 확인하세요.";
+        }
+        return true;
     }
 
     private static final int INK = 0xFF152641;
@@ -645,8 +692,8 @@ public final class MainActivity extends Activity {
                 ? "USB 연결 없음 · LAN 스캔과 시스템 인쇄 메뉴를 사용할 수 있습니다"
                 : "USB " + devices.size() + "개 연결 · 장치 정보를 확인했습니다.";
         if (usbHintView != null) usbHintView.setText(devices.isEmpty()
-                ? "연결된 USB 장치가 없습니다. OTG 케이블 및 전원을 확인하세요."
-                : "연결된 USB 장치 " + devices.size() + "개 · 장치를 선택하세요.");
+                ? "Android USB 목록에 장치가 없습니다. 갤럭시 USB 호스트(OTG), 데이터 전송 케이블, 외부 전원과 프린터 후면 PC용 USB 포트를 확인하세요. 프린터의 USB 메모리 포트는 직접 연결용이 아닙니다."
+                : "Android가 USB 장치 " + devices.size() + "개를 열거했습니다. 접근 권한과 인터페이스를 확인하세요.");
         if (!notice.isEmpty()) status += "\n" + notice;
         if (!catalogWarning.isEmpty()) status += "\n" + catalogWarning;
         statusView.setText(status);
@@ -666,6 +713,16 @@ public final class MainActivity extends Activity {
                 android.R.layout.simple_spinner_item, labels);
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         deviceSpinner.setAdapter(adapter);
+        if (pendingAttachedDeviceName != null) {
+            for (int i = 0; i < displayedDevices.size(); i++) {
+                if (pendingAttachedDeviceName.equals(displayedDevices.get(i).getDeviceName())) {
+                    deviceSpinner.setSelection(i);
+                    pendingAttachedDeviceName = null;
+                    updatePermissionButton();
+                    return;
+                }
+            }
+        }
         if (oldName != null) {
             int index = labels.indexOf(oldName);
             if (index >= 0) deviceSpinner.setSelection(index);
@@ -736,7 +793,7 @@ public final class MainActivity extends Activity {
 
     private void updateReport(List<UsbDevice> devices) {
         StringBuilder report = new StringBuilder(4096);
-        report.append("Galaxy Universal I/O M0.9 진단 보고서\n");
+        report.append("Galaxy Universal I/O v0.12.5 진단 보고서\n");
         report.append("생성 시각: ").append(timestamp()).append('\n');
         report.append("단말: ").append(Build.MANUFACTURER).append(' ').append(Build.MODEL).append('\n');
         report.append("Android API: ").append(Build.VERSION.SDK_INT).append('\n');
