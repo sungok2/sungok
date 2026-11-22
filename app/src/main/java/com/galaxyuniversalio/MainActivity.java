@@ -801,7 +801,7 @@ public final class MainActivity extends Activity {
         for (UsbDevice device : devices) {
             signature.append(device.getDeviceId()).append('/')
                     .append(device.getDeviceName()).append('/')
-                    .append(usbManager.hasPermission(device) ? '1' : '0').append(';');
+                    .append(safeUsbPermission(device) ? '1' : '0').append(';');
         }
         signature.append("serial=").append(serialCheckbox.isChecked())
                 .append(";probe=").append(latestPrinterProbe.hashCode());
@@ -823,6 +823,11 @@ public final class MainActivity extends Activity {
         if (!catalogWarning.isEmpty()) status += "\n" + catalogWarning;
         statusView.setText(status);
         return true;
+    }
+
+    private boolean safeUsbPermission(UsbDevice device) {
+        try { return usbManager != null && usbManager.hasPermission(device); }
+        catch (RuntimeException ignored) { return false; }
     }
 
     private void updateConnectionStage(List<UsbDevice> devices) {
@@ -942,7 +947,7 @@ public final class MainActivity extends Activity {
 
     private void updateReport(List<UsbDevice> devices) {
         StringBuilder report = new StringBuilder(4096);
-        report.append("Galaxy Universal I/O v0.12.5 진단 보고서\n");
+        report.append("Galaxy Universal I/O v0.13.0 진단 보고서\n");
         report.append("생성 시각: ").append(timestamp()).append('\n');
         report.append("단말: ").append(Build.MANUFACTURER).append(' ').append(Build.MODEL).append('\n');
         report.append("Android API: ").append(Build.VERSION.SDK_INT).append('\n');
@@ -1055,7 +1060,7 @@ public final class MainActivity extends Activity {
         Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("text/plain");
-        intent.putExtra(Intent.EXTRA_TITLE, "GalaxyUniversalIO-M0.9-report.txt");
+        intent.putExtra(Intent.EXTRA_TITLE, "GalaxyUniversalIO-v0.13-diagnostics.txt");
         try { startActivityForResult(intent, REQUEST_CREATE_REPORT); }
         catch (RuntimeException e) {
             pendingExportReport = null;
@@ -1155,6 +1160,7 @@ public final class MainActivity extends Activity {
                         device.getVendorId(), device.getProductId(), device.getDeviceName(), snapshot);
                 refreshInventory();
                 statusView.setText(latestPrinterProbe);
+                feedbackOutcome(!snapshot.startsWith("프린터 상태 조회 실패:"));
                 new AlertDialog.Builder(this).setTitle("USB 프린터 진단 결과")
                         .setMessage(latestPrinterProbe)
                         .setPositiveButton("확인", null).show();
@@ -1338,7 +1344,12 @@ public final class MainActivity extends Activity {
                 if (spool.exists()) spool.delete();
             }
             String message = result;
-            runOnUiThread(() -> { if (!isDestroyed()) statusView.setText(message); });
+            runOnUiThread(() -> {
+                if (!isDestroyed()) {
+                    statusView.setText(message);
+                    feedbackOutcome(message.startsWith("USB PS3 전송 완료:"));
+                }
+            });
         });
     }
 
@@ -1401,7 +1412,12 @@ public final class MainActivity extends Activity {
                 result = "RAW 전송 실패: " + e.getMessage();
             }
             String snapshot = result;
-            runOnUiThread(() -> { if (!isDestroyed()) statusView.setText(snapshot); });
+            runOnUiThread(() -> {
+                if (!isDestroyed()) {
+                    statusView.setText(snapshot);
+                    feedbackOutcome(snapshot.startsWith("USB RAW 전송 완료:"));
+                }
+            });
         });
     }
 
@@ -1457,7 +1473,12 @@ public final class MainActivity extends Activity {
                 message = UsbIppPdfPrinter.print(usbManager, device, bytes);
             } catch (Exception e) { message = "USB IPP PDF 인쇄 요청 실패: " + e.getMessage(); }
             String finalMessage = message;
-            runOnUiThread(() -> { if (!isDestroyed()) statusView.setText(finalMessage); });
+            runOnUiThread(() -> {
+                if (!isDestroyed()) {
+                    statusView.setText(finalMessage);
+                    feedbackOutcome(!finalMessage.contains("실패"));
+                }
+            });
         });
     }
 
@@ -1614,6 +1635,9 @@ public final class MainActivity extends Activity {
                     if (!isDestroyed()) {
                         setScanUiBusy(false);
                         statusView.setText(result);
+                        if (!result.startsWith("스캔 취소됨")) {
+                            feedbackOutcome(result.startsWith("eSCL PDF 저장 완료:"));
+                        }
                     }
                 });
             });
