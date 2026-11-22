@@ -29,8 +29,14 @@ tap_text() {
 capture "devices-initial"
 python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-initial-window.xml "USB 인쇄 · 스캔"
 python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-initial-window.xml "USB 장치"
-python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-initial-window.xml "연결된 USB 장치가 없습니다. OTG 케이블 및 전원을 확인하세요."
-tap_text "스캔" "devices-initial"
+python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-initial-window.xml "Android USB 목록에 장치가 없습니다."
+# A USB-attach intent without a device Parcelable must fail gracefully, not crash.
+adb shell am start -W -n "$PKG/com.galaxyuniversalio.MainActivity" -a android.hardware.usb.action.USB_DEVICE_ATTACHED \
+  | tee "$EVIDENCE_DIR"/usb-attach-no-payload.txt
+sleep 2
+capture "usb-attach-no-payload"
+python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/usb-attach-no-payload-window.xml "USB 연결 알림을 받았지만 Android에서 장치 정보를 전달하지 않았습니다."
+tap_text "스캔" "usb-attach-no-payload"
 capture "scan"
 python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/scan-window.xml "문서 스캔"
 python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/scan-window.xml "스캐너에서 문서를 가져와 PDF로 저장합니다."
