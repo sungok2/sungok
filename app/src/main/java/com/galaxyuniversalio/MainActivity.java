@@ -91,6 +91,9 @@ public final class MainActivity extends Activity {
     private static final String STATE_FEEDER_SELECTED = "feed_selected";
     private static final String STATE_SHOW_REPORT = "show_report";
     private static final String STATE_SELECTED_USB = "selected_usb_path";
+    private static final String STATE_STATUS_SCAN = "status_scan";
+    private static final String STATE_STATUS_PRINT = "status_print";
+    private static final String STATE_STATUS_DEVICES = "status_devices";
 
 
     private final ExecutorService writer = Executors.newSingleThreadExecutor();
@@ -108,6 +111,11 @@ public final class MainActivity extends Activity {
     private TextView usbHintView;
     // Open the USB inventory first: wired peripheral use is the primary workflow.
     private int activePage = 2;
+    private final String[] pageStatus = {
+            "스캔할 장치를 선택하고 문서를 PDF로 저장하세요.",
+            "PDF 또는 직접 USB 인쇄 방식을 선택하세요.",
+            "USB 장치를 연결하고 접근 권한을 승인하세요."
+    };
     private boolean reportExpanded = false;
 
     private final List<UsbDevice> displayedDevices = new ArrayList<>();
@@ -215,6 +223,12 @@ public final class MainActivity extends Activity {
             activePage = state.getInt(STATE_PAGE);
             reportExpanded = state.getBoolean(STATE_SHOW_REPORT, false);
             selectedDevicePath = state.getString(STATE_SELECTED_USB);
+            if (state.getString(STATE_STATUS_SCAN) != null)
+                pageStatus[0] = state.getString(STATE_STATUS_SCAN);
+            if (state.getString(STATE_STATUS_PRINT) != null)
+                pageStatus[1] = state.getString(STATE_STATUS_PRINT);
+            if (state.getString(STATE_STATUS_DEVICES) != null)
+                pageStatus[2] = state.getString(STATE_STATUS_DEVICES);
             pendingPrintDeviceName = state.getString(STATE_PRINT_DEVICE_NAME);
             pendingPrintVid = state.getInt(STATE_PRINT_VID);
             pendingPrintPid = state.getInt(STATE_PRINT_PID);
@@ -417,6 +431,8 @@ public final class MainActivity extends Activity {
         lanHostInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT);
         lanHostInput.setHint("예: 192.168.1.100:8080");
         lanHostInput.setContentDescription("네트워크 eSCL 스캐너의 사설 IPv4 주소");
+        lanHostInput.setPadding(dp(14), dp(10), dp(14), dp(10));
+        lanHostInput.setBackground(rounded(WHITE, BORDER, 13));
         lanHostInput.setMinHeight(dp(54));
         scanCard.addView(lanHostInput, new LinearLayout.LayoutParams(-1, -2));
         Button discoverLan = new Button(this);
@@ -733,7 +749,11 @@ public final class MainActivity extends Activity {
     private void showPage(int page) {
         int destination = Math.max(0, Math.min(2, page));
         boolean changed = destination != activePage;
+        if (changed && statusView != null) {
+            pageStatus[activePage] = statusView.getText().toString();
+        }
         activePage = destination;
+        if (changed && statusView != null) statusView.setText(pageStatus[activePage]);
         if (scanPanel == null) return;
         if (heroCard != null) heroCard.setVisibility(activePage == 2 ? View.VISIBLE : View.GONE);
         scanPanel.setVisibility(activePage == 0 ? View.VISIBLE : View.GONE);
@@ -1805,6 +1825,10 @@ public final class MainActivity extends Activity {
         outState.putInt(STATE_PAGE, activePage);
         outState.putBoolean(STATE_SHOW_REPORT, reportExpanded);
         outState.putString(STATE_SELECTED_USB, selectedDevicePath);
+        if (statusView != null) pageStatus[activePage] = statusView.getText().toString();
+        outState.putString(STATE_STATUS_SCAN, pageStatus[0]);
+        outState.putString(STATE_STATUS_PRINT, pageStatus[1]);
+        outState.putString(STATE_STATUS_DEVICES, pageStatus[2]);
         outState.putString(STATE_LAN_ADDRESS, lanHostInput.getText().toString());
         outState.putBoolean(STATE_FEEDER_SELECTED, feederCheck.isChecked());
         outState.putString(STATE_PRINT_DEVICE_NAME, pendingPrintDeviceName);
