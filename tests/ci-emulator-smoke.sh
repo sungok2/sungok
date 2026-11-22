@@ -29,7 +29,7 @@ tap_text() {
 capture "devices-initial"
 python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-initial-window.xml "USB 인쇄 · 스캔"
 python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-initial-window.xml "USB 장치"
-python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-initial-window.xml "Android USB 목록에 장치가 없습니다."
+python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/devices-initial-window.xml "USB 장치 미감지"
 # A USB-attach intent without a device Parcelable must fail gracefully, not crash.
 adb shell am start -W -n "$PKG/com.galaxyuniversalio.MainActivity" -a android.hardware.usb.action.USB_DEVICE_ATTACHED \
   | tee "$EVIDENCE_DIR"/usb-attach-no-payload.txt
