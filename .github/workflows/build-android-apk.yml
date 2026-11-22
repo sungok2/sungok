@@ -2,7 +2,14 @@ name: Galaxy Universal I-O Android debug APK
 on:
   push:
     branches: [galaxy-universal-io-m0-7, galaxy-universal-io-m0-8, galaxy-universal-io-m0-9, galaxy-universal-io-m1-escl-discovery]
+    paths:
+      - 'app/**'
+      - 'tests/**'
+      - '.github/workflows/build-android-apk.yml'
   workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
