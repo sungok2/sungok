@@ -682,8 +682,14 @@ public final class MainActivity extends Activity {
         shell.addView(navigationDock, new LinearLayout.LayoutParams(-1, -2));
         // Target SDK 36 draws behind system bars; reserve safe areas on 26+ devices.
         shell.setOnApplyWindowInsetsListener((view, insets) -> {
-            shell.setPadding(0, insets.getSystemWindowInsetTop(),
-                    0, insets.getSystemWindowInsetBottom());
+            if (Build.VERSION.SDK_INT >= 30) {
+                android.graphics.Insets bars = insets.getInsets(
+                        android.view.WindowInsets.Type.systemBars());
+                shell.setPadding(0, bars.top, 0, bars.bottom);
+            } else {
+                shell.setPadding(0, insets.getSystemWindowInsetTop(),
+                        0, insets.getSystemWindowInsetBottom());
+            }
             return insets;
         });
         setContentView(shell);
