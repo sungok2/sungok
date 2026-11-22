@@ -57,6 +57,7 @@ fi
 
 tap_text "인쇄" "scan-discovery"
 capture "print"
+python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/print-window.xml "PDF 또는 직접 USB 인쇄 방식을 선택하세요."
 python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/print-window.xml "PDF 인쇄"
 python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/print-window.xml "제조사 드라이버로 PDF 인쇄"
 if ! python3 tests/ui_nav_assert.py assert "$EVIDENCE_DIR"/print-window.xml "USB 연결 확인"; then
