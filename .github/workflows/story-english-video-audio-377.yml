@@ -90,7 +90,8 @@ jobs:
           sha256sum /tmp/embedded_scene.mp4 | tee /tmp/embedded_video_sha256.txt
           mkdir -p dist
           cp "$APK" dist/STORY_ENGLISH_3.7.7_VIDEO_AUDIO_FIX_EVAL.apk
-          cp /tmp/video_compatibility.txt dist/\n          cp /tmp/signing.txt /tmp/badging.txt /tmp/manifest.txt /tmp/entries.txt /tmp/embedded_video_sha256.txt dist/
+          cp /tmp/video_compatibility.txt dist/
+          cp /tmp/signing.txt /tmp/badging.txt /tmp/manifest.txt /tmp/entries.txt /tmp/embedded_video_sha256.txt dist/
           sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
           echo "THIS EVALUATION APK IS BASED ON THE LEGACY 3.7.5 SOURCE, NOT THE FULL 4.9.5 PREMIUM QA1 ARCHIVE. Synthetic media; ephemeral signing key; not for resale." > dist/NOT_PRODUCTION_RELEASE.txt
       - uses: actions/upload-artifact@v4
