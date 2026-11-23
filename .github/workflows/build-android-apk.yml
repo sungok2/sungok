@@ -120,6 +120,18 @@ jobs:
           grep -F "versionCode 19" app/build.gradle
           mv "$source_file" release-package/GalaxyUniversalIO-v0.13.0-QA-debug.apk
           (cd release-package && sha256sum GalaxyUniversalIO-v0.13.0-QA-debug.apk > SHA256SUMS.txt)
+          python3 - <<'PY'
+          from zipfile import ZipFile, ZIP_DEFLATED
+          path = 'release-package/GalaxyUniversalIO-v0.13.0-QA-install.zip'
+          with ZipFile(path, 'w', compression=ZIP_DEFLATED, compresslevel=9) as archive:
+              archive.write('release-package/GalaxyUniversalIO-v0.13.0-QA-debug.apk',
+                            'GalaxyUniversalIO-v0.13.0-QA-debug.apk')
+              archive.write('release-package/SHA256SUMS.txt', 'SHA256SUMS.txt')
+              archive.write('docs/GITHUB_DOWNLOAD.md', '설치안내.md')
+          with ZipFile(path) as archive:
+              assert archive.testzip() is None
+          PY
+          (cd release-package && sha256sum GalaxyUniversalIO-v0.13.0-QA-install.zip >> SHA256SUMS.txt)
           cat release-package/SHA256SUMS.txt
       - name: Publish public GitHub QA prerelease and direct APK asset
         shell: bash
@@ -130,11 +142,12 @@ jobs:
           tag="galaxy-universal-io-v0.13.0-qa-${GITHUB_SHA:0:8}"
           apk="release-package/GalaxyUniversalIO-v0.13.0-QA-debug.apk"
           checksum="release-package/SHA256SUMS.txt"
+          zip="release-package/GalaxyUniversalIO-v0.13.0-QA-install.zip"
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             # Retried CI for this exact commit. Never mutate an existing release silently.
             echo "QA release already exists for this commit: $tag"
           else
-            gh release create "$tag" "$apk" "$checksum" \
+            gh release create "$tag" "$apk" "$zip" "$checksum" \
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
               --prerelease \
@@ -147,3 +160,7 @@ jobs:
             --pattern "GalaxyUniversalIO-v0.13.0-QA-debug.apk" \
             --dir "$RUNNER_TEMP/verify" --clobber
           cmp "$apk" "$RUNNER_TEMP/verify/GalaxyUniversalIO-v0.13.0-QA-debug.apk"
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
+            --pattern "GalaxyUniversalIO-v0.13.0-QA-install.zip" \
+            --dir "$RUNNER_TEMP/verify" --clobber
+          cmp "$zip" "$RUNNER_TEMP/verify/GalaxyUniversalIO-v0.13.0-QA-install.zip"
