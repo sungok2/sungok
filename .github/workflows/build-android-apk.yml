@@ -95,3 +95,55 @@ jobs:
           path: ci-evidence/
           if-no-files-found: warn
           retention-days: 7
+
+  publish-qa-release:
+    name: Publish tested APK as a downloadable QA prerelease
+    needs: build
+    if: ${{ github.ref == 'refs/heads/galaxy-universal-io-m1-escl-discovery' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - name: Download the exactly tested debug APK
+        uses: actions/download-artifact@v7
+        with:
+          name: GalaxyUniversalIO-M1-discovery-debug-apk
+          path: release-package
+      - name: Stage file, version and SHA256 manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_file=release-package/app-debug.apk
+          test -s "$source_file"
+          grep -F "versionName '0.13.0'" app/build.gradle
+          grep -F "versionCode 19" app/build.gradle
+          mv "$source_file" release-package/GalaxyUniversalIO-v0.13.0-QA-debug.apk
+          (cd release-package && sha256sum GalaxyUniversalIO-v0.13.0-QA-debug.apk > SHA256SUMS.txt)
+          cat release-package/SHA256SUMS.txt
+      - name: Publish public GitHub QA prerelease and direct APK asset
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="galaxy-universal-io-v0.13.0-qa-${GITHUB_SHA:0:8}"
+          apk="release-package/GalaxyUniversalIO-v0.13.0-QA-debug.apk"
+          checksum="release-package/SHA256SUMS.txt"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # Retried CI for this exact commit. Never mutate an existing release silently.
+            echo "QA release already exists for this commit: $tag"
+          else
+            gh release create "$tag" "$apk" "$checksum" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --prerelease \
+              --title "Galaxy Universal I/O 0.13.0 — QA test APK" \
+              --notes-file docs/GITHUB_DOWNLOAD.md
+          fi
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json url,assets \
+            --jq '{url: .url, assets: [.assets[].name]}'
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
+            --pattern "GalaxyUniversalIO-v0.13.0-QA-debug.apk" \
+            --dir "$RUNNER_TEMP/verify" --clobber
+          cmp "$apk" "$RUNNER_TEMP/verify/GalaxyUniversalIO-v0.13.0-QA-debug.apk"
